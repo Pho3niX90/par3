@@ -14,9 +14,10 @@ import * as Schema from "effect/Schema";
 
 export const CopilotSettings = makeProviderSettingsSchema(
   {
-    // Off by default (like Grok, Cursor, and OpenCode): users opt in from Settings.
+    // On by default in this fork: the provider is probed at startup, and once the CLI is found
+    // working it leads the provider order (see providerStatusCache.ts).
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("copilot").pipe(

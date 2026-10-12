@@ -26,7 +26,9 @@ between CLI releases.
    - **GitHub Enterprise**: run `copilot login --host <your-host>`, for example
      `copilot login --host https://company.ghe.com`.
 
-3. In T3 Code, open **Settings > Providers**, enable **GitHub Copilot**, and refresh the provider.
+3. Open T3 Code. GitHub Copilot is on by default, and once the CLI is found it leads the provider
+   list, so new threads use it unless a project or thread picks another provider. Check it under
+   **Settings > Providers**, and refresh the provider after installing the CLI.
 
 ## GitHub Enterprise
 
@@ -46,9 +48,10 @@ enterprise host. Each instance has its own host and token.
 ## Models
 
 **Copilot Default** uses the model your Copilot CLI is configured with. The other models your plan
-offers appear in the model picker after your first GitHub Copilot thread starts, because T3 Code
-reads them from the running session. They are not listed before then, and are lost on restart until
-a thread starts again.
+offers appear in the model picker once T3 Code has read them from Copilot. It does this once when it
+first finds the CLI working, by briefly starting a Copilot session in an empty temporary folder
+without signing in, and again from every thread you start. If you are not signed in to Copilot yet,
+the list fills in after your first thread.
 
 If a model is missing, add its ID under **Custom models** in the instance settings. Run `/model` in
 the Copilot CLI to see the IDs your plan offers.

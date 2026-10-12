@@ -27,6 +27,8 @@ import {
   enrichCopilotSnapshot,
 } from "./status.ts";
 import type { CopilotAdvertisedModel } from "./modelDiscovery.ts";
+import { probeCopilotModels } from "./modelProbe.ts";
+import { makeCopilotAcpRuntime } from "./acpSupport.ts";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
   defaultProviderContinuationIdentity,
@@ -98,6 +100,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       const httpClient = yield* HttpClient.HttpClient;
       const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const fileSystem = yield* FileSystem.FileSystem;
+      const crypto = yield* Crypto.Crypto;
       const path = yield* Path.Path;
       const processEnv = yield* mergeProviderInstanceEnvironment(environment);
       const continuationIdentity = defaultProviderContinuationIdentity({
@@ -126,8 +129,8 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         ),
       );
 
-      // Models a started session advertises. Health checks never open sessions, so this is how
-      // the model picker learns the CLI's real list.
+      // Models Copilot advertises, from a one-shot discovery session and from every started
+      // session. The version check never opens a session itself.
       const advertisedModels = yield* SubscriptionRef.make<ReadonlyArray<CopilotAdvertisedModel>>(
         [],
       );
@@ -196,7 +199,46 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
             Stream.filter((models) => models.length > 0),
             Stream.runForEach(() => getSnapshot.pipe(Effect.flatMap(publishWithAdvertisedModels))),
           );
-          return Effect.all([enrichment, advertisedModelUpdates], {
+          // Once per driver instance, as soon as the CLI is found working, so the picker has the
+          // CLI's models before the first thread. A started session advertises them as well.
+          const discoverModels =
+            currentSnapshot.installed && currentSnapshot.status === "ready"
+              ? SubscriptionRef.get(advertisedModels).pipe(
+                  Effect.flatMap((known) =>
+                    known.length > 0
+                      ? Effect.void
+                      : probeCopilotModels({
+                          makeRuntime: Effect.gen(function* () {
+                            const cwd = yield* fileSystem.makeTempDirectoryScoped({
+                              prefix: "t3-copilot-models-",
+                            });
+                            return yield* makeCopilotAcpRuntime({
+                              copilotSettings: effectiveConfig,
+                              environment: launchEnv,
+                              cwd,
+                              clientInfo: { name: "t3-code-model-discovery", version: "0.0.0" },
+                              clientCapabilities: {
+                                fs: { readTextFile: false, writeTextFile: false },
+                                terminal: false,
+                              },
+                              // Never start a login flow from a background check.
+                              authenticateOnAuthRequired: false,
+                            });
+                          }).pipe(
+                            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+                            Effect.provideService(Crypto.Crypto, crypto),
+                          ),
+                        }).pipe(
+                          Effect.flatMap((models) =>
+                            models.length > 0
+                              ? SubscriptionRef.set(advertisedModels, models)
+                              : Effect.void,
+                          ),
+                        ),
+                  ),
+                )
+              : Effect.void;
+          return Effect.all([enrichment, advertisedModelUpdates, discoverModels], {
             concurrency: "unbounded",
             discard: true,
           });

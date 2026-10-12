@@ -48,11 +48,23 @@ const driverRank = (driver: string): number => {
   return index === -1 ? BUILT_IN_DRIVER_ORDER.length : index;
 };
 
+/**
+ * A GitHub Copilot instance that is enabled and found working leads the order, ahead of Codex and
+ * Claude, so it is what new threads fall back to. One that is disabled, missing, or failing keeps
+ * its place near the end.
+ */
+const isReadyCopilot = (provider: ServerProvider): boolean =>
+  provider.driver === "copilot" &&
+  provider.enabled &&
+  provider.installed &&
+  provider.status === "ready";
+
 export const orderProviderSnapshots = (
   providers: ReadonlyArray<ServerProvider>,
 ): ReadonlyArray<ServerProvider> =>
   [...providers].toSorted(
     (left, right) =>
+      Number(!isReadyCopilot(left)) - Number(!isReadyCopilot(right)) ||
       driverRank(left.driver) - driverRank(right.driver) ||
       left.driver.localeCompare(right.driver) ||
       (left.displayName ?? "").localeCompare(right.displayName ?? "") ||

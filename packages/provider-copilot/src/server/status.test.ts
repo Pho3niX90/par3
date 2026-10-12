@@ -55,7 +55,7 @@ const probe = (
 describe("checkCopilotProviderStatus", () => {
   it.effect("reports a disabled instance without spawning the CLI", () =>
     Effect.gen(function* () {
-      const result = yield* checkCopilotProviderStatus(decodeSettings({}), {}).pipe(
+      const result = yield* checkCopilotProviderStatus(decodeSettings({ enabled: false }), {}).pipe(
         Effect.provideService(
           ChildProcessSpawner.ChildProcessSpawner,
           ChildProcessSpawner.make(() => Effect.die("a disabled instance must not spawn")),
