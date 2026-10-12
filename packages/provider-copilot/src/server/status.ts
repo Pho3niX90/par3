@@ -2,8 +2,9 @@
  * GitHub Copilot status probe and version checking.
  *
  * The probe only runs `copilot --version`. Opening an ACP session can start MCP servers
- * or hooks, and Copilot's ACP documentation does not promise model metadata at
- * initialization, so models come from custom model settings rather than a live catalog.
+ * or hooks, so the probe never does. Models the CLI advertises are learned from sessions that
+ * start for real (see `modelDiscovery.ts`) and merged in by `applyAdvertisedCopilotModels`;
+ * until then only the CLI default and custom model settings are listed.
  *
  * @module provider-copilot/server/status
  */
@@ -40,6 +41,7 @@ import {
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import { COPILOT_DEFAULT_MODEL_SLUG, COPILOT_SUPPORTED_RUNTIME_MODES } from "./acpSupport.ts";
 import { normalizeEnterpriseHost, isEnterpriseHost } from "./enterpriseHost.ts";
+import type { CopilotAdvertisedModel } from "./modelDiscovery.ts";
 
 const COPILOT_PRESENTATION = {
   displayName: "GitHub Copilot",
@@ -56,7 +58,8 @@ const VERSION_PROBE_TIMEOUT_MS = 4_000;
 
 /**
  * Only the CLI's own default model is built in. Valid model ids depend on the user's plan and
- * change with the CLI, so other models are added as custom models instead of guessed here.
+ * change with the CLI, so other models come from what a live session advertises or from custom
+ * models, never from a list guessed here.
  */
 const COPILOT_BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
@@ -72,12 +75,34 @@ const COPILOT_SLASH_COMMANDS = [COMPACT_SLASH_COMMAND];
 
 function copilotModelsFromSettings(
   customModels: ReadonlyArray<CustomModelSetting> | undefined,
+  advertisedModels: ReadonlyArray<CopilotAdvertisedModel> = [],
 ): ReadonlyArray<ServerProviderModel> {
   return providerModelsFromSettings(
-    COPILOT_BUILT_IN_MODELS,
+    [
+      ...COPILOT_BUILT_IN_MODELS,
+      ...advertisedModels.map((model): ServerProviderModel => ({
+        slug: model.slug,
+        name: model.name,
+        isCustom: false,
+        capabilities: EMPTY_CAPABILITIES,
+      })),
+    ],
     customModels ?? [],
     EMPTY_CAPABILITIES,
   );
+}
+
+/** Lists the CLI default, then advertised models, then custom models not already listed. */
+export function applyAdvertisedCopilotModels<
+  Snapshot extends { readonly models: ReadonlyArray<ServerProviderModel> },
+>(
+  snapshot: Snapshot,
+  advertisedModels: ReadonlyArray<CopilotAdvertisedModel>,
+  customModels: ReadonlyArray<CustomModelSetting> | undefined,
+): Snapshot {
+  return advertisedModels.length === 0
+    ? snapshot
+    : { ...snapshot, models: copilotModelsFromSettings(customModels, advertisedModels) };
 }
 
 export function buildInitialCopilotProviderSnapshot(

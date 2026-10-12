@@ -29,6 +29,7 @@ import {
   makeCopilotSubagentRouting,
 } from "@t3tools/provider-acp/server/copilotAcp";
 import { copilotPromptFailure } from "./copilotFailure.ts";
+import { copilotModelsFromSessionSetup, type CopilotAdvertisedModel } from "./modelDiscovery.ts";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
@@ -88,6 +89,10 @@ interface CopilotAdapterV2Options {
   readonly settings: CopilotSettings;
   readonly environment: NodeJS.ProcessEnv;
   readonly selfInvocation: SelfInvocation;
+  /** Receives the models a started session advertises, so the model picker can list them. */
+  readonly onModelsAdvertised?: (
+    models: ReadonlyArray<CopilotAdvertisedModel>,
+  ) => Effect.Effect<void>;
   readonly nativeLogging?: Parameters<typeof makeAcpAdapterV2>[0]["nativeLogging"];
   readonly continuationRequests?: Parameters<typeof makeAcpAdapterV2>[0]["continuationRequests"];
   readonly testHooks?: Parameters<typeof makeAcpAdapterV2>[0]["testHooks"];
@@ -103,6 +108,11 @@ interface CopilotAdapterV2Options {
 
 function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapterV2Flavor {
   const routing = makeCopilotSubagentRouting();
+  // An empty advertisement means the session offered no model list, not that there are no models.
+  const advertiseModels = (models: ReadonlyArray<CopilotAdvertisedModel>): Effect.Effect<void> =>
+    options.onModelsAdvertised === undefined || models.length === 0
+      ? Effect.void
+      : options.onModelsAdvertised(models);
 
   return {
     driver: COPILOT_PROVIDER,
@@ -115,11 +125,17 @@ function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapt
     approvalOptions: copilotApprovalOptions,
     resolveModelId: (selection) => resolveCopilotAcpBaseModelId(selection.model),
     applyModelSelection: ({ runtime, startResult, modelSelection }) =>
-      applyCopilotAcpModelSelection({
-        runtime,
-        sessionSetupResult: startResult.sessionSetupResult,
-        requestedModelId: resolveCopilotAcpBaseModelId(modelSelection.model),
-      }),
+      advertiseModels(copilotModelsFromSessionSetup(startResult.sessionSetupResult)).pipe(
+        Effect.andThen(
+          applyCopilotAcpModelSelection({
+            runtime,
+            sessionSetupResult: startResult.sessionSetupResult,
+            requestedModelId: resolveCopilotAcpBaseModelId(modelSelection.model),
+          }),
+        ),
+      ),
+    onSessionConfigurationUpdate: (configOptions) =>
+      advertiseModels(copilotModelsFromSessionSetup({ configOptions })),
     makeRuntime:
       options.makeRuntime ??
       ((input) =>
@@ -157,6 +173,41 @@ export type CopilotAdapterV2DriverEnv =
   | McpProviderSessions.McpProviderSessions
   | ProviderEventLoggers.ProviderEventLoggers;
 
+/**
+ * Builds one instance's adapter from driver input. The driver passes `onModelsAdvertised` so the
+ * models a started session reports reach that instance's snapshot.
+ */
+export const makeCopilotAdapterV2ForInstance = Effect.fn("makeCopilotAdapterV2ForInstance")(
+  function* (
+    input: ProviderAdapterDriverCreateInput<CopilotSettings>,
+    extras?: Pick<CopilotAdapterV2Options, "onModelsAdvertised">,
+  ) {
+    const hostEnvironment = yield* HostProcess.Environment;
+    const processEnv = yield* mergeProviderInstanceEnvironment(input.environment, hostEnvironment);
+    const selfInvocation = yield* resolveSelfInvocation();
+    const providerEventLoggers = yield* ProviderEventLoggers.ProviderEventLoggers;
+    const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
+    const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
+
+    return yield* makeCopilotAdapterV2({
+      instanceId: input.instanceId,
+      settings: { ...input.config, enabled: input.enabled },
+      environment: copilotLaunchEnvironment(input.config, processEnv),
+      selfInvocation,
+      continuationRequests,
+      ...(extras?.onModelsAdvertised === undefined
+        ? {}
+        : { onModelsAdvertised: extras.onModelsAdvertised }),
+      nativeLogging: (threadId) =>
+        makeNativeLogger({
+          nativeEventLogger: providerEventLoggers.native,
+          provider: COPILOT_PROVIDER,
+          threadId,
+        }),
+    });
+  },
+);
+
 export const CopilotAdapterV2Driver: ProviderAdapterDriver<
   CopilotSettings,
   CopilotAdapterV2DriverEnv
@@ -166,30 +217,7 @@ export const CopilotAdapterV2Driver: ProviderAdapterDriver<
   defaultConfig: (): CopilotSettings => DEFAULT_COPILOT_SETTINGS,
   create: Effect.fn("CopilotAdapterV2Driver.create")(
     function* (input: ProviderAdapterDriverCreateInput<CopilotSettings>) {
-      const hostEnvironment = yield* HostProcess.Environment;
-      const processEnv = yield* mergeProviderInstanceEnvironment(
-        input.environment,
-        hostEnvironment,
-      );
-      const selfInvocation = yield* resolveSelfInvocation();
-      const instanceId = input.instanceId;
-      const providerEventLoggers = yield* ProviderEventLoggers.ProviderEventLoggers;
-      const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
-      const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
-
-      return yield* makeCopilotAdapterV2({
-        instanceId,
-        settings: { ...input.config, enabled: input.enabled },
-        environment: copilotLaunchEnvironment(input.config, processEnv),
-        selfInvocation,
-        continuationRequests,
-        nativeLogging: (threadId) =>
-          makeNativeLogger({
-            nativeEventLogger: providerEventLoggers.native,
-            provider: COPILOT_PROVIDER,
-            threadId,
-          }),
-      });
+      return yield* makeCopilotAdapterV2ForInstance(input);
     },
     (effect, input) =>
       effect.pipe(

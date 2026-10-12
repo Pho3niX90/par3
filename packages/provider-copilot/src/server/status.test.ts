@@ -7,7 +7,7 @@ import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { CopilotSettings } from "../settings.ts";
-import { checkCopilotProviderStatus } from "./status.ts";
+import { applyAdvertisedCopilotModels, checkCopilotProviderStatus } from "./status.ts";
 
 const decodeSettings = Schema.decodeSync(CopilotSettings);
 
@@ -137,6 +137,36 @@ describe("checkCopilotProviderStatus", () => {
       expect(result.installed).toBe(true);
       expect(result.status).toBe("error");
       expect(result.message).toContain("exited with code 2");
+    }),
+  );
+});
+
+describe("applyAdvertisedCopilotModels", () => {
+  const advertised = [
+    { slug: "gpt-5.4", name: "GPT-5.4" },
+    { slug: "claude-haiku-4.5", name: "Claude Haiku 4.5" },
+  ];
+
+  it.effect("lists the default, then advertised models, then custom models not advertised", () =>
+    Effect.gen(function* () {
+      const settings = enabledSettings({
+        customModels: ["claude-haiku-4.5", "my-private-model"],
+      });
+      const base = yield* probe(settings, processSpawner({ stdout: "1.0.95", code: 0 }));
+      const merged = applyAdvertisedCopilotModels(base, advertised, settings.customModels);
+      expect(merged.models.map((model) => [model.slug, model.isCustom])).toEqual([
+        ["default", false],
+        ["gpt-5.4", false],
+        ["claude-haiku-4.5", false],
+        ["my-private-model", true],
+      ]);
+    }),
+  );
+
+  it.effect("leaves the snapshot alone until a session has advertised something", () =>
+    Effect.gen(function* () {
+      const base = yield* probe(enabledSettings(), processSpawner({ stdout: "1.0.95", code: 0 }));
+      expect(applyAdvertisedCopilotModels(base, [], [])).toBe(base);
     }),
   );
 });

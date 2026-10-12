@@ -3,26 +3,30 @@
  *
  * @module provider-copilot/server/driver
  */
-import { ProviderDriverKind, TextGenerationError } from "@t3tools/contracts";
+import { ProviderDriverKind, TextGenerationError, type ServerProvider } from "@t3tools/contracts";
 import { CopilotSettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
-import { CopilotAdapterV2Driver, type CopilotAdapterV2DriverEnv } from "./adapter.ts";
+import { makeCopilotAdapterV2ForInstance, type CopilotAdapterV2DriverEnv } from "./adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import {
+  applyAdvertisedCopilotModels,
   buildInitialCopilotProviderSnapshot,
   checkCopilotProviderStatus,
   enrichCopilotSnapshot,
 } from "./status.ts";
+import type { CopilotAdvertisedModel } from "./modelDiscovery.ts";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
   defaultProviderContinuationIdentity,
@@ -122,14 +126,23 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         ),
       );
 
-      const orchestrationAdapter = yield* CopilotAdapterV2Driver.create({
-        instanceId,
-        displayName,
-        accentColor,
-        environment,
-        enabled,
-        config: effectiveConfig,
-      }).pipe(
+      // Models a started session advertises. Health checks never open sessions, so this is how
+      // the model picker learns the CLI's real list.
+      const advertisedModels = yield* SubscriptionRef.make<ReadonlyArray<CopilotAdvertisedModel>>(
+        [],
+      );
+
+      const orchestrationAdapter = yield* makeCopilotAdapterV2ForInstance(
+        {
+          instanceId,
+          displayName,
+          accentColor,
+          environment,
+          enabled,
+          config: effectiveConfig,
+        },
+        { onModelsAdvertised: (models) => SubscriptionRef.set(advertisedModels, models) },
+      ).pipe(
         Effect.mapError(
           (cause) =>
             new ProviderDriverError({
@@ -155,19 +168,39 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         initialSnapshot: (settings) =>
           buildInitialCopilotProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
         checkProvider,
-        enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
-          resolveMaintenance().pipe(
+        enrichSnapshot: ({ settings, snapshot: currentSnapshot, getSnapshot, publishSnapshot }) => {
+          const { customModels } = settings.provider;
+          // Both publishers rebuild the model list from the latest advertisement, so whichever
+          // publishes last never drops models the other one added.
+          const publishWithAdvertisedModels = (next: ServerProvider) =>
+            SubscriptionRef.get(advertisedModels).pipe(
+              Effect.flatMap((models) =>
+                publishSnapshot(applyAdvertisedCopilotModels(next, models, customModels)),
+              ),
+            );
+          const enrichment = resolveMaintenance().pipe(
             Effect.flatMap((maintenanceCapabilities) =>
               enrichCopilotSnapshot({
                 snapshot: currentSnapshot,
                 maintenanceCapabilities,
                 enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-                publishSnapshot,
+                publishSnapshot: publishWithAdvertisedModels,
               }),
             ),
             Effect.provideService(HttpClient.HttpClient, httpClient),
             Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
-          ),
+          );
+          // `changes` replays the current value, so a refresh that rebuilt the snapshot from the
+          // version probe lists the advertised models again straight away.
+          const advertisedModelUpdates = SubscriptionRef.changes(advertisedModels).pipe(
+            Stream.filter((models) => models.length > 0),
+            Stream.runForEach(() => getSnapshot.pipe(Effect.flatMap(publishWithAdvertisedModels))),
+          );
+          return Effect.all([enrichment, advertisedModelUpdates], {
+            concurrency: "unbounded",
+            discard: true,
+          });
+        },
       }).pipe(
         Effect.mapError(
           (cause) =>

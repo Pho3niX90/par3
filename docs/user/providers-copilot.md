@@ -45,9 +45,13 @@ enterprise host. Each instance has its own host and token.
 
 ## Models
 
-**Copilot Default** uses the model your Copilot CLI is configured with. To choose another, add its
-ID under **Custom models** in the instance settings, then select it in the chat model picker. Run
-`/model` in the Copilot CLI to see the IDs your plan offers.
+**Copilot Default** uses the model your Copilot CLI is configured with. The other models your plan
+offers appear in the model picker after your first GitHub Copilot thread starts, because T3 Code
+reads them from the running session. They are not listed before then, and are lost on restart until
+a thread starts again.
+
+If a model is missing, add its ID under **Custom models** in the instance settings. Run `/model` in
+the Copilot CLI to see the IDs your plan offers.
 
 ## Subagents and tools
 
