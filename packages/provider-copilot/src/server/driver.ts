@@ -14,7 +14,6 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
-import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import { CopilotAdapterV2Driver, type CopilotAdapterV2DriverEnv } from "./adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
@@ -41,7 +40,7 @@ import {
   makeProviderSnapshotSettingsSource,
   type ProviderSnapshotSettings,
 } from "@t3tools/provider-core/server/snapshotSettings";
-import { normalizeEnterpriseHost, isEnterpriseHost } from "./enterpriseHost.ts";
+import { copilotLaunchEnvironment } from "./enterpriseHost.ts";
 
 const decodeCopilotSettings = Schema.decodeSync(CopilotSettings);
 
@@ -56,7 +55,6 @@ const UPDATE = makePackageManagedProviderMaintenanceResolver({
 
 export type CopilotDriverEnv =
   | CopilotAdapterV2DriverEnv
-  | ProviderHost.ProviderHost
   | ChildProcessSpawner.ChildProcessSpawner
   | Crypto.Crypto
   | FileSystem.FileSystem
@@ -82,34 +80,6 @@ const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
   };
 };
 
-const resolveEnterpriseToken = (
-  effectiveConfig: CopilotSettings,
-  hostService: ProviderHost.ProviderHost["Service"],
-  enterpriseHost: string,
-) =>
-  Effect.gen(function* () {
-    const explicitToken = effectiveConfig.enterpriseToken?.trim();
-    if (explicitToken) {
-      return explicitToken;
-    }
-    // Check if T3 source control host settings have a token for this enterprise host
-    const serverSettings = yield* hostService.settings.get.pipe(
-      Effect.orElseSucceed(() => undefined),
-    );
-    if (serverSettings) {
-      const githubHosts = (
-        serverSettings.sourceControlHosts as Record<string, unknown> | undefined
-      )?.["github"] as { tokens?: Record<string, string> } | undefined;
-      const hostToken =
-        githubHosts?.tokens?.[enterpriseHost]?.trim() ??
-        (enterpriseHost === "github.com" ? githubHosts?.tokens?.["github.com"]?.trim() : undefined);
-      if (hostToken) {
-        return hostToken;
-      }
-    }
-    return undefined;
-  });
-
 export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = {
   driverKind: DRIVER_KIND,
   metadata: {
@@ -120,14 +90,11 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
   defaultConfig: (): CopilotSettings => decodeCopilotSettings({}),
   create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
     Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const httpClient = yield* HttpClient.HttpClient;
       const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const host = yield* ProviderHost.ProviderHost;
-      const { cwd } = host.paths;
       const processEnv = yield* mergeProviderInstanceEnvironment(environment);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
@@ -142,27 +109,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       });
       const effectiveConfig = { ...config, enabled } satisfies CopilotSettings;
 
-      const enterpriseHost = normalizeEnterpriseHost(effectiveConfig.enterpriseUrl);
-      const isEnterprise = isEnterpriseHost(enterpriseHost);
-      const token = yield* resolveEnterpriseToken(
-        effectiveConfig,
-        host,
-        enterpriseHost || "github.com",
-      );
-
-      const launchEnv: Record<string, string | undefined> = { ...processEnv };
-      if (isEnterprise) {
-        launchEnv.GH_HOST = enterpriseHost;
-        launchEnv.COPILOT_GH_HOST = enterpriseHost;
-      }
-      if (token) {
-        launchEnv.COPILOT_GITHUB_TOKEN = token;
-        if (isEnterprise) {
-          launchEnv.GH_ENTERPRISE_TOKEN = token;
-        } else {
-          launchEnv.GH_TOKEN = token;
-        }
-      }
+      const launchEnv = copilotLaunchEnvironment(effectiveConfig, processEnv);
 
       const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
         resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
@@ -175,18 +122,13 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         ),
       );
 
-      const effectiveConfigWithToken: CopilotSettings =
-        token && !effectiveConfig.enterpriseToken
-          ? { ...effectiveConfig, enterpriseToken: token }
-          : effectiveConfig;
-
       const orchestrationAdapter = yield* CopilotAdapterV2Driver.create({
         instanceId,
         displayName,
         accentColor,
         environment,
         enabled,
-        config: effectiveConfigWithToken,
+        config: effectiveConfig,
       }).pipe(
         Effect.mapError(
           (cause) =>
@@ -199,14 +141,9 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         ),
       );
 
-      const checkProvider = checkCopilotProviderStatus(
-        effectiveConfigWithToken,
-        launchEnv,
-        cwd,
-      ).pipe(
+      const checkProvider = checkCopilotProviderStatus(effectiveConfig, launchEnv).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        Effect.provideService(Crypto.Crypto, crypto),
       );
 
       const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);

@@ -3,11 +3,7 @@
  *
  * @module provider-copilot/server/adapter
  */
-import {
-  defaultInstanceIdForDriver,
-  ProviderDriverKind,
-  type OrchestrationV2ProviderCapabilities,
-} from "@t3tools/contracts";
+import { ProviderDriverKind, type OrchestrationV2ProviderCapabilities } from "@t3tools/contracts";
 import { CopilotSettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -22,16 +18,17 @@ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderS
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeLogging";
 import {
+  applyCopilotAcpModelSelection,
   copilotApprovalOptions,
   makeCopilotAcpRuntime,
   resolveCopilotAcpBaseModelId,
 } from "./acpSupport.ts";
 import {
   copilotClientCapabilitiesMeta,
-  copilotPromptFailure,
   extractCopilotSubagentUpdate,
   makeCopilotSubagentRouting,
-} from "./copilotAcp.ts";
+} from "@t3tools/provider-acp/server/copilotAcp";
+import { copilotPromptFailure } from "./copilotFailure.ts";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
@@ -50,18 +47,18 @@ import {
   type AcpAdapterV2RuntimeInput,
 } from "@t3tools/provider-acp/server/adapter";
 import { resolveSelfInvocation, type SelfInvocation } from "@t3tools/shared/nodeRuntime";
-import { normalizeEnterpriseHost, isEnterpriseHost } from "./enterpriseHost.ts";
+import { copilotLaunchEnvironment } from "./enterpriseHost.ts";
 
 const COPILOT_PROVIDER = ProviderDriverKind.make("copilot");
 const COPILOT_DRIVER_KIND = COPILOT_PROVIDER;
-const COPILOT_DEFAULT_INSTANCE_ID = defaultInstanceIdForDriver(COPILOT_DRIVER_KIND);
 const DEFAULT_COPILOT_SETTINGS = Schema.decodeSync(CopilotSettings)({});
 
+// In-session model switching is negotiated per session from the agent's advertised
+// config options, so it is not claimed here.
 const CopilotProviderCapabilitiesV2 = {
   ...AcpProviderCapabilitiesV2,
   sessions: {
     ...AcpProviderCapabilitiesV2.sessions,
-    supportsModelSwitchInSession: true,
     supportsRuntimeModeSwitchInSession: false,
   },
   threads: {
@@ -117,6 +114,12 @@ function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapt
     extractSubagentUpdate: extractCopilotSubagentUpdate,
     approvalOptions: copilotApprovalOptions,
     resolveModelId: (selection) => resolveCopilotAcpBaseModelId(selection.model),
+    applyModelSelection: ({ runtime, startResult, modelSelection }) =>
+      applyCopilotAcpModelSelection({
+        runtime,
+        sessionSetupResult: startResult.sessionSetupResult,
+        requestedModelId: resolveCopilotAcpBaseModelId(modelSelection.model),
+      }),
     makeRuntime:
       options.makeRuntime ??
       ((input) =>
@@ -174,28 +177,10 @@ export const CopilotAdapterV2Driver: ProviderAdapterDriver<
       const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
       const makeNativeLogger = yield* makeAcpNativeLoggerFactory();
 
-      const enterpriseHost = normalizeEnterpriseHost(input.config.enterpriseUrl);
-      const isEnterprise = isEnterpriseHost(enterpriseHost);
-      const explicitToken = input.config.enterpriseToken?.trim();
-
-      const launchEnv: NodeJS.ProcessEnv = { ...processEnv };
-      if (isEnterprise) {
-        launchEnv.GH_HOST = enterpriseHost;
-        launchEnv.COPILOT_GH_HOST = enterpriseHost;
-      }
-      if (explicitToken) {
-        launchEnv.COPILOT_GITHUB_TOKEN = explicitToken;
-        if (isEnterprise) {
-          launchEnv.GH_ENTERPRISE_TOKEN = explicitToken;
-        } else {
-          launchEnv.GH_TOKEN = explicitToken;
-        }
-      }
-
       return yield* makeCopilotAdapterV2({
         instanceId,
         settings: { ...input.config, enabled: input.enabled },
-        environment: launchEnv,
+        environment: copilotLaunchEnvironment(input.config, processEnv),
         selfInvocation,
         continuationRequests,
         nativeLogging: (threadId) =>

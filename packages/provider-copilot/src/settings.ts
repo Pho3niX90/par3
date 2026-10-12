@@ -36,13 +36,12 @@ export const CopilotSettings = makeProviderSettingsSchema(
     ),
     enterpriseToken: Schema.optional(Schema.String).pipe(
       Schema.annotateKey({
-        title: "Enterprise Token / PAT",
+        title: "Access token",
         description:
-          "Personal Access Token with Copilot access. If omitted, Copilot uses CLI login (copilot login / gh auth) or stored T3 source control credentials.",
+          "Stored in plain text on disk. A fine-grained personal access token with the Copilot Requests permission; classic (ghp_) tokens are not supported. Leave empty to use your Copilot CLI login.",
         providerSettingsForm: {
           control: "password",
-          secret: true,
-          placeholder: "ghp_...",
+          placeholder: "github_pat_...",
           clearWhenEmpty: "omit",
         },
       }),

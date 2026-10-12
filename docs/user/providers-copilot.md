@@ -1,8 +1,11 @@
 # GitHub Copilot
 
-T3 Code integrates with the official GitHub Copilot CLI (`copilot`) using the Agent Client Protocol (ACP), supporting both standard GitHub.com and GitHub Enterprise instances (GitHub Enterprise Cloud with data residency `*.ghe.com` and GitHub Enterprise Server GHES).
+T3 Code runs GitHub Copilot through the Copilot CLI's ACP server (`copilot --acp`). It works with
+GitHub.com, GitHub Enterprise Cloud with data residency (`*.ghe.com`), and GitHub Enterprise
+Server. GitHub lists ACP support in the Copilot CLI as a public preview, so behavior may change
+between CLI releases.
 
-## Set Up GitHub Copilot
+## Set up GitHub Copilot
 
 1. Install the GitHub Copilot CLI on the machine running T3 Code:
 
@@ -18,32 +21,35 @@ T3 Code integrates with the official GitHub Copilot CLI (`copilot`) using the Ag
    brew install copilot-cli
    ```
 
-2. Authenticate:
-   - **For GitHub.com**: run `copilot login` or `gh auth login`.
-   - **For GitHub Enterprise**: run `copilot login --host <your-host>` (e.g., `copilot login --host company.ghe.com` or `copilot login --host github.mycompany.com`), or use the GitHub CLI: `gh auth login --hostname <your-host>`.
+2. Sign in:
+   - **GitHub.com**: run `copilot login`.
+   - **GitHub Enterprise**: run `copilot login --host <your-host>`, for example
+     `copilot login --host https://company.ghe.com`.
 
-3. In T3 Code, navigate to **Settings > Providers**, enable **GitHub Copilot**, and refresh the provider.
+3. In T3 Code, open **Settings > Providers**, enable **GitHub Copilot**, and refresh the provider.
 
-## GitHub Enterprise Configuration
+## GitHub Enterprise
 
-When using GitHub Enterprise, specify your enterprise instance under the provider settings:
+Set these under the GitHub Copilot provider settings:
 
-- **Enterprise URI / Host**: Enter your full enterprise URI (e.g., `https://company.ghe.com` or `https://github.mycompany.com`) or bare hostname. Leave blank for standard GitHub.com.
-- **Enterprise Token / PAT**: (Optional) Enter a Personal Access Token with Copilot access. If left empty, Copilot will automatically:
-  1. Check for stored credentials configured under T3 Code's **Source Control > GitHub** settings for that host.
-  2. Fall back to your native CLI session (`copilot login` or `gh auth login`).
+- **Enterprise URI / Host**: your instance URL or hostname, such as `https://company.ghe.com` or
+  `github.mycompany.com`. Leave it blank for GitHub.com.
+- **Access token**: optional. Use a fine-grained personal access token with the **Copilot
+  Requests** permission. Classic `ghp_` tokens are not supported. The token is stored in plain text
+  on disk and takes priority over your `copilot login`. Leave it blank to use the CLI's own login.
 
-## Multi-Account & Enterprise Isolation
+## Use more than one account
 
-T3 Code supports multiple instances of GitHub Copilot. You can configure:
+Add a GitHub Copilot instance per account, for example one for GitHub.com and one for your
+enterprise host. Each instance has its own host and token.
 
-- One instance for your personal GitHub.com account.
-- A separate instance targeting your corporate GitHub Enterprise instance (e.g. `https://company.ghe.com`).
+## Models
 
-Each instance runs in process isolation and injects the appropriate host routing (`GH_HOST`, `COPILOT_GH_HOST`) and credentials (`COPILOT_GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`) without leaking across instances.
+**Copilot Default** uses the model your Copilot CLI is configured with. To choose another, add its
+ID under **Custom models** in the instance settings, then select it in the chat model picker. Run
+`/model` in the Copilot CLI to see the IDs your plan offers.
 
-## Models & Subagents
+## Subagents and tools
 
-- **Models**: Discovers models available on your Copilot plan (e.g., Claude 3.5 Sonnet, Claude 3.7 Sonnet, GPT-4o, o1, o3-mini) as advertised by the Copilot ACP server.
-- **Subagents**: Copilot CLI subagents spawned via the `task` tool are demuxed and streamed onto dedicated child sessions in the conversation.
-- **MCP Tools**: Integrates with T3 Code tools and custom Model Context Protocol servers configured in your thread.
+- Subagents that Copilot starts with its `task` tool appear as child sessions in the thread.
+- T3 Code's tools and the MCP servers configured for the thread are available to Copilot.

@@ -1,18 +1,14 @@
-/**
- * ACP subagent stream routing, raw session event translation, and failure mapping for GitHub Copilot.
- *
- * @module provider-copilot/server/copilotAcp
- */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as AcpSchema from "effect-acp/compat";
-import type { AcpToolCallState } from "@t3tools/provider-acp/server/runtimeModel";
-import type {
-  AcpAdapterV2ExtensionContext,
-  AcpAdapterV2SubagentUpdate,
-} from "@t3tools/provider-acp/server/adapter";
-import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
-import type { OrchestrationV2ProviderFailure } from "@t3tools/contracts";
+import type { AcpToolCallState } from "./runtimeModel.ts";
+import type { AcpAdapterV2ExtensionContext, AcpAdapterV2SubagentUpdate } from "./adapter.ts";
+
+// Copilot CLI streams subagent text as plain `agent_message_chunk`s on the
+// root session. Only its opt-in raw event feed says who wrote a chunk: each
+// chunk is preceded by an `assistant.*_delta` carrying the spawning `task`
+// tool call id. Both arrive inline on the same reader, in wire order, so the
+// delta just before a chunk is that chunk's author.
 
 const COPILOT_META_KEY = "github.com/copilot";
 const COPILOT_SESSION_EVENT = "github.com/copilot/sessionEvent";
@@ -43,7 +39,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-export const childSessionId = (taskToolCallId: string) => `copilot-task:${taskToolCallId}`;
+const childSessionId = (taskToolCallId: string) => `copilot-task:${taskToolCallId}`;
 
 interface CopilotSessionAttribution {
   /** The last raw delta, consumed by the chunk that follows it. */
@@ -52,36 +48,8 @@ interface CopilotSessionAttribution {
   readonly taskByAgentId: Map<string, string>;
 }
 
-export function extractCopilotSubagentUpdate(
-  tool: AcpToolCallState,
-): AcpAdapterV2SubagentUpdate | undefined {
-  const input = record(tool.data.rawInput);
-  if (typeof input?.agent_type !== "string" || typeof input.prompt !== "string") return undefined;
-  const output = record(tool.data.rawOutput)?.content;
-  const background = input.mode === "background";
-  const status =
-    tool.status === "failed"
-      ? "failed"
-      : tool.status === "completed" && !background
-        ? "completed"
-        : "running";
-  return {
-    nativeTaskId: tool.toolCallId,
-    childSessionId: childSessionId(tool.toolCallId),
-    prompt: input.prompt,
-    title: typeof input.description === "string" ? input.description : null,
-    model: typeof input.model === "string" ? input.model : null,
-    status,
-    result: typeof output === "string" ? output : null,
-  };
-}
-
-export function makeCopilotSubagentRouting(): {
-  readonly registerExtensions: (context: AcpAdapterV2ExtensionContext) => Effect.Effect<void>;
-  readonly normalizeSessionUpdate: (
-    notification: AcpSchema.SessionNotification,
-  ) => AcpSchema.SessionNotification;
-} {
+/** Per adapter instance; entries are keyed by root session and drop once idle. */
+export function makeCopilotSubagentRouting() {
   const sessions = new Map<string, CopilotSessionAttribution>();
   const session = (sessionId: string) => {
     let current = sessions.get(sessionId);
@@ -139,6 +107,7 @@ export function makeCopilotSubagentRouting(): {
       }
     });
 
+  /** Moves a subagent's chunks and tool calls onto its own child session. */
   const normalizeSessionUpdate = (
     notification: AcpSchema.SessionNotification,
   ): AcpSchema.SessionNotification => {
@@ -177,25 +146,27 @@ export function makeCopilotSubagentRouting(): {
   return { registerExtensions, normalizeSessionUpdate };
 }
 
-export function copilotPromptFailure(cause: unknown): OrchestrationV2ProviderFailure {
-  const message = cause instanceof Error ? cause.message : String(cause);
-  const lower = message.toLowerCase();
-
-  const isUsageLimit =
-    lower.includes("rate limit") ||
-    lower.includes("too many requests") ||
-    lower.includes("429") ||
-    lower.includes("quota exceeded") ||
-    lower.includes("insufficient quota") ||
-    lower.includes("no quota") ||
-    lower.includes("credit exhausted") ||
-    lower.includes("payment required") ||
-    lower.includes("402");
-
-  return makeProviderFailure({
-    cause,
-    class: isUsageLimit ? "usage_limit" : "provider_error",
-    retryable: isUsageLimit,
-    message: message || "GitHub Copilot prompt failed",
-  });
+/** Copilot's `task` tool launches a subagent; its id names the child session. */
+export function extractCopilotSubagentUpdate(
+  tool: AcpToolCallState,
+): AcpAdapterV2SubagentUpdate | undefined {
+  const input = record(tool.data.rawInput);
+  if (typeof input?.agent_type !== "string" || typeof input.prompt !== "string") return undefined;
+  const output = record(tool.data.rawOutput)?.content;
+  const background = input.mode === "background";
+  const status =
+    tool.status === "failed"
+      ? "failed"
+      : tool.status === "completed" && !background
+        ? "completed"
+        : "running";
+  return {
+    nativeTaskId: tool.toolCallId,
+    childSessionId: childSessionId(tool.toolCallId),
+    prompt: input.prompt,
+    title: typeof input.description === "string" ? input.description : null,
+    model: typeof input.model === "string" ? input.model : null,
+    status,
+    result: status !== "running" && typeof output === "string" ? output : null,
+  };
 }

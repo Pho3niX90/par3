@@ -61,6 +61,55 @@ export function resolveCopilotAcpBaseModelId(raw: string | undefined): string {
   return normalized || COPILOT_DEFAULT_MODEL_SLUG;
 }
 
+/**
+ * Applies the selected model to a freshly started session and returns the model it now runs on.
+ * The Copilot CLI's ACP documentation does not say how models are exposed, so this follows what
+ * the session itself advertises: a `model` config option, then session model state. When the
+ * session advertises neither, the request is still attempted through `session/set_model`, but a
+ * rejection keeps the session on its current model and is logged instead of failing the session.
+ */
+export function applyCopilotAcpModelSelection(input: {
+  readonly runtime: Pick<
+    AcpSessionRuntime.AcpSessionRuntime["Service"],
+    "setModel" | "setSessionModel"
+  >;
+  readonly sessionSetupResult: AcpSessionRuntime.AcpSessionRuntimeStartResult["sessionSetupResult"];
+  readonly requestedModelId: string;
+}): Effect.Effect<string | undefined, EffectAcpErrors.AcpError> {
+  const { runtime, sessionSetupResult, requestedModelId } = input;
+  const modelOption = sessionSetupResult.configOptions?.find(
+    (option) => option.category === "model",
+  );
+  const currentModelId =
+    sessionSetupResult.models?.currentModelId.trim() ||
+    (typeof modelOption?.currentValue === "string" ? modelOption.currentValue : undefined);
+
+  // The product slug is never sent over the wire; it keeps the CLI's own default model.
+  if (requestedModelId === COPILOT_DEFAULT_MODEL_SLUG || requestedModelId === currentModelId) {
+    return Effect.succeed(currentModelId);
+  }
+  if (modelOption !== undefined) {
+    return runtime.setModel(requestedModelId).pipe(Effect.as(requestedModelId));
+  }
+  const setSessionModel = runtime
+    .setSessionModel(requestedModelId)
+    .pipe(Effect.as<string | undefined>(requestedModelId));
+  if (sessionSetupResult.models != null) {
+    return setSessionModel;
+  }
+  return setSessionModel.pipe(
+    Effect.catch((cause) =>
+      Effect.logWarning(
+        "GitHub Copilot did not accept the selected model; keeping its current one.",
+        {
+          model: requestedModelId,
+          errorTag: cause._tag,
+        },
+      ).pipe(Effect.as(currentModelId)),
+    ),
+  );
+}
+
 export function copilotApprovalOptions(
   _request?: EffectAcpSchema.RequestPermissionRequest,
 ): ReadonlyArray<ProviderApprovalOption> {

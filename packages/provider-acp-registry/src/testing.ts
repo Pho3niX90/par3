@@ -16,7 +16,10 @@ export {
   normalizeDevinSessionUpdate,
   normalizeDevinToolCall,
 } from "./server/devinAcp.ts";
-export { extractCopilotSubagentUpdate, makeCopilotSubagentRouting } from "./server/copilotAcp.ts";
+export {
+  extractCopilotSubagentUpdate,
+  makeCopilotSubagentRouting,
+} from "@t3tools/provider-acp/server/copilotAcp";
 export {
   acpRegistryProbeFailure,
   acpRegistryProbeResult,

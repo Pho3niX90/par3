@@ -19,6 +19,10 @@
       "types": "./src/server/clientTerminals.ts",
       "import": "./src/server/clientTerminals.ts"
     },
+    "./server/copilotAcp": {
+      "types": "./src/server/copilotAcp.ts",
+      "import": "./src/server/copilotAcp.ts"
+    },
     "./server/coreRuntimeEvents": {
       "types": "./src/server/coreRuntimeEvents.ts",
       "import": "./src/server/coreRuntimeEvents.ts"

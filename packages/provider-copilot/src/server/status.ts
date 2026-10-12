@@ -1,5 +1,9 @@
 /**
- * GitHub Copilot status probe, version checking, and model discovery.
+ * GitHub Copilot status probe and version checking.
+ *
+ * The probe only runs `copilot --version`. Opening an ACP session can start MCP servers
+ * or hooks, and Copilot's ACP documentation does not promise model metadata at
+ * initialization, so models come from custom model settings rather than a live catalog.
  *
  * @module provider-copilot/server/status
  */
@@ -8,16 +12,12 @@ import type {
   ModelCapabilities,
   ServerProvider,
   ServerProviderModel,
-  ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import type { CopilotSettings } from "../settings.ts";
-import type * as EffectAcpSchema from "effect-acp/compat";
-import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
-import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -38,13 +38,7 @@ import {
   enrichProviderSnapshotWithVersionAdvisory,
   type ProviderMaintenanceCapabilities,
 } from "@t3tools/provider-core/server/maintenanceResolver";
-import {
-  COPILOT_DEFAULT_MODEL_SLUG,
-  COPILOT_SUPPORTED_RUNTIME_MODES,
-  makeCopilotAcpRuntime,
-  resolveCopilotAcpBaseModelId,
-} from "./acpSupport.ts";
-import { sessionModelStateFromInitialize } from "@t3tools/provider-acp/server/runtimeModel";
+import { COPILOT_DEFAULT_MODEL_SLUG, COPILOT_SUPPORTED_RUNTIME_MODES } from "./acpSupport.ts";
 import { normalizeEnterpriseHost, isEnterpriseHost } from "./enterpriseHost.ts";
 
 const COPILOT_PRESENTATION = {
@@ -59,8 +53,11 @@ const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
 });
 
 const VERSION_PROBE_TIMEOUT_MS = 4_000;
-const COPILOT_ACP_INITIALIZE_TIMEOUT_MS = 8_000;
 
+/**
+ * Only the CLI's own default model is built in. Valid model ids depend on the user's plan and
+ * change with the CLI, so other models are added as custom models instead of guessed here.
+ */
 const COPILOT_BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
     slug: COPILOT_DEFAULT_MODEL_SLUG,
@@ -69,37 +66,19 @@ const COPILOT_BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
     isDefault: true,
     capabilities: EMPTY_CAPABILITIES,
   },
-  {
-    slug: "claude-3.5-sonnet",
-    name: "Claude 3.5 Sonnet",
-    isCustom: false,
-    capabilities: EMPTY_CAPABILITIES,
-  },
-  {
-    slug: "claude-3.7-sonnet",
-    name: "Claude 3.7 Sonnet",
-    isCustom: false,
-    capabilities: EMPTY_CAPABILITIES,
-  },
-  {
-    slug: "gpt-4o",
-    name: "GPT-4o",
-    isCustom: false,
-    capabilities: EMPTY_CAPABILITIES,
-  },
-  {
-    slug: "o1",
-    name: "o1",
-    isCustom: false,
-    capabilities: EMPTY_CAPABILITIES,
-  },
-  {
-    slug: "o3-mini",
-    name: "o3-mini",
-    isCustom: false,
-    capabilities: EMPTY_CAPABILITIES,
-  },
 ];
+
+const COPILOT_SLASH_COMMANDS = [COMPACT_SLASH_COMMAND];
+
+function copilotModelsFromSettings(
+  customModels: ReadonlyArray<CustomModelSetting> | undefined,
+): ReadonlyArray<ServerProviderModel> {
+  return providerModelsFromSettings(
+    COPILOT_BUILT_IN_MODELS,
+    customModels ?? [],
+    EMPTY_CAPABILITIES,
+  );
+}
 
 export function buildInitialCopilotProviderSnapshot(
   copilotSettings: CopilotSettings,
@@ -140,40 +119,6 @@ export function buildInitialCopilotProviderSnapshot(
   });
 }
 
-function copilotModelsFromSettings(
-  customModels: ReadonlyArray<CustomModelSetting> | undefined,
-  builtInModels: ReadonlyArray<ServerProviderModel> = COPILOT_BUILT_IN_MODELS,
-): ReadonlyArray<ServerProviderModel> {
-  return providerModelsFromSettings(builtInModels, customModels ?? [], EMPTY_CAPABILITIES);
-}
-
-/** Models advertised by the ACP agent via initialize response. */
-function buildCopilotModelsFromSessionModelState(
-  modelState: EffectAcpSchema.SessionModelState | null | undefined,
-): ReadonlyArray<ServerProviderModel> {
-  if (!modelState || modelState.availableModels.length === 0) {
-    return [];
-  }
-  const currentModelId = modelState.currentModelId.trim();
-  const seen = new Set<string>();
-  return modelState.availableModels.flatMap((model): ServerProviderModel[] => {
-    const slug = resolveCopilotAcpBaseModelId(model.modelId);
-    if (!slug || seen.has(slug)) {
-      return [];
-    }
-    seen.add(slug);
-    return [
-      {
-        slug,
-        name: model.name.trim() || slug,
-        isCustom: false,
-        ...(model.modelId.trim() === currentModelId ? { isDefault: true } : {}),
-        capabilities: EMPTY_CAPABILITIES,
-      },
-    ];
-  });
-}
-
 const runCopilotCliCommand = (
   copilotSettings: CopilotSettings,
   args: ReadonlyArray<string>,
@@ -191,76 +136,19 @@ const runCopilotCliCommand = (
     );
   });
 
-const decodeAvailableCommands = Schema.decodeUnknownOption(Schema.Array(Schema.Unknown));
-const decodeAvailableCommand = Schema.decodeUnknownOption(
-  Schema.Struct({
-    name: Schema.String,
-    description: Schema.String,
-    input: Schema.optional(Schema.NullOr(Schema.Struct({ hint: Schema.String }))),
-  }),
-);
-
-function copilotSlashCommandsFromInitialize(
-  initialized: EffectAcpSchema.InitializeResponse,
-): ReadonlyArray<ServerProviderSlashCommand> {
-  const commands = decodeAvailableCommands(initialized._meta?.availableCommands);
-  const byName = new Map<string, ServerProviderSlashCommand>([
-    [COMPACT_SLASH_COMMAND.name, COMPACT_SLASH_COMMAND],
-  ]);
-  for (const entry of Option.getOrElse(commands, () => [])) {
-    const decoded = decodeAvailableCommand(entry);
-    if (Option.isNone(decoded)) continue;
-    const command = decoded.value;
-    const name = command.name.trim();
-    if (!name) continue;
-    const description = command.description.trim();
-    const hint = command.input?.hint.trim();
-    byName.set(name, {
-      name,
-      ...(description ? { description } : {}),
-      ...(hint ? { input: { hint } } : {}),
-    });
-  }
-  return [...byName.values()];
-}
-
-/** Reads model and command metadata from initialize._meta. */
-const discoverCopilotMetadataViaAcpInitialize = (
-  copilotSettings: CopilotSettings,
-  environment: NodeJS.ProcessEnv,
-) =>
-  Effect.gen(function* () {
-    const acp = yield* makeCopilotAcpRuntime({
-      copilotSettings,
-      environment,
-      cwd: process.cwd(),
-      clientInfo: { name: "t3-code-copilot-probe", version: "0.0.0" },
-    });
-    const initialized = yield* acp.initialize();
-    return {
-      models: buildCopilotModelsFromSessionModelState(sessionModelStateFromInitialize(initialized)),
-      slashCommands: copilotSlashCommandsFromInitialize(initialized),
-    };
-  }).pipe(Effect.scoped);
-
 export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus")(function* (
   copilotSettings: CopilotSettings,
   environment: NodeJS.ProcessEnv = process.env,
-  _cwd?: string,
-): Effect.fn.Return<
-  ServerProviderDraft,
-  never,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
-> {
+): Effect.fn.Return<ServerProviderDraft, never, ChildProcessSpawner.ChildProcessSpawner> {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
-  const fallbackModels = copilotModelsFromSettings(copilotSettings.customModels);
+  const models = copilotModelsFromSettings(copilotSettings.customModels);
 
   if (!copilotSettings.enabled) {
     return buildServerProvider({
       presentation: COPILOT_PRESENTATION,
       enabled: false,
       checkedAt,
-      models: fallbackModels,
+      models,
       probe: {
         installed: false,
         version: null,
@@ -272,7 +160,6 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
   }
 
   const host = normalizeEnterpriseHost(copilotSettings.enterpriseUrl);
-  const isEnterprise = isEnterpriseHost(host);
 
   const versionResult = yield* runCopilotCliCommand(
     copilotSettings,
@@ -289,7 +176,7 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
       presentation: COPILOT_PRESENTATION,
       enabled: copilotSettings.enabled,
       checkedAt,
-      models: fallbackModels,
+      models,
       probe: {
         installed: !isCommandMissingCause(error),
         version: null,
@@ -307,7 +194,7 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
       presentation: COPILOT_PRESENTATION,
       enabled: copilotSettings.enabled,
       checkedAt,
-      models: fallbackModels,
+      models,
       probe: {
         installed: true,
         version: null,
@@ -325,7 +212,7 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
       presentation: COPILOT_PRESENTATION,
       enabled: copilotSettings.enabled,
       checkedAt,
-      models: fallbackModels,
+      models,
       probe: {
         installed: true,
         version,
@@ -336,37 +223,26 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
     });
   }
 
-  const metadataResult = yield* discoverCopilotMetadataViaAcpInitialize(
-    copilotSettings,
-    environment,
-  ).pipe(Effect.timeoutOption(COPILOT_ACP_INITIALIZE_TIMEOUT_MS), Effect.result);
-
-  const metadata = Result.isSuccess(metadataResult)
-    ? Option.getOrUndefined(metadataResult.success)
-    : undefined;
-
-  const models =
-    metadata && metadata.models.length > 0
-      ? copilotModelsFromSettings(copilotSettings.customModels, metadata.models)
-      : fallbackModels;
-
-  const hasExplicitToken = Boolean(copilotSettings.enterpriseToken?.trim());
-  const authStatus = hasExplicitToken ? ("authenticated" as const) : ("unknown" as const);
-
-  const enterpriseNote = isEnterprise ? ` Targeting ${host}.` : "";
+  // Nothing here can tell whether a token or login is valid without opening a session, so
+  // auth stays "unknown" and the message says which credential the instance will use.
+  const hasToken = Boolean(copilotSettings.enterpriseToken?.trim());
+  const target = isEnterpriseHost(host) ? ` Targeting ${host}.` : "";
+  const credential = hasToken
+    ? " Using the access token from settings."
+    : " Run `copilot login` if prompts fail to authenticate.";
 
   return buildServerProvider({
     presentation: COPILOT_PRESENTATION,
     enabled: copilotSettings.enabled,
     checkedAt,
     models,
-    ...(metadata?.slashCommands ? { slashCommands: metadata.slashCommands } : {}),
+    slashCommands: COPILOT_SLASH_COMMANDS,
     probe: {
       installed: true,
       version,
       status: "ready",
-      auth: { status: authStatus },
-      message: `GitHub Copilot CLI ${version ?? "available"}.${enterpriseNote}`,
+      auth: { status: "unknown" },
+      message: `GitHub Copilot CLI ${version ?? "available"}.${target}${credential}`,
     },
   });
 });
