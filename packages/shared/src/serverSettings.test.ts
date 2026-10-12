@@ -38,6 +38,17 @@ describe("fallbackTextGenerationModelSelection", () => {
     expect(fallback).toBeNull();
   });
 
+  it("falls back to GitHub Copilot only when no earlier text generation provider is enabled", () => {
+    const copilot = ProviderInstanceId.make("copilot");
+    expect(
+      fallbackTextGenerationModelSelection({}, (instanceId) => instanceId === copilot)?.instanceId,
+    ).toBe(copilot);
+    expect(
+      fallbackTextGenerationModelSelection({}, () => true)?.instanceId,
+      "Codex stays the first choice",
+    ).toBe(ProviderInstanceId.make("codex"));
+  });
+
   it("considers a configured non-default instance only when asked to", () => {
     const configured = ProviderInstanceId.make("codex_work");
     const providerInstances = {

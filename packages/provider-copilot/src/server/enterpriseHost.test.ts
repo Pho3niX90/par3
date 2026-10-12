@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   copilotLaunchEnvironment,
+  copilotUsagePageUrl,
   isEnterpriseHost,
   normalizeEnterpriseHost,
 } from "./enterpriseHost.ts";
@@ -77,5 +78,27 @@ describe("copilotLaunchEnvironment", () => {
   it("treats a blank token as unset", () => {
     const env = copilotLaunchEnvironment({ enterpriseToken: "   " }, ambient);
     expect(env.COPILOT_GITHUB_TOKEN).toBeUndefined();
+  });
+});
+
+describe("copilotUsagePageUrl", () => {
+  it("points at the Copilot settings page on the configured host", () => {
+    expect(copilotUsagePageUrl("https://Company.ghe.com/")).toBe(
+      "https://company.ghe.com/settings/copilot/features",
+    );
+    expect(copilotUsagePageUrl("github.mycompany.com")).toBe(
+      "https://github.mycompany.com/settings/copilot/features",
+    );
+  });
+
+  it("uses github.com when no enterprise host is set", () => {
+    for (const unset of [undefined, null, "", "  ", "github.com"]) {
+      expect(copilotUsagePageUrl(unset)).toBe("https://github.com/settings/copilot/features");
+    }
+  });
+
+  it("gives no link for a host that is not a plain hostname", () => {
+    expect(copilotUsagePageUrl("evil.com@company.ghe.com")).toBeUndefined();
+    expect(copilotUsagePageUrl("company ghe.com")).toBeUndefined();
   });
 });

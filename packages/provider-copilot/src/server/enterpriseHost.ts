@@ -33,6 +33,21 @@ export function isEnterpriseHost(host: string): boolean {
   return !isGitHubDotCom(host);
 }
 
+/** A plain DNS hostname, so a configured host can never reshape the URL it is placed in. */
+const SAFE_HOSTNAME = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
+
+/**
+ * The Copilot settings page on the instance's GitHub host. It shows the credits used and the
+ * allowance for the signed-in account, including seats an enterprise or organization pays for,
+ * which have no personal billing page. `undefined` when the configured host is not a plain
+ * hostname, so no link is better than one that points somewhere unintended.
+ */
+export function copilotUsagePageUrl(enterpriseUrl: string | null | undefined): string | undefined {
+  const host = normalizeEnterpriseHost(enterpriseUrl);
+  if (!isEnterpriseHost(host)) return "https://github.com/settings/copilot/features";
+  return SAFE_HOSTNAME.test(host) ? `https://${host}/settings/copilot/features` : undefined;
+}
+
 /**
  * Environment one Copilot instance launches the CLI with, shared by the status probe and the
  * ACP session so the two cannot drift. Only an explicit token from settings is injected, as

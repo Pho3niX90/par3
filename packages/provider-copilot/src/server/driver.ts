@@ -3,7 +3,7 @@
  *
  * @module provider-copilot/server/driver
  */
-import { ProviderDriverKind, TextGenerationError, type ServerProvider } from "@t3tools/contracts";
+import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { CopilotSettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -19,7 +19,6 @@ import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderL
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import { makeCopilotAdapterV2ForInstance, type CopilotAdapterV2DriverEnv } from "./adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
-import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import {
   applyAdvertisedCopilotModels,
   buildInitialCopilotProviderSnapshot,
@@ -28,6 +27,7 @@ import {
 } from "./status.ts";
 import type { CopilotAdvertisedModel } from "./modelDiscovery.ts";
 import { probeCopilotModels } from "./modelProbe.ts";
+import { makeCopilotTextGeneration } from "./textGeneration.ts";
 import { makeCopilotAcpRuntime } from "./acpSupport.ts";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
@@ -68,23 +68,6 @@ export type CopilotDriverEnv =
   | ProviderLatestVersions.ProviderLatestVersions
   | Path.Path
   | ProviderEventLoggers.ProviderEventLoggers;
-
-const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
-  const unsupported = (operation: string) =>
-    Effect.fail(
-      new TextGenerationError({
-        operation,
-        detail: "GitHub Copilot instances do not provide application text generation.",
-      }),
-    );
-  return {
-    generateCommitMessage: () => unsupported("generateCommitMessage"),
-    generatePrContent: () => unsupported("generatePrContent"),
-    generateBranchName: () => unsupported("generateBranchName"),
-    generateThreadTitle: () => unsupported("generateThreadTitle"),
-    generateReviewGuide: () => unsupported("generateReviewGuide"),
-  };
-};
 
 export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = {
   driverKind: DRIVER_KIND,
@@ -135,6 +118,11 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         [],
       );
 
+      const textGeneration = yield* makeCopilotTextGeneration(effectiveConfig, launchEnv).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.provideService(Crypto.Crypto, crypto),
+      );
+
       const orchestrationAdapter = yield* makeCopilotAdapterV2ForInstance(
         {
           instanceId,
@@ -144,7 +132,19 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
           enabled,
           config: effectiveConfig,
         },
-        { onModelsAdvertised: (models) => SubscriptionRef.set(advertisedModels, models) },
+        {
+          onModelsAdvertised: (models) =>
+            SubscriptionRef.get(advertisedModels).pipe(
+              Effect.flatMap((known) =>
+                known.length === 0
+                  ? Effect.logInfo("GitHub Copilot advertised models to a session.", {
+                      count: models.length,
+                    })
+                  : Effect.void,
+              ),
+              Effect.andThen(SubscriptionRef.set(advertisedModels, models)),
+            ),
+        },
       ).pipe(
         Effect.mapError(
           (cause) =>
@@ -231,7 +231,11 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
                         }).pipe(
                           Effect.flatMap((models) =>
                             models.length > 0
-                              ? SubscriptionRef.set(advertisedModels, models)
+                              ? Effect.logInfo("GitHub Copilot model discovery found models.", {
+                                  count: models.length,
+                                }).pipe(
+                                  Effect.andThen(SubscriptionRef.set(advertisedModels, models)),
+                                )
                               : Effect.void,
                           ),
                         ),
@@ -264,7 +268,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         enabled,
         snapshot,
         orchestrationAdapter,
-        textGeneration: makeUnsupportedTextGeneration(),
+        textGeneration,
       };
     }),
 };

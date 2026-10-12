@@ -40,7 +40,11 @@ import {
   type ProviderMaintenanceCapabilities,
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import { COPILOT_DEFAULT_MODEL_SLUG, COPILOT_SUPPORTED_RUNTIME_MODES } from "./acpSupport.ts";
-import { normalizeEnterpriseHost, isEnterpriseHost } from "./enterpriseHost.ts";
+import {
+  copilotUsagePageUrl,
+  isEnterpriseHost,
+  normalizeEnterpriseHost,
+} from "./enterpriseHost.ts";
 import type { CopilotAdvertisedModel } from "./modelDiscovery.ts";
 
 const COPILOT_PRESENTATION = {
@@ -256,6 +260,10 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
     ? " Using the access token from settings."
     : " Run `copilot login` if prompts fail to authenticate.";
 
+  // GitHub shows credits used and the allowance on the account's Copilot settings page, and
+  // nothing the CLI exposes reports them, so usage is a link rather than a bar.
+  const usageUrl = copilotUsagePageUrl(copilotSettings.enterpriseUrl);
+
   return buildServerProvider({
     presentation: COPILOT_PRESENTATION,
     enabled: copilotSettings.enabled,
@@ -268,6 +276,20 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
       status: "ready",
       auth: { status: "unknown" },
       message: `GitHub Copilot CLI ${version ?? "available"}.${target}${credential}`,
+      ...(usageUrl === undefined
+        ? {}
+        : {
+            usageLimits: {
+              checkedAt,
+              windows: [],
+              unavailable: {
+                reason: "unsupported" as const,
+                message:
+                  "GitHub tracks Copilot usage on your account. Open your Copilot settings to see your credits used and your allowance.",
+              },
+              externalUsage: { label: "GitHub Copilot usage", url: usageUrl },
+            },
+          }),
     },
   });
 });

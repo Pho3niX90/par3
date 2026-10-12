@@ -122,6 +122,25 @@ describe("checkCopilotProviderStatus", () => {
     }),
   );
 
+  it.effect("links the account's Copilot usage page instead of reporting windows", () =>
+    Effect.gen(function* () {
+      const dotCom = yield* probe(enabledSettings(), processSpawner({ stdout: "1.0.95", code: 0 }));
+      expect(dotCom.usageLimits?.windows).toEqual([]);
+      expect(dotCom.usageLimits?.externalUsage).toEqual({
+        label: "GitHub Copilot usage",
+        url: "https://github.com/settings/copilot/features",
+      });
+
+      const enterprise = yield* probe(
+        enabledSettings({ enterpriseUrl: "https://Company.ghe.com/" }),
+        processSpawner({ stdout: "1.0.95", code: 0 }),
+      );
+      expect(enterprise.usageLimits?.externalUsage?.url).toBe(
+        "https://company.ghe.com/settings/copilot/features",
+      );
+    }),
+  );
+
   it.effect("reports a missing CLI as not installed", () =>
     Effect.gen(function* () {
       const result = yield* probe(enabledSettings(), missingBinarySpawner);

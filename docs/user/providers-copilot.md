@@ -60,3 +60,20 @@ the Copilot CLI to see the IDs your plan offers.
 
 - Subagents that Copilot starts with its `task` tool appear as child sessions in the thread.
 - T3 Code's tools and the MCP servers configured for the thread are available to Copilot.
+
+## Commit messages, branch names, and titles
+
+GitHub Copilot can write commit messages, branch names, pull request text, and thread titles. T3 Code
+uses it for these only when no earlier provider is available (Codex, Claude, Cursor, Grok, Muse, Pi,
+OpenCode, or Antigravity), or when you choose a GitHub Copilot model for text generation in
+**Settings**. Each request runs in a fresh Copilot session that cannot use tools.
+
+Review guides that need the model to investigate your checkout are not supported on GitHub Copilot.
+Choose another model for those.
+
+## Usage
+
+GitHub Copilot does not report how much of your allowance you have used, so T3 Code cannot draw
+usage bars for it. Open **GitHub Copilot usage** from the usage panel to go to your Copilot settings
+page on GitHub (`/settings/copilot/features` on your GitHub host), which shows the credits you have
+used and your allowance. When a request hits a limit, the thread shows Limited.

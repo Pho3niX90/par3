@@ -8,6 +8,7 @@ import {
   ClientSettingsPatch,
   ClaudeSettings,
   DEFAULT_SERVER_SETTINGS,
+  isUnconfiguredDefaultInstanceEnabled,
   requiredScopesForProjectMutation,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
@@ -818,9 +819,18 @@ describe("provider enabled defaults", () => {
       resolveProviderInstanceEnabled({ driver: ProviderDriverKind.make(driver), config: {} });
     expect(enabledByDefault("codex")).toBe(true);
     expect(enabledByDefault("claudeAgent")).toBe(true);
+    // This fork turns GitHub Copilot on so it can lead once the CLI is found.
+    expect(enabledByDefault("copilot")).toBe(true);
     for (const driver of ["cursor", "grok", "muse", "pi", "opencode", "antigravity"]) {
       expect(enabledByDefault(driver)).toBe(false);
     }
+  });
+
+  it("runs the unconfigured default Copilot instance like Codex and Claude", () => {
+    for (const instanceId of ["codex", "claudeAgent", "copilot"]) {
+      expect(isUnconfiguredDefaultInstanceEnabled(ProviderInstanceId.make(instanceId))).toBe(true);
+    }
+    expect(isUnconfiguredDefaultInstanceEnabled(ProviderInstanceId.make("grok"))).toBe(false);
   });
 
   it("resolves instance enabled state with explicit false winning", () => {
