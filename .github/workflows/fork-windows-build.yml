@@ -1,0 +1,154 @@
+name: Fork Windows build
+
+# Builds an unsigned Windows x64 installer from this fork's branch and publishes it as a
+# GitHub release on the fork. The installer is built with the fork as its update feed
+# (T3CODE_DESKTOP_UPDATE_REPOSITORY), so an installed copy finds the next build from the
+# fork's latest release instead of upstream's. Skipped on the upstream repository, which has
+# its own release pipeline (release.yml).
+#
+# Update feeds must be public URLs, so this uses a release rather than a PR artifact. Every
+# push gets a version one patch higher than the last (base version + run number), which is
+# what the updater compares.
+
+on:
+  push:
+    branches: [feature/copilot-provider]
+  workflow_dispatch:
+
+concurrency:
+  group: fork-windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows x64 installer
+    if: github.repository_owner != 'pingdotgg'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+    steps:
+      # Same checkout as release-desktop.yml: checkout's credential cleanup fails on the
+      # orphaned gitlinks in the vendored .repos tree, which the build never needs.
+      - name: Checkout
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+
+      # A plain X.Y.Z version keeps the build on the stable update channel with a real feed.
+      # `-pr.*` and `-preview.*` versions are built without a feed on purpose.
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(node -p "require('./apps/desktop/package.json').version")"
+          IFS=. read -r major minor patch <<< "${base%%-*}"
+          version="${major}.${minor}.$((patch + GITHUB_RUN_NUMBER))"
+          echo "Building ${version} (base ${base}, run ${GITHUB_RUN_NUMBER})"
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Align package versions
+        run: node scripts/update-release-package-versions.ts "${{ steps.version.outputs.value }}"
+
+      # The resource monitor and node-pty helpers need the Spectre-mitigated MSVC libraries,
+      # which the hosted image does not always include.
+      - name: Install Spectre-mitigated MSVC libs
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -products * -latest -property installationPath
+          $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setupExe `
+            -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", `
+            "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre", "--quiet", "--norestart" `
+            -Wait -PassThru -NoNewWindow
+          if ($null -eq $proc -or $proc.ExitCode -ne 0) {
+            $code = if ($null -ne $proc) { $proc.ExitCode } else { 1 }
+            Write-Error "Visual Studio Installer failed with exit code $code"
+            exit $code
+          }
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      # Builds the server, web client and Electron main, then packages the NSIS installer.
+      # No Linux CLI archive is passed, so the installer ships without the WSL backend.
+      - name: Build installer
+        shell: bash
+        run: |
+          vp run dist:desktop:artifact \
+            --platform win \
+            --target nsis \
+            --arch x64 \
+            --build-version "${{ steps.version.outputs.value }}" \
+            --verbose
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-publish
+          shopt -s nullglob
+          for pattern in "release/*.exe" "release/*.blockmap" "release/latest.yml"; do
+            for file in $pattern; do
+              cp "$file" release-publish/
+            done
+          done
+          ls -la release-publish
+          if ! ls release-publish/*.exe >/dev/null 2>&1; then
+            echo "::error::No installer was produced."
+            exit 1
+          fi
+          if [[ ! -f release-publish/latest.yml ]]; then
+            echo "::error::latest.yml is missing, so installed builds would find no update feed."
+            exit 1
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: t3code-windows-x64-${{ steps.version.outputs.value }}
+          path: release-publish/*
+          if-no-files-found: error
+
+      # The updater reads latest.yml from the repository's latest release, so this must be a
+      # normal (non-prerelease, non-draft) release.
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" release-publish/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "T3 Code ${VERSION} (fork build)" \
+            --notes "Unsigned Windows x64 build of ${GITHUB_REF_NAME} at ${GITHUB_SHA}." \
+            --latest
