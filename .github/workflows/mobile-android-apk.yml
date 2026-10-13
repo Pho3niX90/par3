@@ -20,6 +20,8 @@ concurrency:
 jobs:
   mirror:
     name: Mirror Play APK
+    # Upstream only: mirrors upstream's Play Store build.
+    if: github.repository_owner == 'pingdotgg'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

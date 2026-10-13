@@ -15,8 +15,9 @@ name: Fork upstream sync
 #
 # Upstream runs on Blacksmith runners, which this fork has no access to. Every run rewrites
 # Blacksmith labels on fork/main to their GitHub-hosted equivalents and commits the change, so
-# upstream workflow edits (and manual conflict merges) never bring them back. main keeps
-# upstream's files, so disable the upstream-only workflows in the repository's Actions settings.
+# upstream workflow edits (and manual conflict merges) never bring them back. Workflows that
+# publish to upstream's infrastructure skip unless the owner is pingdotgg. main keeps upstream's
+# unmodified files, so pushes to it still start upstream's workflows on Blacksmith labels.
 #
 # FORK_SYNC_TOKEN must be a fine-grained token (or GitHub App token) for this repository with
 # Contents, Workflows and Pull requests write access. GITHUB_TOKEN cannot push upstream changes
