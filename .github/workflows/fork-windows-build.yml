@@ -135,6 +135,47 @@ jobs:
           path: release-publish/*
           if-no-files-found: error
 
+      # "What's new" is the commits since the previous fork build, newest first. The checkout is
+      # shallow, so this reads the compare API instead of git history. Each release is created
+      # with the build's commit as its target, which is what the next build compares from. When
+      # no previous build or comparison is available the notes are just the one-line summary.
+      - name: Write release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          previous_sha=""
+          commits=""
+
+          previous_tag="$(gh release list --repo "$GITHUB_REPOSITORY" \
+            --exclude-drafts --exclude-pre-releases --limit 30 --json tagName,createdAt \
+            --jq "map(select(.tagName != \"${tag}\")) | sort_by(.createdAt) | reverse | .[0].tagName // empty" \
+            || true)"
+          if [[ -n "$previous_tag" ]]; then
+            previous_sha="$(gh release view "$previous_tag" --repo "$GITHUB_REPOSITORY" \
+              --json targetCommitish --jq .targetCommitish || true)"
+          fi
+          if [[ "$previous_sha" =~ ^[0-9a-f]{40}$ && "$previous_sha" != "$GITHUB_SHA" ]]; then
+            commits="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${previous_sha}...${GITHUB_SHA}" \
+              --jq '.commits | map(select((.parents | length) == 1)) | reverse | .[]
+                    | "- \(.commit.message | split("\n")[0]) (`\(.sha[0:7])`)"' || true)"
+          fi
+
+          {
+            if [[ -n "$commits" ]]; then
+              printf "## What's new\n\n%s\n\n" "$commits"
+            fi
+            echo "Unsigned Windows x64 build of ${GITHUB_REF_NAME} at ${GITHUB_SHA}."
+            if [[ -n "$commits" ]]; then
+              printf '\n**Full changelog**: %s/%s/compare/%s...%s\n' \
+                "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "${previous_sha:0:12}" "${GITHUB_SHA:0:12}"
+            fi
+          } > release-notes.md
+          cat release-notes.md
+
       # The updater reads latest.yml from the repository's latest release, so this must be a
       # normal (non-prerelease, non-draft) release.
       - name: Publish release
@@ -150,5 +191,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "T3 Code ${VERSION} (fork build)" \
-            --notes "Unsigned Windows x64 build of ${GITHUB_REF_NAME} at ${GITHUB_SHA}." \
+            --notes-file release-notes.md \
             --latest
