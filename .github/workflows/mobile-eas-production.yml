@@ -92,6 +92,8 @@ concurrency:
 jobs:
   production:
     name: EAS ${{ inputs.profile || 'production' }} ${{ github.event_name == 'push' && 'auto' || inputs.mode }}
+    # Upstream only: builds and submits upstream's store apps.
+    if: github.repository_owner == 'pingdotgg'
     runs-on: ubuntu-24.04
     permissions:
       contents: read

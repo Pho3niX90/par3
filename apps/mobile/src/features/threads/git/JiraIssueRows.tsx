@@ -1,18 +1,26 @@
-import type { EnvironmentId, JiraIssueKey, ProjectId, ServerSettings } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import type {
+  EnvironmentId,
+  JiraIssueKey,
+  ProjectId,
+  ScopedThreadRef,
+  ServerSettings,
+} from "@t3tools/contracts";
 import { findJiraIssueKeys, jiraIssueUrl, normalizeJiraBaseUrl } from "@t3tools/shared/jira";
 import { useMemo } from "react";
 import { Alert, Platform, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
 import { tryOpenExternalUrl } from "../../../lib/openExternalUrl";
-import { jiraEnvironment } from "../../../state/jira";
+import { jiraEnvironment, threadJiraMentions } from "../../../state/jira";
 import { useEnvironmentQuery } from "../../../state/query";
 import { SheetListRow } from "./gitSheetComponents";
 
-/** Jira issues named in the thread's branch, mirroring the web thread details panel. */
+/** Jira issues named in the thread's branch or chat, mirroring the web thread details panel. */
 export function JiraIssueRows(props: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId | null;
+  readonly threadRef: ScopedThreadRef;
   readonly settings: ServerSettings | null;
   readonly branch: string | null;
   readonly pullRequestTitle: string | null;
@@ -23,16 +31,24 @@ export function JiraIssueRows(props: {
       ? undefined
       : props.settings?.projectSettingsOverrides[props.projectId]?.jiraProjectKeys) ??
     props.settings?.jiraProjectKeys;
+  const mentionedKeys = useAtomValue(
+    threadJiraMentions.mentionsAtom(baseUrl ? props.threadRef : null, projectKeys ?? []),
+  );
   const keys = useMemo(
     () =>
       baseUrl
-        ? findJiraIssueKeys({
-            branch: props.branch,
-            texts: [props.pullRequestTitle],
-            projectKeys: projectKeys ?? [],
-          })
+        ? [
+            ...new Set([
+              ...findJiraIssueKeys({
+                branch: props.branch,
+                texts: [props.pullRequestTitle],
+                projectKeys: projectKeys ?? [],
+              }),
+              ...mentionedKeys,
+            ]),
+          ]
         : [],
-    [baseUrl, projectKeys, props.branch, props.pullRequestTitle],
+    [baseUrl, mentionedKeys, projectKeys, props.branch, props.pullRequestTitle],
   );
   if (!baseUrl || keys.length === 0) return null;
 

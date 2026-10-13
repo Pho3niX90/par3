@@ -33,6 +33,7 @@ import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import { isProxyRelevantFailure, resolveEnvProxy } from "./envProxy.ts";
 import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
@@ -464,6 +465,56 @@ export const make = Effect.gen(function* () {
 
   const shouldEnableAutoUpdates = resolveDisabledReason.pipe(Effect.map(Option.isNone));
 
+  // Electron's network stack follows the OS proxy settings but ignores the
+  // proxy environment variables that corporate setups and dev shells often
+  // rely on. When an updater request fails on the network and the environment
+  // names a proxy, retry once with the other proxy mode and keep whichever works.
+  const envProxy = resolveEnvProxy(config.proxyEnv);
+  const proxyModeRef = yield* Ref.make<"system" | "env">("system");
+
+  const withEnvProxyFallback = <E extends { readonly cause: unknown }>(
+    attempt: Effect.Effect<void, E>,
+  ): Effect.Effect<void, E> =>
+    attempt.pipe(
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          if (Option.isNone(envProxy) || !isProxyRelevantFailure(error.cause)) {
+            return yield* Effect.fail(error);
+          }
+          const proxy = envProxy.value;
+          const nextMode = (yield* Ref.get(proxyModeRef)) === "env" ? "system" : "env";
+          yield* logUpdaterWarning("updater request failed on the network; retrying", {
+            proxyMode: nextMode,
+            proxySource: proxy.source,
+            proxyServer: proxy.server,
+            cause: describeUpdateErrorCause(error.cause),
+          });
+          yield* electronUpdater.setProxy(
+            nextMode === "env"
+              ? {
+                  mode: "fixed_servers",
+                  proxyRules: proxy.server,
+                  proxyBypassRules: proxy.proxyBypassRules,
+                }
+              : { mode: "system" },
+          );
+          yield* Ref.set(proxyModeRef, nextMode);
+          return yield* attempt;
+        }),
+      ),
+    );
+
+  /** Adds what was tried to a network failure, so the user knows where to look. */
+  const describeUpdaterFailure = (error: { readonly message: string; readonly cause: unknown }) => {
+    if (!isProxyRelevantFailure(error.cause)) return error.message;
+    return Option.match(envProxy, {
+      onNone: () =>
+        `${error.message} Check your network connection. If you use a proxy, set HTTPS_PROXY before starting T3 Code.`,
+      onSome: (proxy) =>
+        `${error.message} Tried both the system proxy settings and ${proxy.source} (${proxy.server}).`,
+    });
+  };
+
   const checkForUpdates = Effect.fn("desktop.updates.checkForUpdates")(function* (
     reason: string,
     actionReservation: "acquire" | "held" = "acquire",
@@ -488,7 +539,7 @@ export const make = Effect.gen(function* () {
       yield* setState(reduceDesktopUpdateStateOnCheckStart(state, checkedAt));
       yield* logUpdaterInfo("checking for updates", { reason });
 
-      return yield* electronUpdater.checkForUpdates.pipe(
+      return yield* withEnvProxyFallback(electronUpdater.checkForUpdates).pipe(
         Effect.as(true),
         Effect.catchTags({
           ElectronUpdaterCheckForUpdatesError: Effect.fn(
@@ -496,7 +547,11 @@ export const make = Effect.gen(function* () {
           )(function* (error) {
             const failedAt = yield* currentIsoTimestamp;
             yield* updateState((current) =>
-              reduceDesktopUpdateStateOnCheckFailure(current, error.message, failedAt),
+              reduceDesktopUpdateStateOnCheckFailure(
+                current,
+                describeUpdaterFailure(error),
+                failedAt,
+              ),
             );
             yield* logUpdaterError(error.message, {
               errorTag: error._tag,
@@ -533,14 +588,14 @@ export const make = Effect.gen(function* () {
         isArm64HostRunningIntelBuild(environment.runtimeInfo),
       );
       yield* logUpdaterInfo("downloading update");
-      yield* electronUpdater.downloadUpdate;
+      yield* withEnvProxyFallback(electronUpdater.downloadUpdate);
       return { accepted: true, completed: true };
     }).pipe(
       Effect.catchTags({
         ElectronUpdaterDownloadUpdateError: Effect.fn("desktop.updates.handleDownloadFailure")(
           function* (error) {
             yield* updateState((current) =>
-              reduceDesktopUpdateStateOnDownloadFailure(current, error.message),
+              reduceDesktopUpdateStateOnDownloadFailure(current, describeUpdaterFailure(error)),
             );
             yield* logUpdaterError(error.message, {
               errorTag: error._tag,
@@ -1035,6 +1090,21 @@ export const make = Effect.gen(function* () {
       yield* electronUpdater.on("update-downloaded", (info: unknown) => {
         runEffect(handleUpdateDownloaded(info));
       });
+      // Chromium ignores credentials in a proxy URL, so answer the proxy's
+      // auth challenge with the ones from the environment variable.
+      if (Option.isSome(envProxy) && Option.isSome(envProxy.value.credentials)) {
+        const proxyHost = new URL(envProxy.value.server).hostname;
+        const { username, password } = envProxy.value.credentials.value;
+        yield* electronUpdater.on(
+          "login",
+          (
+            authInfo: { readonly isProxy?: boolean; readonly host?: string },
+            callback: (username?: string, password?: string) => void,
+          ) => {
+            if (authInfo.isProxy && authInfo.host === proxyHost) callback(username, password);
+          },
+        );
+      }
 
       yield* startUpdatePollers;
     }).pipe(Effect.withSpan("desktop.updates.configure")),

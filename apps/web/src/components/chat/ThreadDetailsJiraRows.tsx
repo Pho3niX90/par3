@@ -1,6 +1,6 @@
 /**
- * The thread details panel's Jira rows: one per issue key found in the branch name (and, once the
- * project keys are configured, the pull request title). Each row opens the issue on the Jira site
+ * The thread details panel's Jira rows: one per issue key found in the branch name and, once the
+ * project keys are configured, the pull request title and the latest issues the chat mentions. Each row opens the issue on the Jira site
  * and, when the environment can read the issue, shows its summary and status.
  */
 import type {
@@ -11,12 +11,13 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { findJiraIssueKeys, jiraIssueUrl, normalizeJiraBaseUrl } from "@t3tools/shared/jira";
+import { useAtomValue } from "@effect/atom-react";
 import { useMemo, type MouseEvent as ReactMouseEvent } from "react";
 
 import { useOpenLink } from "~/browser/useOpenLink";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
-import { jiraEnvironment } from "~/state/jira";
+import { jiraEnvironment, threadJiraMentions } from "~/state/jira";
 import { useEnvironmentQuery } from "~/state/query";
 
 import { JiraIcon } from "../Icons";
@@ -63,9 +64,20 @@ export function ThreadDetailsJiraRows({
       settings.jiraProjectKeys ??
       EMPTY_KEYS,
   );
+  const mentionedKeys = useAtomValue(
+    threadJiraMentions.mentionsAtom(baseUrl ? (threadRef ?? null) : null, projectKeys),
+  );
   const keys = useMemo(
-    () => (baseUrl ? findJiraIssueKeys({ branch, texts: [pullRequestTitle], projectKeys }) : []),
-    [baseUrl, branch, projectKeys, pullRequestTitle],
+    () =>
+      baseUrl
+        ? [
+            ...new Set([
+              ...findJiraIssueKeys({ branch, texts: [pullRequestTitle], projectKeys }),
+              ...mentionedKeys,
+            ]),
+          ]
+        : [],
+    [baseUrl, branch, mentionedKeys, projectKeys, pullRequestTitle],
   );
   const openLink = useOpenLink(threadRef);
   if (!baseUrl || keys.length === 0) return null;

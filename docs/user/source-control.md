@@ -308,7 +308,8 @@ the server.
 
 By default only uppercase keys in branch names count, so `ABC-123` works but `abc-123` does not.
 Add **Jira project keys** to match those projects in any case, and in pull request titles too.
-Projects can set their own keys.
+With project keys set, issue keys in chat messages also link to their issues, and the latest few
+issues the chat mentions appear under the branch too. Projects can set their own keys.
 
 ## GitHub stacks
 

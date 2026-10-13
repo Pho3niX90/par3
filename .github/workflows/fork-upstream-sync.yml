@@ -13,6 +13,12 @@ name: Fork upstream sync
 # files; resolve it by merging main into fork/main locally and pushing. Always merge, never
 # rebase: fork releases compare from the previous release's commit.
 #
+# Upstream runs on Blacksmith runners, which this fork has no access to. Every run rewrites
+# Blacksmith labels on fork/main to their GitHub-hosted equivalents and commits the change, so
+# upstream workflow edits (and manual conflict merges) never bring them back. Workflows that
+# publish to upstream's infrastructure skip unless the owner is pingdotgg. main keeps upstream's
+# unmodified files, so pushes to it still start upstream's workflows on Blacksmith labels.
+#
 # FORK_SYNC_TOKEN must be a fine-grained token (or GitHub App token) for this repository with
 # Contents, Workflows and Pull requests write access. GITHUB_TOKEN cannot push upstream changes
 # to .github/workflows, and pushes made with it do not start other workflows.
@@ -92,7 +98,6 @@ jobs:
           echo "${FORK_BRANCH} is ${behind} upstream commit(s) behind; merging."
 
           if git merge --no-edit --no-ff -m "Merge upstream main into ${FORK_BRANCH}" upstream/main; then
-            git push origin "HEAD:refs/heads/${FORK_BRANCH}"
             {
               echo "### Merged ${behind} upstream commit(s) into \`${FORK_BRANCH}\`"
               echo
@@ -121,3 +126,25 @@ jobs:
               --title "Merge upstream main into ${FORK_BRANCH} (conflicts)" --body "$body"
           fi
           echo "::warning::Upstream main conflicts with ${FORK_BRANCH}; see the open main -> ${FORK_BRANCH} pull request."
+
+      # Pushes a clean merge, and also catches labels that a manual conflict merge brought in.
+      # After a conflict the merge was aborted, so only fork/main's own labels are rewritten.
+      - name: Use GitHub-hosted runners
+        shell: bash
+        working-directory: fork
+        run: |
+          set -euo pipefail
+          # blacksmith-8vcpu-ubuntu-2404(-arm) -> ubuntu-24.04(-arm); macOS and Windows labels
+          # only lose the prefix.
+          files="$(git grep -lE 'blacksmith-[0-9]+vcpu-' -- .github || true)"
+          if [[ -n "$files" ]]; then
+            printf '%s\n' "$files" | xargs sed -i -E \
+              -e 's/blacksmith-[0-9]+vcpu-ubuntu-2404/ubuntu-24.04/g' \
+              -e 's/blacksmith-[0-9]+vcpu-//g'
+            git commit --quiet -am "ci(fork): use GitHub-hosted runners"
+            echo "Replaced Blacksmith runner labels in:" >> "$GITHUB_STEP_SUMMARY"
+            printf -- '- `%s`\n' $files >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/${FORK_BRANCH}")" ]]; then
+            git push origin "HEAD:refs/heads/${FORK_BRANCH}"
+          fi

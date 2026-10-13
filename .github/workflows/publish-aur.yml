@@ -37,6 +37,8 @@ concurrency:
 jobs:
   publish:
     name: Validate and publish
+    # Upstream only: publishes upstream's AUR package.
+    if: github.repository_owner == 'pingdotgg'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:

@@ -27,6 +27,18 @@ export function normalizeJiraBaseUrl(baseUrl: string): string | null {
 }
 
 /**
+ * A global, case-insensitive pattern for issue keys of the given projects, or null without any.
+ * Group 1 is the project key and group 2 the issue number, as typed; uppercase the project key
+ * for the canonical issue key.
+ */
+export function jiraIssueKeyPattern(projectKeys: ReadonlyArray<string>): RegExp | null {
+  // Valid project keys are letters, digits, and underscores only, so they need no escaping.
+  const keys = normalizeJiraProjectKeys(projectKeys);
+  if (keys.length === 0) return null;
+  return new RegExp(`(?<![A-Za-z0-9])(${keys.join("|")})-([1-9]\\d*)(?![A-Za-z0-9])`, "gi");
+}
+
+/**
  * Jira issue keys mentioned in a branch name and, when the project keys are known, in other text
  * such as a pull request title, in order of first appearance and without repeats.
  *
@@ -39,14 +51,9 @@ export function findJiraIssueKeys(input: {
   readonly texts?: ReadonlyArray<string | null | undefined>;
   readonly projectKeys: ReadonlyArray<string>;
 }): JiraIssueKey[] {
-  // Valid project keys are letters, digits, and underscores only, so they need no escaping.
-  const projectKeys = normalizeJiraProjectKeys(input.projectKeys);
-  const pattern =
-    projectKeys.length === 0
-      ? ANY_KEY
-      : new RegExp(`(?<![A-Za-z0-9])(${projectKeys.join("|")})-([1-9]\\d*)(?![A-Za-z0-9])`, "gi");
-  const sources =
-    projectKeys.length === 0 ? [input.branch] : [input.branch, ...(input.texts ?? [])];
+  const projectPattern = jiraIssueKeyPattern(input.projectKeys);
+  const pattern = projectPattern ?? ANY_KEY;
+  const sources = projectPattern ? [input.branch, ...(input.texts ?? [])] : [input.branch];
   const keys: JiraIssueKey[] = [];
   for (const source of sources) {
     if (!source) continue;

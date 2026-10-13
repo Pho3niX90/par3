@@ -50,6 +50,9 @@ jobs:
   # have already run. Scheduled runs also decide here whether a nightly is due.
   resolve_commit:
     name: Resolve release commit
+    # Upstream only: publishes upstream's npm packages, releases, web and relay. Every
+    # other job needs this one, so the whole release skips in forks.
+    if: github.repository_owner == 'pingdotgg'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
