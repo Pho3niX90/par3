@@ -44,6 +44,7 @@ import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-wo
 import { vcsEnvironment } from "../../../state/vcs";
 import { resolveGitOverviewReviewNavigationAction } from "./git-overview-navigation";
 import { MetaCard, SheetListRow, menuItemIconName, statusSummary } from "./gitSheetComponents";
+import { JiraIssueRows } from "./JiraIssueRows";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -398,6 +399,16 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
             </View>
           ))}
         </View>
+      ) : null}
+
+      {selectedThread !== null ? (
+        <JiraIssueRows
+          environmentId={selectedThread.environmentId}
+          projectId={selectedThread.projectId}
+          settings={selectedEnvironmentRuntime?.serverConfig?.settings ?? null}
+          branch={gitStatus.data?.refName ?? selectedThread.branch ?? null}
+          pullRequestTitle={gitStatus.data?.pr?.title ?? null}
+        />
       ) : null}
 
       {currentWorktreePath ? <MetaCard label="Worktree" value={currentWorktreePath} /> : null}

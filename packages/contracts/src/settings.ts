@@ -841,6 +841,23 @@ export const GitHubHost = TrimmedNonEmptyString.pipe(
 export const SourceControlHostSettings = Schema.Record(Schema.String, Schema.Unknown);
 export type SourceControlHostSettings = typeof SourceControlHostSettings.Type;
 
+/**
+ * The Jira site the thread details panel links issue keys to. An empty `baseUrl` turns the
+ * integration off. Jira Cloud signs in with `email` plus an API token; Server and Data Center use
+ * a personal access token with `email` left empty. The token lives in the server's secret store.
+ */
+export const JiraSettings = Schema.Struct({
+  baseUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  email: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  apiToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("")), secretSetting),
+});
+export type JiraSettings = typeof JiraSettings.Type;
+
+/** Jira project keys such as `ABC`, uppercased on decode. */
+export const JiraProjectKeys = Schema.Array(
+  TrimmedNonEmptyString.pipe(Schema.decodeTo(Schema.String, SchemaTransformation.toUpperCase())),
+);
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -986,6 +1003,7 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "sidebarAutoSettleAfterDays",
   "continueThreadsAfterServerUpdate",
   "responseStreamingMode",
+  "jiraProjectKeys",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -1033,6 +1051,7 @@ export const ProjectSettingsOverrides = Schema.Struct({
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  jiraProjectKeys: Schema.optionalKey(JiraProjectKeys),
   providerInstances: Schema.optionalKey(
     Schema.Record(ProviderInstanceId, ProjectProviderInstanceOverride),
   ),
@@ -1318,6 +1337,12 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  jira: JiraSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  /**
+   * Which issue keys count as Jira issues. Empty matches any uppercase key, but only in branch
+   * names, where `UTF-8` and the like rarely appear.
+   */
+  jiraProjectKeys: JiraProjectKeys.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   /** Keyed by source control host kind, such as `gitcafe`; see `SourceControlHostSettings`. */
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1618,6 +1643,15 @@ export const ServerSettingsPatch = Schema.Struct({
       otlpLogsUrl: Schema.optionalKey(TrimmedString),
     }),
   ),
+  /** Send the redaction marker as `apiToken` to keep the saved token; empty removes it. */
+  jira: Schema.optionalKey(
+    Schema.Struct({
+      baseUrl: Schema.optionalKey(TrimmedString),
+      email: Schema.optionalKey(TrimmedString),
+      apiToken: Schema.optionalKey(TrimmedString),
+    }),
+  ),
+  jiraProjectKeys: Schema.optionalKey(JiraProjectKeys),
   /**
    * Merges per host: a patched field replaces the saved one, so a client sends a per-server-host
    * map whole, with the redaction marker for each saved secret it keeps. An empty or omitted

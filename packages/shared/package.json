@@ -155,6 +155,10 @@
       "types": "./src/projectSettings.ts",
       "import": "./src/projectSettings.ts"
     },
+    "./jira": {
+      "types": "./src/jira.ts",
+      "import": "./src/jira.ts"
+    },
     "./t3ProjectFile": {
       "types": "./src/t3ProjectFile.ts",
       "import": "./src/t3ProjectFile.ts"

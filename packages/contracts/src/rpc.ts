@@ -324,6 +324,7 @@ import {
   ProviderConsumeResetCreditResult,
 } from "./providerUsageLimits.ts";
 import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
+import { JiraError, JiraIssue, JiraIssueInput } from "./jira.ts";
 import {
   StorageCleanupReport,
   ServerSettings,
@@ -536,6 +537,7 @@ export const WS_METHODS = {
   pullRequestsStack: "pullRequests.stack",
   pullRequestsLinkedThreads: "pullRequests.linkedThreads",
   pullRequestsDetail: "pullRequests.detail",
+  jiraIssue: "jira.issue",
   pullRequestsPreview: "pullRequests.preview",
   pullRequestsChecks: "pullRequests.checks",
   pullRequestsActivity: "pullRequests.activity",
@@ -1007,6 +1009,12 @@ const WsPullRequestsDetailRpc = Rpc.make(WS_METHODS.pullRequestsDetail, {
   payload: PullRequestRef,
   success: PullRequestDetail,
   error: PullRequestRpcError,
+});
+
+const WsJiraIssueRpc = Rpc.make(WS_METHODS.jiraIssue, {
+  payload: JiraIssueInput,
+  success: JiraIssue,
+  error: JiraError,
 });
 
 const WsPullRequestsPreviewRpc = Rpc.make(WS_METHODS.pullRequestsPreview, {
@@ -1949,6 +1957,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsStackRpc,
   WsPullRequestsLinkedThreadsRpc,
   WsPullRequestsDetailRpc,
+  WsJiraIssueRpc,
   WsPullRequestsPreviewRpc,
   WsPullRequestsChecksRpc,
   WsPullRequestsActivityRpc,

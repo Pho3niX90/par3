@@ -88,6 +88,7 @@ import * as ProviderAdapterRegistry from "./orchestration-v2/ProviderAdapterRegi
 import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 import * as ProviderUsageLimitsIngestion from "./provider/ProviderUsageLimitsIngestion.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
+import * as JiraIssues from "./jira/JiraIssues.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -599,7 +600,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // Both read a user-owned file out of the state directory and stream changes
   // to clients; neither depends on the other.
   Layer.provideMerge(
-    Layer.mergeAll(Keybindings.layer, EnvironmentTheme.layer, UsageLimitSources.layer),
+    Layer.mergeAll(
+      Keybindings.layer,
+      EnvironmentTheme.layer,
+      UsageLimitSources.layer,
+      JiraIssues.layer,
+    ),
   ),
   Layer.provideMerge(ProviderRegistry.layer),
   // The instance registry is the new routing keystone — text generation,

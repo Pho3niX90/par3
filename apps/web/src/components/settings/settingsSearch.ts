@@ -779,6 +779,22 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["links default browser in-app browser external open"],
   },
   {
+    id: "jira-site",
+    title: "Jira site",
+    to: "/settings/integrations",
+    searchTerms: ["jira atlassian issue ticket story url api token email"],
+    environmentOnly: true,
+    scope: "environment",
+  },
+  {
+    id: "jira-project-keys",
+    title: "Jira project keys",
+    to: "/settings/integrations",
+    searchTerms: ["jira issue key detect branch story ticket"],
+    environmentOnly: true,
+    scope: "project-defaults",
+  },
+  {
     id: "browser-auto-show-floating-preview",
     title: "Auto-show floating preview",
     to: "/settings/integrations",

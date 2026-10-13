@@ -294,6 +294,22 @@ returns to your inbox.
 Cross-repository links use a project on the same host. Azure DevOps reviews require a project checked
 out from the matching organization and repository.
 
+## Jira issues
+
+Set your Jira site in **Settings → Integrations → Jira** (on mobile, in the server's source control
+settings), for example `https://company.atlassian.net`. When a thread's branch name contains an issue key such as
+`feature/ABC-123-login`, the thread details card and the mobile Git overview show the issue under the
+branch. Click it to open the issue in Jira.
+
+To also see each issue's summary and status, add an API token. For Jira Cloud, enter your account
+email and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens). For Jira
+Server or Data Center, leave the email empty and enter a personal access token. The token stays on
+the server.
+
+By default only uppercase keys in branch names count, so `ABC-123` works but `abc-123` does not.
+Add **Jira project keys** to match those projects in any case, and in pull request titles too.
+Projects can set their own keys.
+
 ## GitHub stacks
 
 The Pull Requests page shows each PR's position in its GitHub stack. Open the stack badge in a
