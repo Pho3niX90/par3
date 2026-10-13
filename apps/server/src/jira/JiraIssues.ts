@@ -54,7 +54,7 @@ function statusCategory(key: string | undefined): JiraIssueStatusCategory {
 }
 
 /** The `Authorization` header for the configured credentials, or null to ask anonymously. */
-export function jiraAuthorization(settings: JiraSettings): string | null {
+function jiraAuthorization(settings: JiraSettings): string | null {
   if (settings.apiToken.length === 0) return null;
   if (settings.email.length === 0) return `Bearer ${settings.apiToken}`;
   return `Basic ${Buffer.from(`${settings.email}:${settings.apiToken}`, "utf8").toString("base64")}`;
