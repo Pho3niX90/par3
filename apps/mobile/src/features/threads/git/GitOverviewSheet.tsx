@@ -405,6 +405,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
         <JiraIssueRows
           environmentId={selectedThread.environmentId}
           projectId={selectedThread.projectId}
+          threadRef={{ environmentId: selectedThread.environmentId, threadId: selectedThread.id }}
           settings={selectedEnvironmentRuntime?.serverConfig?.settings ?? null}
           branch={gitStatus.data?.refName ?? selectedThread.branch ?? null}
           pullRequestTitle={gitStatus.data?.pr?.title ?? null}

@@ -155,6 +155,10 @@
       "types": "./src/projectSettings.ts",
       "import": "./src/projectSettings.ts"
     },
+    "./markdownProseLinks": {
+      "types": "./src/markdownProseLinks.ts",
+      "import": "./src/markdownProseLinks.ts"
+    },
     "./jira": {
       "types": "./src/jira.ts",
       "import": "./src/jira.ts"
