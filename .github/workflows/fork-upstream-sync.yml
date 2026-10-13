@@ -134,7 +134,7 @@ jobs:
         working-directory: fork
         run: |
           set -euo pipefail
-          # blacksmith-8vcpu-ubuntu-2404(-arm) -> ubuntu-24.04(-arm); macOS and Windows labels
+          # ubuntu-24.04(-arm) -> ubuntu-24.04(-arm); macOS and Windows labels
           # only lose the prefix.
           files="$(git grep -lE 'blacksmith-[0-9]+vcpu-' -- .github || true)"
           if [[ -n "$files" ]]; then
