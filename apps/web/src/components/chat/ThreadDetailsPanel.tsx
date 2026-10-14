@@ -78,22 +78,26 @@ export interface ThreadDetailsPanelProps extends Pick<
 function NonGitJiraRows({
   environmentId,
   threadId,
+  cwd,
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  cwd: string;
 }) {
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
   );
-  const projectId = useThreadShell(threadRef)?.projectId ?? null;
+  const thread = useThreadShell(threadRef);
   return (
     <ThreadDetailsJiraRows
       environmentId={environmentId}
-      projectId={projectId}
+      projectId={thread?.projectId ?? null}
       threadRef={threadRef}
       branch={null}
       pullRequestTitle={null}
+      cwd={cwd}
+      turnCompletedAt={thread?.latestRun?.completedAt ?? null}
     />
   );
 }
@@ -192,7 +196,11 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 {props.isGitRepo ? (
                   <BranchToolbar layout="panel" panelSection="branch" {...branchToolbarProps} />
                 ) : props.draftId ? null : (
-                  <NonGitJiraRows environmentId={props.environmentId} threadId={props.threadId} />
+                  <NonGitJiraRows
+                    environmentId={props.environmentId}
+                    threadId={props.threadId}
+                    cwd={props.gitCwd}
+                  />
                 )}
                 {props.activeProjectName && props.childRepositories.length === 0 ? (
                   <GitActionsControl
