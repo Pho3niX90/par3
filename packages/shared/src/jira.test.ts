@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   findJiraIssueKeys,
+  jiraIssueMarkdownFiles,
   jiraIssueUrl,
   normalizeJiraBaseUrl,
   normalizeJiraProjectKeys,
@@ -72,5 +73,26 @@ describe("jiraIssueUrl", () => {
     expect(jiraIssueUrl("https://company.atlassian.net", "ABC-1")).toBe(
       "https://company.atlassian.net/browse/ABC-1",
     );
+  });
+});
+
+describe("jiraIssueMarkdownFiles", () => {
+  const paths = [
+    "docs/ABC-123-plan.md",
+    ".plans/abc-123/notes.MD",
+    "docs/ABC-1234-other.md",
+    "src/ABC-123.ts",
+    "docs/XYZ-123.md",
+  ];
+
+  it("matches the issue's Markdown files in any case once project keys are configured", () => {
+    expect(jiraIssueMarkdownFiles(paths, "ABC-123", ["abc"])).toEqual([
+      "docs/ABC-123-plan.md",
+      ".plans/abc-123/notes.MD",
+    ]);
+  });
+
+  it("matches only uppercase keys without project keys", () => {
+    expect(jiraIssueMarkdownFiles(paths, "ABC-123", [])).toEqual(["docs/ABC-123-plan.md"]);
   });
 });
