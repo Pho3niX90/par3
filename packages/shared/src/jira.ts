@@ -65,6 +65,23 @@ export function findJiraIssueKeys(input: {
   return keys;
 }
 
+/**
+ * The Markdown files among `paths` that name the issue. Paths are read like branch names, so
+ * `docs/abc-123-plan.md` names `ABC-123` only once project keys are configured, and
+ * `ABC-1234.md` never does.
+ */
+export function jiraIssueMarkdownFiles(
+  paths: ReadonlyArray<string>,
+  issueKey: string,
+  projectKeys: ReadonlyArray<string>,
+): string[] {
+  return paths.filter(
+    (path) =>
+      /\.md$/i.test(path) &&
+      findJiraIssueKeys({ branch: path, projectKeys }).some((key) => key === issueKey),
+  );
+}
+
 /** The issue's page on the Jira site, e.g. `https://company.atlassian.net/browse/ABC-123`. */
 export function jiraIssueUrl(baseUrl: string, key: string): string {
   return `${baseUrl}/browse/${encodeURIComponent(key)}`;

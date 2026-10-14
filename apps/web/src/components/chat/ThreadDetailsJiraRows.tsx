@@ -1,7 +1,8 @@
 /**
  * The thread details panel's Jira rows: one per issue key found in the branch name and, once the
  * project keys are configured, the pull request title and the latest issues the chat mentions. Each row opens the issue on the Jira site
- * and, when the environment can read the issue, shows its summary and status.
+ * and, when the environment can read the issue, shows its summary and status. Markdown files in
+ * the workspace named after an issue, e.g. `docs/ABC-123-plan.md`, are listed under it.
  */
 import type {
   EnvironmentId,
@@ -10,15 +11,30 @@ import type {
   ProjectId,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { findJiraIssueKeys, jiraIssueUrl, normalizeJiraBaseUrl } from "@t3tools/shared/jira";
+import {
+  findJiraIssueKeys,
+  jiraIssueMarkdownFiles,
+  jiraIssueUrl,
+  normalizeJiraBaseUrl,
+} from "@t3tools/shared/jira";
 import { useAtomValue } from "@effect/atom-react";
-import { useMemo, type MouseEvent as ReactMouseEvent } from "react";
+import { FileTextIcon } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 
 import { useOpenLink } from "~/browser/useOpenLink";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { jiraEnvironment, threadJiraMentions } from "~/state/jira";
+import { useFilesystemReadAccess } from "~/state/filesystem";
+import { projectEnvironment } from "~/state/projects";
 import { useEnvironmentQuery } from "~/state/query";
+import { useRightPanelStore } from "~/rightPanelStore";
 
 import { JiraIcon } from "../Icons";
 import { Badge } from "../ui/badge";
@@ -38,6 +54,10 @@ const STATUS_BADGE_VARIANT = {
 } as const satisfies Record<NonNullable<JiraIssue["status"]>["category"], string>;
 
 const EMPTY_KEYS: ReadonlyArray<string> = [];
+/** Keeps the floating card short; the rest are a click away in the Files panel. */
+const MAX_FILES_PER_ISSUE = 3;
+// The search is fuzzy, so ask for enough results that the exact key matches are among them.
+const FILE_SEARCH_LIMIT = 50;
 
 export function ThreadDetailsJiraRows({
   environmentId,
@@ -45,12 +65,18 @@ export function ThreadDetailsJiraRows({
   threadRef,
   branch,
   pullRequestTitle,
+  cwd,
+  turnCompletedAt,
 }: {
   environmentId: EnvironmentId;
   projectId: ProjectId | null;
   threadRef: ScopedThreadRef | undefined;
   branch: string | null;
   pullRequestTitle: string | null;
+  /** The thread's workspace, searched for each issue's Markdown files. */
+  cwd: string | null;
+  /** Changes when a turn finishes, so files the turn wrote show up. */
+  turnCompletedAt: string | null;
 }) {
   const baseUrl = normalizeJiraBaseUrl(
     useEnvironmentSettings(environmentId, (settings) => settings.jira.baseUrl),
@@ -80,6 +106,7 @@ export function ThreadDetailsJiraRows({
     [baseUrl, branch, mentionedKeys, projectKeys, pullRequestTitle],
   );
   const openLink = useOpenLink(threadRef);
+  const { canReadFiles } = useFilesystemReadAccess(environmentId);
   if (!baseUrl || keys.length === 0) return null;
 
   const open = (event: ReactMouseEvent<HTMLElement>, url: string) => {
@@ -102,6 +129,18 @@ export function ThreadDetailsJiraRows({
       issueKey={key}
       url={jiraIssueUrl(baseUrl, key)}
       onOpen={open}
+      files={
+        threadRef && cwd && canReadFiles ? (
+          <ThreadDetailsJiraFiles
+            environmentId={environmentId}
+            threadRef={threadRef}
+            cwd={cwd}
+            issueKey={key}
+            projectKeys={projectKeys}
+            turnCompletedAt={turnCompletedAt}
+          />
+        ) : null
+      }
     />
   ));
 }
@@ -111,11 +150,13 @@ function ThreadDetailsJiraRow({
   issueKey,
   url,
   onOpen,
+  files,
 }: {
   environmentId: EnvironmentId;
   issueKey: JiraIssueKey;
   url: string;
   onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
+  files: ReactNode;
 }) {
   const query = useEnvironmentQuery(
     jiraEnvironment.issue({ environmentId, input: { key: issueKey } }),
@@ -163,7 +204,14 @@ function ThreadDetailsJiraRow({
     </Tooltip>
   );
 
-  if (!issue) return row;
+  if (!issue) {
+    return (
+      <>
+        {row}
+        {files}
+      </>
+    );
+  }
   return (
     // Same two-line shape as the pull request row: the summary keeps the full width and the key
     // and status sit underneath, aligned with the summary text.
@@ -177,6 +225,101 @@ function ThreadDetailsJiraRow({
           </Badge>
         ) : null}
       </div>
+      {files}
+    </div>
+  );
+}
+
+/**
+ * Markdown files whose path names the issue, found with the workspace search so files from any
+ * thread or turn count. The search index skips Git-ignored paths.
+ */
+function ThreadDetailsJiraFiles({
+  environmentId,
+  threadRef,
+  cwd,
+  issueKey,
+  projectKeys,
+  turnCompletedAt,
+}: {
+  environmentId: EnvironmentId;
+  threadRef: ScopedThreadRef;
+  cwd: string;
+  issueKey: JiraIssueKey;
+  projectKeys: ReadonlyArray<string>;
+  turnCompletedAt: string | null;
+}) {
+  const query = useEnvironmentQuery(
+    projectEnvironment.searchEntries({
+      environmentId,
+      input: { cwd, query: issueKey, limit: FILE_SEARCH_LIMIT, kind: "file" },
+    }),
+  );
+  const { refresh } = query;
+  const seenTurn = useRef(turnCompletedAt);
+  useEffect(() => {
+    if (seenTurn.current === turnCompletedAt) return;
+    seenTurn.current = turnCompletedAt;
+    refresh();
+  }, [refresh, turnCompletedAt]);
+  const entries = query.data?.entries;
+  const files = useMemo(
+    () =>
+      jiraIssueMarkdownFiles(
+        (entries ?? []).map((entry) => entry.path),
+        issueKey,
+        projectKeys,
+      ),
+    [entries, issueKey, projectKeys],
+  );
+  if (files.length === 0) return null;
+
+  const openFile = (path: string) => useRightPanelStore.getState().openFile(threadRef, path);
+  const hidden = files.length - MAX_FILES_PER_ISSUE;
+  return (
+    // Indented so each file's icon lines up with the issue summary above it.
+    <div className="flex flex-col ps-6.5">
+      {files.slice(0, MAX_FILES_PER_ISSUE).map((path) => (
+        <Tooltip key={path}>
+          <TooltipTrigger
+            render={
+              <ThreadDetailsControl
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={`Open ${path}`}
+                onClick={() => openFile(path)}
+              />
+            }
+          >
+            <FileTextIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+            <span
+              className={cn("min-w-0 flex-1 truncate text-left", THREAD_DETAILS_PANEL_LABEL_CLASS)}
+            >
+              {path.slice(path.lastIndexOf("/") + 1)}
+            </span>
+          </TooltipTrigger>
+          <TooltipPopup side="top">{path}</TooltipPopup>
+        </Tooltip>
+      ))}
+      {hidden > 0 ? (
+        <ThreadDetailsControl
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`${hidden} more ${issueKey} files. Open the Files panel`}
+          onClick={() => openFile(".")}
+        >
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-left text-muted-foreground",
+              THREAD_DETAILS_PANEL_LABEL_CLASS,
+            )}
+          >
+            +{hidden} more
+          </span>
+        </ThreadDetailsControl>
+      ) : null}
     </div>
   );
 }

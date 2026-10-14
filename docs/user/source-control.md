@@ -311,6 +311,10 @@ Add **Jira project keys** to match those projects in any case, and in pull reque
 With project keys set, issue keys in chat messages also link to their issues, and the latest few
 issues the chat mentions appear under the branch too. Projects can set their own keys.
 
+Markdown files in the workspace whose path names an issue, such as `docs/ABC-123-plan.md`, appear
+under that issue so you can open them from the thread details card. The list refreshes when a turn
+finishes. Files in folders Git ignores do not appear.
+
 ## GitHub stacks
 
 The Pull Requests page shows each PR's position in its GitHub stack. Open the stack badge in a

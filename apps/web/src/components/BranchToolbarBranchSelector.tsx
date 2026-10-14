@@ -829,6 +829,8 @@ export function BranchToolbarBranchSelector({
             threadRef={threadRef}
             branch={resolvedActiveBranch}
             pullRequestTitle={displayedPr?.title ?? currentLinkedPr?.snapshot?.title ?? null}
+            cwd={branchCwd}
+            turnCompletedAt={serverThread?.latestRun?.completedAt ?? null}
           />
         ) : null}
       </div>
