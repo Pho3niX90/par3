@@ -13,6 +13,7 @@ export const copilotClient = defineProviderClient({
   driverKind: ProviderDriverKind.make("copilot"),
   label: "GitHub Copilot",
   settingsSchema: CopilotSettings,
+  modelVendorIcons: true,
   icon: {
     viewBox: "0 0 256 208",
     fill: { light: "#0F0F0F", dark: "#F5F5F5" },
