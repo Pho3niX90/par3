@@ -437,6 +437,13 @@ export interface ProjectionStoreV2Shape {
     > & { readonly hasConversation: boolean },
     ProjectionStoreV2Error
   >;
+  /**
+   * The paths the thread's file changes reported, as recorded and without repeats. Reads only the
+   * path fields, not the diffs the items carry.
+   */
+  readonly getThreadEditedPaths: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<string>, ProjectionStoreV2Error>;
   readonly getTurnStartHistory: (
     threadId: ThreadId,
     runIds?: ReadonlyArray<RunId>,
@@ -3992,6 +3999,23 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           ),
         );
 
+    const getThreadEditedPaths: ProjectionStoreV2Shape["getThreadEditedPaths"] = (threadId) =>
+      Effect.gen(function* () {
+        const rows = yield* sql<{ readonly path: unknown }>`
+          SELECT json_extract(payload_json, '$.fileName') AS path
+          FROM orchestration_v2_projection_turn_items
+          WHERE thread_id = ${threadId} AND type = 'file_change'
+          UNION
+          SELECT json_extract(change.value, '$.path') AS path
+          FROM orchestration_v2_projection_turn_items AS item,
+            json_each(item.payload_json, '$.changes') AS change
+          WHERE item.thread_id = ${threadId} AND item.type = 'file_change'
+        `;
+        return rows.flatMap((row) =>
+          typeof row.path === "string" && row.path.length > 0 ? [row.path] : [],
+        );
+      }).pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
+
     const getTurnStartHistory: ProjectionStoreV2Shape["getTurnStartHistory"] = (threadId, runIds) =>
       Effect.gen(function* () {
         const rows = yield* sql<PayloadRow>`
@@ -5981,6 +6005,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getThreadsWithPullRequests,
       getThreadProjection,
       getTurnStartContext,
+      getThreadEditedPaths,
       getTurnStartHistory,
       getRuntimeRecoveryProjection,
       getRunningTurnContext,
@@ -6548,6 +6573,20 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             turnItems: projection.turnItems.filter((item) => item.runId === runId),
           })),
         ),
+      getThreadEditedPaths: (threadId) =>
+        service
+          .getThreadProjection(threadId)
+          .pipe(
+            Effect.map((projection) => [
+              ...new Set(
+                projection.turnItems.flatMap((item) =>
+                  item.type === "file_change"
+                    ? [item.fileName, ...(item.changes ?? []).map((change) => change.path)]
+                    : [],
+                ),
+              ),
+            ]),
+          ),
       getTurnStartHistory: (threadId, runIds) =>
         service
           .getThreadProjection(threadId)

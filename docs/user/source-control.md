@@ -10,6 +10,12 @@ rebases, the files Git brought in are left out. A file stays in the list when th
 committed it, or fixed a conflict in it. Use the branch comparison to review everything that changed
 against your base branch. Restore still returns the complete saved workspace.
 
+A project can also be a plain folder that holds several repositories. The thread details card then
+lists each repository inside it that the thread edited, with its branch, changes, and Git actions,
+and the diff can switch between them. Only uncommitted and branch changes are shown there; turn diffs
+and restore need the project folder itself to be a repository. Repositories changed only through
+shell commands are not listed.
+
 ## Connect an account
 
 Install Git and configure authentication on the machine running your T3 Code server. For a remote
@@ -309,7 +315,8 @@ the server.
 By default only uppercase keys in branch names count, so `ABC-123` works but `abc-123` does not.
 Add **Jira project keys** to match those projects in any case, and in pull request titles too.
 With project keys set, issue keys in chat messages also link to their issues, and the latest few
-issues the chat mentions appear under the branch too. Projects can set their own keys.
+issues the chat mentions appear under the branch too, or on their own in a project folder that is
+not a repository. Projects can set their own keys.
 
 Markdown files in the workspace whose path names an issue, such as `docs/ABC-123-plan.md`, appear
 under that issue so you can open them from the thread details card. The list refreshes when a turn

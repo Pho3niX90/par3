@@ -505,3 +505,32 @@ export const GitActionProgressEvent = Schema.Union([
   GitActionFailedEvent,
 ]);
 export type GitActionProgressEvent = typeof GitActionProgressEvent.Type;
+
+// Child repositories of a project folder that is not itself a repository.
+
+export const VcsThreadRepositoriesInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type VcsThreadRepositoriesInput = typeof VcsThreadRepositoriesInput.Type;
+
+export const VcsThreadRepository = Schema.Struct({
+  /** The repository's root, usable as the `cwd` of any other VCS request. */
+  cwd: TrimmedNonEmptyStringSchema,
+  /** The root relative to the thread's folder, for display. */
+  relativePath: TrimmedNonEmptyStringSchema,
+});
+export type VcsThreadRepository = typeof VcsThreadRepository.Type;
+
+export const VcsThreadRepositoriesResult = Schema.Struct({
+  repositories: Schema.Array(VcsThreadRepository),
+});
+export type VcsThreadRepositoriesResult = typeof VcsThreadRepositoriesResult.Type;
+
+export class VcsThreadRepositoriesError extends Schema.TaggedError<VcsThreadRepositoriesError>()(
+  "VcsThreadRepositoriesError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}

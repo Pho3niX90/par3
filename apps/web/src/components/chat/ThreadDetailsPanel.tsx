@@ -4,6 +4,7 @@ import type {
   ProjectScript,
   ResolvedKeybindingsConfig,
   ThreadId,
+  VcsThreadRepository,
 } from "@t3tools/contracts";
 
 import type { DraftId } from "../../composerDraftStore";
@@ -15,8 +16,11 @@ import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
-import { memo, type ComponentProps } from "react";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { memo, useMemo, type ComponentProps } from "react";
+import { useThreadShell } from "../../state/entities";
 import { ThreadDetailsCard } from "./ThreadDetailsCard";
+import { ThreadDetailsJiraRows } from "./ThreadDetailsJiraRows";
 import { OpenInPicker } from "./OpenInPicker";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
@@ -40,6 +44,9 @@ export interface ThreadDetailsPanelProps extends Pick<
   showOpenInPicker: boolean;
   gitCwd: string | null;
   isGitRepo: boolean;
+  /** Child repositories the thread edited, when its folder is not a repository itself. */
+  childRepositories: ReadonlyArray<VcsThreadRepository>;
+  onOpenRepositoryChanges?: (cwd: string) => void;
   envLocked: boolean;
   availableEnvironments: readonly EnvironmentOption[];
   autoEnvironmentLabel?: string | undefined;
@@ -62,6 +69,33 @@ export interface ThreadDetailsPanelProps extends Pick<
     input: NewProjectScriptInput,
   ) => Promise<ProjectScriptActionResult>;
   onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
+}
+
+/**
+ * Jira rows for a thread whose folder is not a git repo. There is no branch or pull request
+ * there, so only the issues the chat mentions show; in a repo the branch selector renders them.
+ */
+function NonGitJiraRows({
+  environmentId,
+  threadId,
+}: {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+}) {
+  const threadRef = useMemo(
+    () => scopeThreadRef(environmentId, threadId),
+    [environmentId, threadId],
+  );
+  const projectId = useThreadShell(threadRef)?.projectId ?? null;
+  return (
+    <ThreadDetailsJiraRows
+      environmentId={environmentId}
+      projectId={projectId}
+      threadRef={threadRef}
+      branch={null}
+      pullRequestTitle={null}
+    />
+  );
 }
 
 export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
@@ -157,8 +191,10 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               <div className="flex flex-col">
                 {props.isGitRepo ? (
                   <BranchToolbar layout="panel" panelSection="branch" {...branchToolbarProps} />
-                ) : null}
-                {props.activeProjectName ? (
+                ) : props.draftId ? null : (
+                  <NonGitJiraRows environmentId={props.environmentId} threadId={props.threadId} />
+                )}
+                {props.activeProjectName && props.childRepositories.length === 0 ? (
                   <GitActionsControl
                     displayMode="panel"
                     compact={density !== "full"}
@@ -168,6 +204,19 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     {...(props.onOpenChanges ? { onOpenChanges: props.onOpenChanges } : {})}
                   />
                 ) : null}
+                {props.childRepositories.map((repository) => (
+                  <GitActionsControl
+                    key={repository.cwd}
+                    displayMode="panel"
+                    compact={density !== "full"}
+                    gitCwd={repository.cwd}
+                    activeThreadRef={activeThreadRef}
+                    repositoryLabel={repository.relativePath}
+                    {...(props.onOpenRepositoryChanges
+                      ? { onOpenChanges: () => props.onOpenRepositoryChanges?.(repository.cwd) }
+                      : {})}
+                  />
+                ))}
               </div>
             </ThreadDetailsSection>
           ) : null}
