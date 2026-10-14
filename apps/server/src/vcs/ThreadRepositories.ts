@@ -52,7 +52,7 @@ export function pathBelow(path: Path.Path, root: string, target: string): string
   return relative;
 }
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const projects = yield* ProjectStore.ProjectStoreV2;
   const vcs = yield* VcsDriverRegistry.VcsDriverRegistry;
