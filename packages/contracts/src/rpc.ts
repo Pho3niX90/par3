@@ -141,6 +141,9 @@ import {
   VcsStatusSubscriptionInput,
   VcsStatusResult,
   VcsStatusStreamEvent,
+  VcsThreadRepositoriesError,
+  VcsThreadRepositoriesInput,
+  VcsThreadRepositoriesResult,
 } from "./git.ts";
 import {
   ReviewDiffFileContentsInput,
@@ -424,6 +427,7 @@ export const WS_METHODS = {
   // VCS methods
   vcsPull: "vcs.pull",
   vcsRefreshStatus: "vcs.refreshStatus",
+  vcsThreadRepositories: "vcs.threadRepositories",
   vcsListRefs: "vcs.listRefs",
   vcsCreateWorktree: "vcs.createWorktree",
   vcsRemoveWorktree: "vcs.removeWorktree",
@@ -1372,6 +1376,12 @@ const WsVcsRefreshStatusRpc = Rpc.make(WS_METHODS.vcsRefreshStatus, {
   error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
 });
 
+const WsVcsThreadRepositoriesRpc = Rpc.make(WS_METHODS.vcsThreadRepositories, {
+  payload: VcsThreadRepositoriesInput,
+  success: VcsThreadRepositoriesResult,
+  error: Schema.Union([VcsThreadRepositoriesError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribeWorktreeSetupRpc = Rpc.make(WS_METHODS.subscribeWorktreeSetup, {
   payload: WorktreeSetupSubscribeInput,
   success: WorktreeSetupStreamEvent,
@@ -2016,6 +2026,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsWorktreeSetupCancelRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,
+  WsVcsThreadRepositoriesRpc,
   WsGitRunStackedActionRpc,
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,

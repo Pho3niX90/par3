@@ -253,6 +253,7 @@ import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as JiraIssues from "./jira/JiraIssues.ts";
+import * as ThreadRepositories from "./vcs/ThreadRepositories.ts";
 
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
 const isProviderUploadFeedbackError = Schema.is(ProviderUploadFeedbackError);
@@ -1267,6 +1268,7 @@ const layerWsRpc = (
       const usage = yield* UsageService.UsageService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
       const jiraIssues = yield* JiraIssues.JiraIssues;
+      const threadRepositories = yield* ThreadRepositories.ThreadRepositories;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
@@ -2829,6 +2831,7 @@ const layerWsRpc = (
             .cancel(input.threadId)
             .pipe(Effect.map((cancelled) => ({ cancelled }))),
         [WS_METHODS.vcsRefreshStatus]: (input) => vcsStatusBroadcaster.refreshStatus(input.cwd),
+        [WS_METHODS.vcsThreadRepositories]: (input) => threadRepositories.list(input),
         [WS_METHODS.vcsPull]: (input) =>
           gitWorkflow.pullCurrentBranch(input.cwd).pipe(
             Effect.matchCauseEffect({

@@ -16,7 +16,7 @@ import type * as Schema from "effect/Schema";
 
 import { MODEL_VENDOR_ICONS, modelVendorForSlug } from "./modelVendors.ts";
 
-export { MODEL_VENDOR_ICONS, modelVendorForSlug, type ModelVendor } from "./modelVendors.ts";
+export { MODEL_VENDOR_ICONS, type ModelVendor } from "./modelVendors.ts";
 
 /**
  * A provider's instance settings schema. Fields carry `providerSettingsForm`
