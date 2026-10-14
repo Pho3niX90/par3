@@ -1,9 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import {
-  resolvePendingTaskInteractionMode,
-  resolveProviderInteractionMode,
-} from "./legacy-plan-mode";
+import { resolvePendingTaskInteractionMode, resolveProviderInteractionMode } from "./plan-mode";
 
 describe("resolveProviderInteractionMode", () => {
   it("clears saved plan mode when the provider cannot use T3 interaction modes", () => {

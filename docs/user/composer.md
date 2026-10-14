@@ -213,6 +213,21 @@ you had typed in the composer before starting the edit is restored afterwards. I
 message starts or is removed while you are editing, the edit ends: changed content moves into the
 composer when it is empty, and is discarded otherwise.
 
+## Plan mode
+
+Switch the composer from **Build** to **Plan** to have the agent propose a plan
+before it changes anything. Use the Build/Plan control, `/plan` and `/default`,
+or **Shift+Tab** while the composer is focused. The mode belongs to the thread.
+Providers that cannot plan don't show the control.
+
+On web and desktop, when a plan is ready, send an empty message to **Implement**
+it in build mode, or type feedback to **Refine** it. The arrow next to Implement
+starts the work in a new thread instead. Claude sometimes plans without being
+asked; its plan offers the same actions.
+
+Turn plan mode off in **Settings → General → Plan mode** (on mobile, **Settings →
+Thread behavior → Composer**) to hide the control and send every turn in build mode.
+
 ## Commands and skills
 
 Type `/` for commands or `$` to add a skill from the selected environment and

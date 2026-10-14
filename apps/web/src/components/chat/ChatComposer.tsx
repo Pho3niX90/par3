@@ -82,6 +82,7 @@ import {
   type ComposerTrigger,
   type ComposerSubmissionIntent,
   collapseExpandedComposerCursor,
+  composerShortcutCommandForKey,
   composerSubmissionIntentForKey,
   composerStateAtPromptEnd,
   detectComposerTrigger,
@@ -1251,6 +1252,7 @@ const supervisedRuntimeModeOption = {
 const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
   showInteractionModeToggle: boolean;
   interactionMode: ProviderInteractionMode;
+  interactionModeShortcutLabel: string | null;
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   size?: "sm" | "xs";
@@ -1265,10 +1267,13 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
     props.runtimeModeOptions.find((option) => option.mode === props.runtimeMode) ??
     supervisedRuntimeModeOption;
   const RuntimeModeIcon = runtimeModeOption.icon;
-  const interactionModeTooltip =
+  const interactionModeLabel =
     props.interactionMode === "plan"
-      ? "Plan mode — click to return to normal build mode"
-      : "Default mode — click to enter plan mode";
+      ? "Plan mode — click to return to build mode"
+      : "Build mode — click to switch to plan mode";
+  const interactionModeTooltip = props.interactionModeShortcutLabel
+    ? `${interactionModeLabel} (${props.interactionModeShortcutLabel})`
+    : interactionModeLabel;
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <>
@@ -1282,7 +1287,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               aria-pressed={props.interactionMode === "plan"}
               type="button"
               onClick={props.onToggleInteractionMode}
-              aria-label={interactionModeTooltip}
+              aria-label={interactionModeLabel}
             />
           }
         >
@@ -2373,7 +2378,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         models: selectedProviderModels,
         promptInjectionState: composerPromptInjectionState,
         modelOptions: composerModelOptions?.[selectedInstanceId],
-        planModeEnabled: settings.planModeEnabled,
+        planModeEnabled: settings.composerPlanModeEnabled,
       }),
     [
       composerModelOptions,
@@ -2382,17 +2387,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedModel,
       selectedProvider,
       selectedProviderModels,
-      settings.planModeEnabled,
+      settings.composerPlanModeEnabled,
     ],
   );
 
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const { enabled: planModeUiEnabled, interactionMode } = resolveComposerInteractionMode({
-    planModeEnabled: settings.planModeEnabled,
+    planModeEnabled: settings.composerPlanModeEnabled,
     provider: selectedProviderStatus,
     interactionMode: requestedInteractionMode,
   });
+  const interactionModeShortcutLabel = useMemo(
+    () =>
+      shortcutLabelForCommand(keybindings, "composer.togglePlanMode", {
+        context: { composerFocus: true },
+      }),
+    [keybindings],
+  );
   const selectedModelSelection = useMemo<ModelSelection>(
     () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
     [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
@@ -2751,7 +2763,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 type: "slash-command",
                 command: "default",
                 label: "/default",
-                description: "Switch this thread back to normal build mode",
+                description: "Switch this thread back to build mode",
               },
             ] as const)
           : []),
@@ -3026,7 +3038,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     reportedModelSelection,
     prompt,
     onPromptChange: setPromptFromTraits,
-    planModeEnabled: settings.planModeEnabled,
+    planModeEnabled: settings.composerPlanModeEnabled,
   });
   const providerTraitsPickerInput = {
     provider: selectedProvider,
@@ -3039,7 +3051,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     reportedModelSelection,
     prompt,
     onPromptChange: setPromptFromTraits,
-    planModeEnabled: settings.planModeEnabled,
+    planModeEnabled: settings.composerPlanModeEnabled,
     isComposerOwned: true,
   } satisfies Parameters<typeof renderProviderTraitsPicker>[0];
   const providerTraitsPicker = renderProviderTraitsPicker(providerTraitsPickerInput);
@@ -4525,6 +4537,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Callbacks: command key
   // ------------------------------------------------------------------
   const onComposerCommandKey = (key: string, event: KeyboardEvent, isTaskItem = false) => {
+    const shortcutCommand = composerShortcutCommandForKey({
+      event,
+      keybindings,
+      isDraftThread: routeKind === "draft",
+      isRunning: phase === "running",
+    });
     const submissionIntent = composerSubmissionIntentForKey({
       event,
       keybindings,
@@ -4533,8 +4551,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isRunning: phase === "running",
       sendShortcut: settings.sendShortcut,
       prompt: promptRef.current,
+      command: shortcutCommand,
     });
-    if (key === "Tab" && event.shiftKey && submissionIntent === null) {
+    if (
+      submissionIntent === null &&
+      !event.isComposing &&
+      shortcutCommand === "composer.togglePlanMode"
+    ) {
       if (!planModeUiEnabled) return false;
       toggleInteractionMode();
       return true;
@@ -5533,6 +5556,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         <ComposerFooterModeControls
           showInteractionModeToggle={planModeUiEnabled}
           interactionMode={interactionMode}
+          interactionModeShortcutLabel={interactionModeShortcutLabel}
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           size={composerControlsCollapsed ? "xs" : "sm"}

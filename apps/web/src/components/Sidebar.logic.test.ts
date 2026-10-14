@@ -509,7 +509,6 @@ describe("hasUnseenCompletion", () => {
         hasActionableProposedPlan: false,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
-        interactionMode: "default",
         latestRun: makeLatestRun(),
         lastVisitedAt: "2026-03-09T10:04:00.000Z",
         runtime: null,
@@ -523,7 +522,6 @@ describe("hasUnseenCompletion", () => {
         hasActionableProposedPlan: false,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
-        interactionMode: "default",
         latestRun: makeLatestRun(),
         lastVisitedAt: undefined,
         runtime: null,
@@ -1230,7 +1228,6 @@ describe("resolveThreadStatusPill", () => {
     hasActionableProposedPlan: false,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
-    interactionMode: "plan" as const,
     latestRun: null,
     lastVisitedAt: undefined,
     runtime: {
@@ -1360,7 +1357,6 @@ describe("resolveThreadStatusPill", () => {
       resolveThreadStatusPill({
         thread: {
           ...baseThread,
-          interactionMode: "default",
           latestRun: makeLatestRun(),
           lastVisitedAt: "2026-03-09T10:04:00.000Z",
           runtime: {
@@ -2141,7 +2137,6 @@ describe("Working shelf (beta)", () => {
     hasActionableProposedPlan: false,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
-    interactionMode: "default" as const,
     latestRun: makeLatestRun(),
     runtime: null,
   };
@@ -2170,7 +2165,6 @@ describe("Working shelf (beta)", () => {
     expect(
       isSidebarThreadWorking({
         ...waiting,
-        interactionMode: "plan",
         hasActionableProposedPlan: true,
       }),
     ).toBe(false);
