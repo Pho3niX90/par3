@@ -79,8 +79,11 @@ export interface Preferences {
   /** @deprecated Kept temporarily so older OTA bundles retain the selected mode. */
   readonly projectGroupingEnabled?: boolean;
   readonly projectGroupingMode?: SidebarProjectGroupingMode;
-  /** Device-local counterpart of desktop's `planModeEnabled` legacy flag. */
-  readonly planModeEnabled?: boolean;
+  /**
+   * Device-local counterpart of web's `composerPlanModeEnabled`; unset means on.
+   * A fresh key (was the opt-in legacy `planModeEnabled`) so everyone starts on.
+   */
+  readonly composerPlanModeEnabled?: boolean;
   /** Device-local counterpart of web's `sidebarWorkingShelfEnabled` beta. */
   readonly workingShelfEnabled?: boolean;
   /** @deprecated Retained to migrate favorites to the connected environment. */
@@ -155,7 +158,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     microphones?: ReadonlyArray<MicrophoneEntry>;
     projectGroupingEnabled?: boolean;
     projectGroupingMode?: SidebarProjectGroupingMode;
-    planModeEnabled?: boolean;
+    composerPlanModeEnabled?: boolean;
     workingShelfEnabled?: boolean;
     modelFavorites?: Preferences["modelFavorites"];
     threadListSettledShelfExpanded?: boolean;
@@ -251,8 +254,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   ) {
     preferences.projectGroupingMode = parsed.projectGroupingMode;
   }
-  if (typeof parsed.planModeEnabled === "boolean") {
-    preferences.planModeEnabled = parsed.planModeEnabled;
+  if (typeof parsed.composerPlanModeEnabled === "boolean") {
+    preferences.composerPlanModeEnabled = parsed.composerPlanModeEnabled;
   }
   if (typeof parsed.workingShelfEnabled === "boolean") {
     preferences.workingShelfEnabled = parsed.workingShelfEnabled;

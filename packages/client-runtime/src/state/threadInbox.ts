@@ -9,7 +9,6 @@ type WorkingThreadInput = Pick<
   | "hasActionableProposedPlan"
   | "hasPendingApprovals"
   | "hasPendingUserInput"
-  | "interactionMode"
   | "latestRun"
   | "runtime"
 >;
@@ -30,7 +29,7 @@ export function isThreadWorking(thread: WorkingThreadInput): boolean {
     run.status !== "running" &&
     run.status !== "waiting" &&
     thread.runtime?.activeRunId !== run.runId;
-  return !(thread.interactionMode === "plan" && thread.hasActionableProposedPlan && runSettled);
+  return !(thread.hasActionableProposedPlan && runSettled);
 }
 
 type InboxThreadInput = Pick<

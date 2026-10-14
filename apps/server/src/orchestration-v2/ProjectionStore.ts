@@ -1012,6 +1012,7 @@ type ShellThreadRow = {
   readonly latest_user_message_at: string | null;
   readonly latest_user_authored_message_at: string | null;
   readonly has_actionable_proposed_plan: number;
+  readonly blocking_run_has_actionable_proposed_plan: number;
   readonly item_count: number;
   readonly runless_item_count: number;
 };
@@ -1537,8 +1538,14 @@ export function threadShellFromProjection(
     latestUserMessageAt: latestUserMessage?.updatedAt ?? null,
     latestUserAuthoredMessageAt:
       userMessages.find((message) => message.createdBy === "user")?.updatedAt ?? null,
+    // In plan mode any active plan waits on the user. Outside it only one the
+    // latest run proposed does, since Claude can enter plan mode by itself.
     hasActionableProposedPlan: projection.plans.some(
-      (plan) => plan.kind === "proposed_plan" && plan.status === "active",
+      (plan) =>
+        plan.kind === "proposed_plan" &&
+        plan.status === "active" &&
+        (projection.thread.interactionMode === "plan" ||
+          (latestRun !== null && plan.runId === latestRun.id)),
     ),
     pendingBackgroundTasks: [...pendingBackgroundTasks],
     providerInstanceHistory: providerInstanceHistoryForShell({
@@ -5381,7 +5388,19 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 WHERE plan.thread_id = t.thread_id
                   AND plan.kind = 'proposed_plan'
                   AND plan.status = 'active'
+                  -- Mirrors threadShellFromProjection: outside plan mode only
+                  -- the presented run's plan waits on the user.
+                  AND (t.interaction_mode = 'plan' OR plan.run_id = presented.run_id)
               ) AS has_actionable_proposed_plan,
+              -- Used when a usage-limit-blocked run is presented as latest instead.
+              EXISTS (
+                SELECT 1
+                FROM orchestration_v2_projection_plans plan
+                WHERE plan.thread_id = t.thread_id
+                  AND plan.kind = 'proposed_plan'
+                  AND plan.status = 'active'
+                  AND plan.run_id = blocked.run_id
+              ) AS blocking_run_has_actionable_proposed_plan,
               -- Count per run on the covering (thread_id, run_id) index, then
               -- look up each run once, instead of one run lookup per item.
               (
@@ -5760,6 +5779,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ? null
             : yield* decodeTurnItemPayload(row.terminal_failure_payload_json);
         let latestRunId = row.latest_run_id === null ? null : RunId.make(row.latest_run_id);
+        let hasActionableProposedPlan = row.has_actionable_proposed_plan === 1;
         let latestRunStatus = shellStatusFromStoredRunStatus(row.latest_run_status);
         let latestRunRequestedAt =
           row.latest_run_requested_at === null
@@ -5785,6 +5805,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           if (blocksQueue && blockingFailure !== null) {
             terminalFailureItem = blockingFailure;
             latestRunId = RunId.make(row.blocking_run_id);
+            if (thread.interactionMode !== "plan") {
+              hasActionableProposedPlan = row.blocking_run_has_actionable_proposed_plan === 1;
+            }
             latestRunStatus = "failed";
             latestRunRequestedAt =
               row.blocking_run_requested_at === null
@@ -5849,7 +5872,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             row.latest_user_authored_message_at === null
               ? null
               : DateTime.makeUnsafe(row.latest_user_authored_message_at),
-          hasActionableProposedPlan: row.has_actionable_proposed_plan === 1,
+          hasActionableProposedPlan,
           pendingBackgroundTasks,
           providerInstanceHistory: providerInstanceHistoryForShell({
             threadId: thread.id,
