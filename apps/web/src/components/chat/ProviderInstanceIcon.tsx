@@ -3,6 +3,7 @@ import { type CSSProperties, memo } from "react";
 import { providerInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
 
 import { ProviderDriverKind } from "@t3tools/contracts";
+import { modelVendorIcon } from "@t3tools/provider-core/client";
 import { AntigravityIcon, ClaudeAI, Icon, OpenAI } from "../Icons";
 
 import { cn } from "~/lib/utils";
@@ -57,6 +58,14 @@ export function resolveProviderInstanceAcpRegistryIconUrl(input: {
 export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   driverKind: ProviderDriverKind;
   displayName: string;
+  /**
+   * Selected model slug. Drivers that route to several vendors draw that
+   * vendor's glyph and move their own glyph into the corner badge, unless
+   * `showBadge` claims the corner to tell instances apart.
+   */
+  model?: string | undefined;
+  /** Set false where a corner badge would crowd the glyph, such as stacked selections. */
+  showDriverBadge?: boolean;
   accentColor?: string | undefined;
   acpRegistryAgentId?: string | undefined;
   acpRegistryIconUrl?: string | undefined;
@@ -69,7 +78,11 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   indicatorBackground?: string;
 }) {
   const Icon = PROVIDER_ICON_BY_PROVIDER[props.driverKind] ?? null;
-  const packageIcon = providerClients.get(props.driverKind)?.icon;
+  const definition = providerClients.get(props.driverKind);
+  const packageIcon = definition?.icon;
+  const vendorIcon = modelVendorIcon(definition, props.model);
+  const showDriverBadge =
+    props.showDriverBadge !== false && vendorIcon !== undefined && packageIcon !== undefined;
   const indicatorBackground = props.indicatorBackground ?? "var(--card)";
   const accentStyle = props.accentColor
     ? ({ "--provider-accent": props.accentColor } as CSSProperties)
@@ -98,6 +111,12 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
           className={cn("size-5 rounded-none bg-transparent", props.iconClassName)}
           fallbackClassName="size-full"
           icon={acpRegistryIconUrl}
+        />
+      ) : vendorIcon ? (
+        <ProviderPackageIcon
+          icon={vendorIcon}
+          className={cn("size-5 shrink-0", props.iconClassName)}
+          aria-hidden
         />
       ) : packageIcon ? (
         <ProviderPackageIcon
@@ -135,6 +154,17 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
           aria-hidden
         >
           {badgeContent === "initials" ? providerInstanceInitials(props.displayName) : null}
+        </span>
+      ) : showDriverBadge ? (
+        <span
+          className={cn(
+            "pointer-events-none absolute right-0 bottom-0 z-10 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border bg-card px-0.5 shadow-sm",
+            props.badgeClassName,
+          )}
+          style={{ borderColor: indicatorBackground }}
+          aria-hidden
+        >
+          <ProviderPackageIcon icon={packageIcon} className="size-2" />
         </span>
       ) : null}
     </span>

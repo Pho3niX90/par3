@@ -14,6 +14,10 @@
 import type { ProviderDriverKind } from "@t3tools/contracts";
 import type * as Schema from "effect/Schema";
 
+import { MODEL_VENDOR_ICONS, modelVendorForSlug } from "./modelVendors.ts";
+
+export { MODEL_VENDOR_ICONS, modelVendorForSlug, type ModelVendor } from "./modelVendors.ts";
+
 /**
  * A provider's instance settings schema. Fields carry `providerSettingsForm`
  * annotations, which the settings form renders generically.
@@ -60,6 +64,21 @@ export interface ProviderClientDefinition {
    * It marks the driver kind, so built-in and custom instances show it alike.
    */
   readonly badgeLabel?: string;
+  /**
+   * The driver routes to several vendors' models, so clients draw each
+   * model's vendor glyph and keep the driver glyph as a corner badge.
+   */
+  readonly modelVendorIcons?: boolean;
+}
+
+/** The vendor glyph to draw for `model`, or `undefined` to draw the driver's own glyph. */
+export function modelVendorIcon(
+  definition: ProviderClientDefinition | undefined,
+  model: string | null | undefined,
+): ProviderIcon | undefined {
+  if (!definition?.modelVendorIcons || !model) return undefined;
+  const vendor = modelVendorForSlug(model);
+  return vendor ? MODEL_VENDOR_ICONS[vendor] : undefined;
 }
 
 export function defineProviderClient<const Definition extends ProviderClientDefinition>(
