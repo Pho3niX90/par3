@@ -379,7 +379,7 @@ function PairingScanCard(props: {
 /**
  * Managed-relay alternative to manual pairing: signed in, the account's
  * published environments connect with a switch; signed out, one row opens the
- * T3 Account sheet.
+ * Par3 Account sheet.
  */
 function T3ConnectSection() {
   const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
