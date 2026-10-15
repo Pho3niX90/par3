@@ -145,6 +145,19 @@ export const make = Effect.gen(function* () {
         return yield* Effect.interrupt;
       }
 
+      // The bridge registers only the renderer scheme. par3:// links need their own
+      // registration; Linux registers every scheme through DesktopLinuxUrlHandler.
+      if (environment.platform !== "linux") {
+        const rendererScheme = ElectronProtocol.getDesktopScheme(environment.isDevelopment);
+        for (const linkScheme of ElectronProtocol.getDesktopLinkSchemes(
+          environment.isDevelopment,
+        )) {
+          if (linkScheme !== rendererScheme) {
+            yield* electronApp.setAsDefaultProtocolClient(linkScheme);
+          }
+        }
+      }
+
       const startProviderAuthHandoff = (value: string | undefined) => {
         if (!value) return false;
         const request = readCodexAuthHandoff(value, environment.isDevelopment);
