@@ -507,7 +507,6 @@ describe("hasUnseenCompletion", () => {
     expect(
       hasUnseenCompletion({
         hasActionableProposedPlan: false,
-        interactionMode: DEFAULT_INTERACTION_MODE,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
         latestRun: makeLatestRun(),
@@ -521,7 +520,6 @@ describe("hasUnseenCompletion", () => {
     expect(
       hasUnseenCompletion({
         hasActionableProposedPlan: false,
-        interactionMode: DEFAULT_INTERACTION_MODE,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
         latestRun: makeLatestRun(),
