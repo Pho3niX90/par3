@@ -507,6 +507,7 @@ describe("hasUnseenCompletion", () => {
     expect(
       hasUnseenCompletion({
         hasActionableProposedPlan: false,
+        interactionMode: DEFAULT_INTERACTION_MODE,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
         latestRun: makeLatestRun(),
@@ -520,6 +521,7 @@ describe("hasUnseenCompletion", () => {
     expect(
       hasUnseenCompletion({
         hasActionableProposedPlan: false,
+        interactionMode: DEFAULT_INTERACTION_MODE,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
         latestRun: makeLatestRun(),
@@ -1225,6 +1227,7 @@ describe("formatWorkingDurationLabel", () => {
 
 describe("resolveThreadStatusPill", () => {
   const baseThread = {
+    interactionMode: DEFAULT_INTERACTION_MODE,
     hasActionableProposedPlan: false,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
@@ -2135,6 +2138,7 @@ describe("Working shelf (beta)", () => {
   const backgroundTask = { taskId: "bg-1", description: "Watch build", kind: "monitor" as const };
   const idle = {
     hasActionableProposedPlan: false,
+    interactionMode: DEFAULT_INTERACTION_MODE,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
     latestRun: makeLatestRun(),
