@@ -972,7 +972,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
         const completedAt = yield* DateTime.now;
         for (const item of turn.items.values()) {
           // Workflows and subagents outlive a completed turn. A stopped or failed
-          // turn ends them in T3 too, as the orchestrator stops following them.
+          // turn ends them in Par3 too, as the orchestrator stops following them.
           if (
             (item.kind === "subagent" || item.kind === "workflow") &&
             item.status === "inProgress" &&
@@ -2311,7 +2311,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
               driver: MUSE_PROVIDER,
               providerThreadId: args.providerThread.id,
               checkpointId: args.target.checkpointId,
-              cause: "Muse Code does not support conversation rollback in T3 Code.",
+              cause: "Muse Code does not support conversation rollback in Par3.",
             }),
           ),
         forkThread: (args) =>
@@ -2319,7 +2319,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
             new ProviderAdapter.ProviderAdapterForkThreadError({
               driver: MUSE_PROVIDER,
               providerThreadId: args.sourceProviderThread.id,
-              cause: "Muse Code does not support native forks in T3 Code.",
+              cause: "Muse Code does not support native forks in Par3.",
             }),
           ),
       };

@@ -7,7 +7,7 @@
  * AGENTS.md / SYSTEM.md context, settings.json, custom models, and auth all
  * load exactly as they do in the `pi` TUI. Sessions are stored by Pi itself
  * (default `~/.pi/agent/sessions/`), and the session file path is the durable
- * `nativeThreadRef`, so a thread started in T3 can be resumed from the TUI
+ * `nativeThreadRef`, so a thread started in Par3 can be resumed from the TUI
  * and vice versa.
  *
  * Turn lifecycle: `agent_settled` is the only terminal signal. `agent_end`
@@ -1176,7 +1176,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       /**
        * Observe the result shape from Pi's official example subagent extension.
        * The extension runs children with --no-session, so these entries are
-       * visible in T3's shared subagent UI without inventing a child thread.
+       * visible in Par3's shared subagent UI without inventing a child thread.
        * Unknown or changed result shapes stay ordinary dynamic tool output.
        */
       const emitSubagentTasks = Effect.fnUntraced(function* (
