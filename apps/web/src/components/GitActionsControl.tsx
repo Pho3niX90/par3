@@ -133,6 +133,11 @@ interface GitActionsControlProps {
   displayMode?: "toolbar" | "panel";
   compact?: boolean;
   onOpenChanges?: () => void;
+  /**
+   * Names a child repository of the thread's folder, shown on the changes row. Its branch is not
+   * the thread's, so actions in it leave the thread's branch alone.
+   */
+  repositoryLabel?: string;
 }
 
 interface PendingDefaultBranchAction {
@@ -999,6 +1004,7 @@ export default function GitActionsControl({
   displayMode = "toolbar",
   compact = false,
   onOpenChanges,
+  repositoryLabel,
 }: GitActionsControlProps) {
   const isPanel = displayMode === "panel";
   const ActionGroup = isPanel ? "div" : Group;
@@ -1065,7 +1071,7 @@ export default function GitActionsControl({
 
   const persistThreadBranchSync = useCallback(
     (branch: string | null, manualSelection = false) => {
-      if (!activeThreadRef) {
+      if (!activeThreadRef || repositoryLabel !== undefined) {
         return;
       }
 
@@ -1106,6 +1112,7 @@ export default function GitActionsControl({
       activeServerThread,
       activeThreadRef,
       draftId,
+      repositoryLabel,
       setDraftThreadContext,
       updateThreadMetadata,
     ],
@@ -1916,7 +1923,25 @@ export default function GitActionsControl({
           onClick={onOpenChanges}
         >
           <FileDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
-          <span className={cn("flex-1 text-left", THREAD_DETAILS_PANEL_LABEL_CLASS)}>Changes</span>
+          {repositoryLabel === undefined ? (
+            <span className={cn("flex-1 text-left", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
+              Changes
+            </span>
+          ) : (
+            <span
+              className={cn(
+                "flex min-w-0 flex-1 gap-1.5 text-left",
+                THREAD_DETAILS_PANEL_LABEL_CLASS,
+              )}
+            >
+              <span className="truncate">{repositoryLabel}</span>
+              {gitStatusForActions?.refName ? (
+                <span className="truncate text-muted-foreground">
+                  {gitStatusForActions.refName}
+                </span>
+              ) : null}
+            </span>
+          )}
           <span className="flex items-center gap-1 font-mono text-2xs tabular-nums">
             <span className="text-success">+{formatDiffCount(changesTotals?.insertions ?? 0)}</span>
             <span className="text-destructive">

@@ -1154,7 +1154,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         );
 
         // T3CODE_OTLP_TRACES_URL wins over the OTEL variable for the same
-        // signal, and keeps T3 Code's own headers since T3 Code still owns it.
+        // signal, and keeps Par3's own headers since Par3 still owns it.
         expect(resolved.otlpTracesUrl).toBe("http://t3:4318/v1/traces");
         expect(resolved.otlpTracesExport.headers).toEqual({ "x-key": "secret" });
         // Metrics named no T3CODE_OTLP_METRICS_URL, so the OTEL endpoint wins
@@ -1221,7 +1221,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         // T3CODE_OTLP_TRACES_URL still wins outright.
         expect(resolved.otlpTracesUrl).toBe("http://t3:4318/v1/traces");
         // The OTEL endpoint claimed metrics and logs, so neither the bootstrap
-        // envelope nor Settings receives them with T3 Code's headers.
+        // envelope nor Settings receives them with Par3's headers.
         expect(resolved.otlpMetricsUrl).toBeUndefined();
         expect(resolved.otlpLogsUrl).toBeUndefined();
       }),

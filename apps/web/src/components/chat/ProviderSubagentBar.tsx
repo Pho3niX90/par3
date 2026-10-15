@@ -20,6 +20,8 @@ export function ProviderSubagentBar(props: {
   readonly provider: ProviderInstanceEntry | null;
   /** Several accounts on this provider: badge the glyph, as the composer does. */
   readonly showInstanceBadge: boolean;
+  /** The subagent's model slug, so multi-vendor drivers such as Copilot draw the vendor's glyph. */
+  readonly model: string | undefined;
   readonly modelLabel: string;
   /** Reasoning effort as the composer names it, when the subagent has one. */
   readonly effortLabel: string | null;
@@ -59,6 +61,7 @@ export function ProviderSubagentBar(props: {
           <ProviderInstanceIcon
             driverKind={props.provider.driverKind}
             displayName={props.provider.displayName}
+            model={props.model}
             accentColor={props.provider.accentColor}
             acpRegistryAgentId={props.provider.acpRegistryAgentId}
             acpRegistryIconUrl={props.provider.acpRegistryIconUrl}

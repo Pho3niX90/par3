@@ -1,7 +1,7 @@
-# T3 Code Mobile
+# Par3 Mobile
 
 > [!WARNING]
-> T3 Code Mobile is currently in development and is not distributed yet. If you want to try it out, you can build it from source.
+> Par3 Mobile is currently in development and is not distributed yet. If you want to try it out, you can build it from source.
 
 ## Quickstart
 
@@ -10,9 +10,9 @@
 
 This app has three variants:
 
-- `development`: Expo dev client, installable side-by-side as `T3 Code Dev`
-- `preview`: persistent internal preview build, installable side-by-side as `T3 Code Preview`
-- `production`: store/release build as `T3 Code`
+- `development`: Expo dev client, installable side-by-side as `Par3 Dev`
+- `preview`: persistent internal preview build, installable side-by-side as `Par3 Preview`
+- `production`: store/release build as `Par3`
 
 Run commands from `apps/mobile`.
 
