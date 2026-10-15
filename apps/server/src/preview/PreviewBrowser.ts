@@ -312,7 +312,7 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
     },
     Effect.scoped,
     Effect.mapError(
-      wrapFailure("Could not unpack the browser. Check free disk space in T3's home directory."),
+      wrapFailure("Could not unpack the browser. Check free disk space in Par3's home directory."),
     ),
   );
 
@@ -363,7 +363,7 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
       );
       return path.join(installRoot, release.version, executableName);
     },
-    Effect.mapError(wrapFailure("Could not save the browser in T3's home directory.")),
+    Effect.mapError(wrapFailure("Could not save the browser in Par3's home directory.")),
   );
 
   // Joins the current install or starts one. A failure is reported once, then cleared.

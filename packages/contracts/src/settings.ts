@@ -441,6 +441,12 @@ export const ClientSettingsSchema = Schema.Struct({
     TrimmedNonEmptyString,
     PullRequestMergeMethod,
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  /**
+   * Whether clicking a pull request link opens T3 Code's pull request view.
+   * When false, pull request links open like any other link, so they reach
+   * GitHub or the repository's other host.
+   */
+  pullRequestLinksOpenInApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Plan mode: the composer's Build/Plan toggle, /plan and /default, and its
   // keybinding. Off sends every turn in build mode. Deliberately a fresh key
   // (was the opt-in legacy `planModeEnabled`), so everyone starts with it on.
@@ -1779,6 +1785,7 @@ export const ClientSettingsPatch = Schema.Struct({
   pullRequestMergeMethodOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, PullRequestMergeMethod),
   ),
+  pullRequestLinksOpenInApp: Schema.optionalKey(Schema.Boolean),
   composerPlanModeEnabled: Schema.optionalKey(Schema.Boolean),
   contextWindowMeterEnabled: Schema.optionalKey(Schema.Boolean),
   composerCollapseOnScroll: Schema.optionalKey(Schema.Boolean),

@@ -653,7 +653,6 @@ type ThreadStatusInput = Pick<
   | "hasPendingApprovals"
   | "hasPendingUserInput"
   | "pendingSubagentRequest"
-  | "interactionMode"
   | "latestRun"
   | "runtime"
 > & {

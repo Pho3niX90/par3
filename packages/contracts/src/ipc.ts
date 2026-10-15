@@ -1254,7 +1254,7 @@ export interface DesktopBridge {
   };
   /** Present when the desktop shell accepts `t3 app` activation requests. */
   /**
-   * Web links the OS opens with T3 Code as the default browser (macOS). The
+   * Web links the OS opens with Par3 as the default browser (macOS). The
    * renderer reports when it listens; links queue in the main process until then.
    */
   webLinks?: {
