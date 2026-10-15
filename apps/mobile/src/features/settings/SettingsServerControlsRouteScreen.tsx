@@ -26,6 +26,7 @@ import {
   SettingsEnvironmentFilterHeader,
 } from "./components/SettingsEnvironmentFilterHeader";
 import { BranchNamingSettings } from "./components/BranchNamingSettings";
+import { JiraSettings } from "./components/JiraSettings";
 import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
@@ -162,6 +163,14 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
   const reference = displayTargets[0] ?? null;
   const uniform = <K extends keyof ServerSettings>(key: K) =>
     uniformMobileSetting(displayTargets, key);
+  // Object and array settings arrive as fresh values per target, so compare their contents.
+  const uniformJson = <K extends keyof ServerSettings>(key: K): ServerSettings[K] | null => {
+    if (reference === null) return null;
+    const value = JSON.stringify(reference.settings[key]);
+    return displayTargets.every((entry) => JSON.stringify(entry.settings[key]) === value)
+      ? reference.settings[key]
+      : null;
+  };
   // `uniform` folds a real null into "mixed"; nullable keys need the distinction.
   const isMixed = (key: keyof ServerSettings) =>
     reference === null ||
@@ -356,6 +365,16 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                     prefix={uniform("branchNamePrefix")}
                     instructions={uniform("branchNameInstructions")}
                     disabled={disabledFor("branchNamingMode")}
+                    onChange={write}
+                  />
+                  <JiraSettings
+                    key={`jira:${targets
+                      .map((target) => `${target.environment.environmentId}:${target.projectId}`)
+                      .join(",")}`}
+                    jira={uniformJson("jira")}
+                    projectKeys={uniformJson("jiraProjectKeys")}
+                    siteDisabled={disabledFor("jira")}
+                    projectKeysDisabled={disabledFor("jiraProjectKeys")}
                     onChange={write}
                   />
                   <SettingsSection title="Pull requests">

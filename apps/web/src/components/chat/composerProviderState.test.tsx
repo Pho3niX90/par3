@@ -179,7 +179,7 @@ describe("getComposerProviderState", () => {
     expect(state.modelOptionsForDispatch).toEqual(selections(["agent", "plan"]));
   });
 
-  it("drops the plan agent from dispatch when legacy plan mode is disabled", () => {
+  it("drops the plan agent from dispatch when plan mode is disabled", () => {
     const state = getComposerProviderState({
       provider: PROVIDER,
       model: MODEL,

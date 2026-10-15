@@ -6,7 +6,7 @@
  * are discovered through a short-lived ephemeral RPC session
  * (`pi --mode rpc --no-session`), so everything the user configured in
  * `~/.pi/agent` — custom providers, models.json entries, extensions, skills —
- * shows up in T3 without any hardcoded catalog.
+ * shows up in Par3 without any hardcoded catalog.
  */
 import {
   type CustomModelSetting,
@@ -242,7 +242,7 @@ export function buildInitialPiProviderSnapshot(
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Pi is disabled in T3 Code settings.",
+          message: "Pi is disabled in Par3 settings.",
         },
       });
     }
@@ -281,7 +281,7 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Pi is disabled in T3 Code settings.",
+        message: "Pi is disabled in Par3 settings.",
       },
     });
   }
@@ -356,7 +356,7 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
         version: null,
         status: "error",
         auth: { status: "unknown" },
-        message: `T3 Code could not determine the Pi version. Pi ${MINIMUM_PI_VERSION} or newer is required.`,
+        message: `Par3 could not determine the Pi version. Pi ${MINIMUM_PI_VERSION} or newer is required.`,
       },
     });
   }
@@ -415,7 +415,7 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
         status: "ready",
         auth: { status: "unknown" },
         message:
-          "Pi is available, but T3 Code could not refresh its models and commands. The live session will retry startup.",
+          "Pi is available, but Par3 could not refresh its models and commands. The live session will retry startup.",
       },
     });
   }

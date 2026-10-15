@@ -20,6 +20,17 @@ export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
 }
 
+/**
+ * Every scheme the OS should hand to this app: the renderer scheme, which also carries
+ * links from upstream T3 Code, and par3:// for Par3 links. The renderer itself stays on
+ * t3code://app because existing installs keep their browser storage under that origin.
+ */
+export function getDesktopLinkSchemes(isDevelopment: boolean): readonly string[] {
+  return isDevelopment
+    ? [DESKTOP_DEVELOPMENT_SCHEME, "par3-dev"]
+    : [DESKTOP_PRODUCTION_SCHEME, "par3"];
+}
+
 function getDesktopOrigin(isDevelopment: boolean): string {
   return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}`;
 }

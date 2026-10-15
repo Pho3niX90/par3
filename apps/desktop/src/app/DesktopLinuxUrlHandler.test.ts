@@ -28,7 +28,7 @@ const makeEnvironment = (path: Path.Path, overrides: Record<string, unknown> = {
     platform: "linux",
     isPackaged: true,
     isDevelopment: false,
-    displayName: "T3 Code (Alpha)",
+    displayName: "Par3 (Alpha)",
     linuxDesktopEntryName: "com.t3tools.T3Code.desktop",
     linuxWmClass: "t3code",
     linuxApplicationsDir: "/home/alice/.local/share/applications",
@@ -160,14 +160,14 @@ const emptyRecording = (): RecordedRegistration => ({
 describe("DesktopLinuxUrlHandler", () => {
   it("renders a scheme-handler desktop entry with freedesktop Exec quoting", () => {
     const entry = DesktopLinuxUrlHandler.renderUrlHandlerDesktopEntry({
-      displayName: "T3 Code (Nightly)",
+      displayName: "Par3 (Nightly)",
       execTarget: '/home/al ice/Apps/T3 "100%" $HOME\\x.AppImage',
-      scheme: "t3code",
+      schemes: ["t3code", "par3"],
       iconPath: "/home/al ice/icons/T3\\x.png",
     });
 
     assert.include(entry, "[Desktop Entry]");
-    assert.include(entry, "Name=T3 Code (Nightly)");
+    assert.include(entry, "Name=Par3 (Nightly)");
     // Exec composes both escaping layers: a literal backslash becomes four
     // backslashes in the file, a quote three characters, a dollar sign two
     // backslashes plus the sign.
@@ -177,7 +177,7 @@ describe("DesktopLinuxUrlHandler", () => {
     );
     assert.include(entry, "NoDisplay=true");
     assert.notInclude(entry, "StartupWMClass=");
-    assert.include(entry, "MimeType=x-scheme-handler/t3code;");
+    assert.include(entry, "MimeType=x-scheme-handler/t3code;x-scheme-handler/par3;");
     assert.include(entry, "Icon=/home/al ice/icons/T3\\\\x.png");
   });
 
@@ -226,7 +226,10 @@ describe("DesktopLinuxUrlHandler", () => {
           recorded.files[0]?.content,
           'Exec="/home/alice/Applications/T3-Code.AppImage" %U',
         );
-        assert.include(recorded.files[0]?.content, "MimeType=x-scheme-handler/t3code;");
+        assert.include(
+          recorded.files[0]?.content,
+          "MimeType=x-scheme-handler/t3code;x-scheme-handler/par3;",
+        );
         assert.deepEqual(recorded.commands, [
           {
             command: "update-desktop-database",
@@ -234,7 +237,12 @@ describe("DesktopLinuxUrlHandler", () => {
           },
           {
             command: "xdg-mime",
-            args: ["default", "com.t3tools.T3Code.desktop", "x-scheme-handler/t3code"],
+            args: [
+              "default",
+              "com.t3tools.T3Code.desktop",
+              "x-scheme-handler/t3code",
+              "x-scheme-handler/par3",
+            ],
           },
         ]);
       });
@@ -260,9 +268,9 @@ describe("DesktopLinuxUrlHandler", () => {
     return Effect.gen(function* () {
       yield* runRegister(recorded, {
         existingEntry: DesktopLinuxUrlHandler.renderUrlHandlerDesktopEntry({
-          displayName: "T3 Code (Alpha)",
+          displayName: "Par3 (Alpha)",
           execTarget: "/home/alice/Applications/T3-Code.AppImage",
-          scheme: "t3code",
+          schemes: ["t3code", "par3"],
           iconPath: "/home/alice/.local/share/icons/com.t3tools.T3Code.desktop.png",
         }),
       });
@@ -276,7 +284,12 @@ describe("DesktopLinuxUrlHandler", () => {
         },
         {
           command: "xdg-mime",
-          args: ["default", "com.t3tools.T3Code.desktop", "x-scheme-handler/t3code"],
+          args: [
+            "default",
+            "com.t3tools.T3Code.desktop",
+            "x-scheme-handler/t3code",
+            "x-scheme-handler/par3",
+          ],
         },
       ]);
     });
@@ -289,9 +302,9 @@ describe("DesktopLinuxUrlHandler", () => {
       yield* runRegister(recorded, {
         iconSource: "/tmp/.mount_T3/resources/icon.png",
         existingEntry: DesktopLinuxUrlHandler.renderUrlHandlerDesktopEntry({
-          displayName: "T3 Code (Alpha)",
+          displayName: "Par3 (Alpha)",
           execTarget: "/home/alice/Applications/T3-Code.AppImage",
-          scheme: "t3code",
+          schemes: ["t3code", "par3"],
           iconPath,
         }),
       });

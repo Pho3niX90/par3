@@ -29,6 +29,10 @@ workspace, and `mod+shift+g` for the Git branch. The workspace menu includes the
 current checkout, a new worktree, and the previous worktree when available.
 Use `mod+shift+l` to reuse the previous worktree directly.
 
+`Shift+Tab` switches the composer between Build and [Plan](./composer.md#plan-mode).
+It works while the composer is focused, and inside a code block it still outdents.
+Change it under **Composer: Toggle Plan Mode**.
+
 In the model picker, press Left in an empty search field or Shift+Tab to reach
 the provider list. Use Up/Down to move and Enter to choose. Right returns to
 model search. `mod+shift+up` and `mod+shift+down` switch providers directly and clear the
@@ -83,10 +87,10 @@ It is a JSON array of rules:
 ]
 ```
 
-T3 Code creates the file with its defaults and adds new defaults on later startups.
+Par3 creates the file with its defaults and adds new defaults on later startups.
 New defaults do not replace commands you customized. If a new default overlaps one
 of your shortcuts, [rule order](#precedence) decides which runs.
-Invalid rules are ignored; if the file cannot be parsed, T3 Code uses defaults.
+Invalid rules are ignored; if the file cannot be parsed, Par3 uses defaults.
 
 ## Rule shape
 

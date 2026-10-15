@@ -1652,6 +1652,37 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect("keeps the Jira API token in the secret store and redacts it for clients", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+
+      const saved = yield* serverSettings.updateSettings({
+        jira: { baseUrl: "https://company.atlassian.net", apiToken: "jira-secret" },
+      });
+      assert.equal(saved.jira.apiToken, "jira-secret");
+      assert.notInclude(yield* fileSystem.readFileString(serverConfig.settingsPath), "jira-secret");
+      assert.equal(
+        ServerSettingsModule.redactServerSettingsForClient(saved).jira.apiToken.includes(
+          "jira-secret",
+        ),
+        false,
+      );
+
+      // A client echoes the redaction marker back with other edits; the token survives.
+      const redacted = ServerSettingsModule.redactServerSettingsForClient(saved).jira.apiToken;
+      const kept = yield* serverSettings.updateSettings({
+        jira: { email: "dev@company.test", apiToken: redacted },
+      });
+      assert.equal(kept.jira.apiToken, "jira-secret");
+
+      const cleared = yield* serverSettings.updateSettings({ jira: { apiToken: "" } });
+      assert.equal(cleared.jira.apiToken, "");
+      assert.equal((yield* serverSettings.getSettings).jira.apiToken, "");
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("stores sensitive provider instance environment values outside settings.json", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

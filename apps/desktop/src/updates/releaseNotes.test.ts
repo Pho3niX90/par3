@@ -136,6 +136,30 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
     expect(result.releaseNotes.map(({ version }) => version)).toEqual(["0.0.42"]);
   });
 
+  it("reads a fork build's commit list and skips its build summary", () => {
+    // The HTML GitHub's release feed serves for fork-windows-build.yml's notes.
+    const result = normalizeDesktopUpdateReleaseNotes(
+      [
+        "<h2>What's new</h2>",
+        "<ul><li>feat: older change (<code>1111111</code>)</li>",
+        "<li>fix: newer change (<code>2222222</code>)</li></ul>",
+        "<h2>Full changelog</h2>",
+        '<p><a href="https://github.com/example/t3code/compare/a...b">compare</a></p>',
+        "<p>Unsigned Windows x64 build of feature/example at abc.</p>",
+      ].join(""),
+      "0.0.140",
+      "latest",
+    );
+
+    expect(result.releaseNotes).toEqual([
+      {
+        version: "0.0.140",
+        items: ["fix: newer change (2222222)", "feat: older change (1111111)"],
+        totalItems: 2,
+      },
+    ]);
+  });
+
   it("counts valid groups before applying the six-release limit", () => {
     const releaseNotes = [
       { version: "1.3.9", note: "- Change 9" },

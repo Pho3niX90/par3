@@ -442,6 +442,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["command menu dollar $ slash /"],
   },
   {
+    id: "plan-mode",
+    title: "Plan mode",
+    to: "/settings/general",
+    searchTerms: ["build plan composer toggle /plan /default shift tab"],
+  },
+  {
     id: "composer-rich-text",
     title: "Rich text composer",
     to: "/settings/general",
@@ -594,12 +600,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "open-source-licenses",
     title: "Open source licenses",
     to: "/settings/general",
-  },
-  {
-    id: "legacy-plan-mode",
-    title: "Plan mode (legacy)",
-    to: "/settings/general",
-    searchTerms: ["build plan composer old"],
   },
   {
     id: "legacy-context-window-indicator",
@@ -779,10 +779,27 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["links default browser in-app browser external open"],
   },
   {
+
     id: "pull-request-links-open-in-app",
     title: "Open pull requests in T3 Code",
     to: "/settings/integrations",
     searchTerms: ["pr links github browser external click default pull request view panel"],
+  },
+  {
+    id: "jira-site",
+    title: "Jira site",
+    to: "/settings/integrations",
+    searchTerms: ["jira atlassian issue ticket story url api token email"],
+    environmentOnly: true,
+    scope: "environment",
+  },
+  {
+    id: "jira-project-keys",
+    title: "Jira project keys",
+    to: "/settings/integrations",
+    searchTerms: ["jira issue key detect branch story ticket"],
+    environmentOnly: true,
+    scope: "project-defaults",
   },
   {
     id: "browser-auto-show-floating-preview",

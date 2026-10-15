@@ -1,6 +1,6 @@
 # Source control
 
-T3 Code integrates with GitHub, GitLab, Forgejo, Gitea, Bitbucket, Azure DevOps, and GitCafe to clone
+Par3 integrates with GitHub, GitLab, Forgejo, Gitea, Bitbucket, Azure DevOps, and GitCafe to clone
 and publish repositories, create pull requests, and review changes.
 
 ## Review turn changes
@@ -10,15 +10,21 @@ rebases, the files Git brought in are left out. A file stays in the list when th
 committed it, or fixed a conflict in it. Use the branch comparison to review everything that changed
 against your base branch. Restore still returns the complete saved workspace.
 
+A project can also be a plain folder that holds several repositories. The thread details card then
+lists each repository inside it that the thread edited, with its branch, changes, and Git actions,
+and the diff can switch between them. Only uncommitted and branch changes are shown there; turn diffs
+and restore need the project folder itself to be a repository. Repositories changed only through
+shell commands are not listed.
+
 ## Connect an account
 
-Install Git and configure authentication on the machine running your T3 Code server. For a remote
+Install Git and configure authentication on the machine running your Par3 server. For a remote
 environment, do this on the remote machine. After signing in, open **Settings → Source Control**
 and choose **Rescan**.
 
 ### GitHub
 
-T3 Code talks to GitHub's API directly and only needs a token. Any of these works, in this
+Par3 talks to GitHub's API directly and only needs a token. Any of these works, in this
 order of precedence:
 
 1. A token saved in **Settings → Source Control → GitHub**. It is kept in the server's secret
@@ -31,17 +37,17 @@ If `gh` is signed in to several accounts or hosts, expand **GitHub** in the same
 the account each host uses or turn a host off. A saved token or `GH_TOKEN` takes precedence
 over that choice; a host turned off stays off either way.
 
-For GitHub Enterprise, sign in with `gh auth login --hostname YOUR_HOST`. T3 Code treats a
+For GitHub Enterprise, sign in with `gh auth login --hostname YOUR_HOST`. Par3 treats a
 custom server name as GitHub once it has a credential for that host.
 
 ### Forgejo and Gitea
 
 Install [Forgejo CLI (`fj`)](https://codeberg.org/forgejo-contrib/forgejo-cli) or
-[Gitea CLI (`tea`)](https://gitea.com/gitea/tea) 0.16 or later on your T3 Code server.
+[Gitea CLI (`tea`)](https://gitea.com/gitea/tea) 0.16 or later on your Par3 server.
 Sign in with `fj --host https://your-server auth add-token` or `tea login add`.
 Repeat for each server you use, including Codeberg.
 
-T3 Code prefers a matching `fj` login and falls back to `tea` when `fj` is unavailable
+Par3 prefers a matching `fj` login and falls back to `tea` when `fj` is unavailable
 or has no login for that server. Once an account is selected, failed actions stay on that
 account. Settings shows the detected CLI. Forgejo and Gitea share one integration entry.
 Servers hosted under a URL subpath, such as `https://example.com/forgejo`, use `tea` because
@@ -77,7 +83,7 @@ Credentials are saved on the environment's server, so select a remote environmen
 it. Saved tokens can't be viewed again; enter a new one to replace it, or choose **Remove** to clear
 everything saved for Bitbucket.
 
-If no credentials are saved, T3 Code falls back to these variables in the server's environment.
+If no credentials are saved, Par3 falls back to these variables in the server's environment.
 Restart the server after changing them:
 
 ```bash
@@ -117,7 +123,7 @@ Merging a stack lands it through GitCafe, and updating a branch restacks the lay
 ## Start, clone, or publish a project
 
 To start from nothing, choose **New project** in the command palette (`Cmd/Ctrl+K`), or
-**New project** under **Add Project** on any client, and type a name. T3 Code makes a Git
+**New project** under **Add Project** on any client, and type a name. Par3 makes a Git
 repository in `~/.t3/projects` (the `projects` folder of your T3 data directory) with a README,
 an icon, and a first commit, then opens a new thread in it. Until the project has a thread, new
 threads work in its folder, even when your default is a new worktree. The folder is named after the project,
@@ -137,7 +143,7 @@ make your first commit before pushing.
 
 ## Create a pull request
 
-Use a thread's Git actions to commit, push, and create a pull request. T3 Code can generate commit
+Use a thread's Git actions to commit, push, and create a pull request. Par3 can generate commit
 messages, review titles, and descriptions from your changes.
 
 An existing fork PR can appear beside the branch even if you pushed without setting an upstream.
@@ -234,10 +240,10 @@ Tick a file off in the **Code** tab once you have read it and it collapses; the 
 running count. A tick belongs to the pull request rather than to a commit, so scoping the tab to a
 single commit keeps them. A file pushed to after you cleared it comes back marked **Changed**.
 
-On GitHub these are GitHub's own viewed marks, so a review carries between T3 Code and github.com
-in either direction. Forgejo, GitLab, Bitbucket, and Azure DevOps expose no record T3 Code can read, so the
+On GitHub these are GitHub's own viewed marks, so a review carries between Par3 and github.com
+in either direction. Forgejo, GitLab, Bitbucket, and Azure DevOps expose no record Par3 can read, so the
 server you are connected to keeps them instead: they follow you across the apps connected to that
-server, but the host's own site will not show them, and the count reads **viewed in T3 Code**.
+server, but the host's own site will not show them, and the count reads **viewed in Par3**.
 
 On mobile, open a changed file and mark it viewed from its header. Viewed files collapse,
 and their marks follow the same rules as on web and desktop.
@@ -293,6 +299,28 @@ returns to your inbox.
 
 Cross-repository links use a project on the same host. Azure DevOps reviews require a project checked
 out from the matching organization and repository.
+
+## Jira issues
+
+Set your Jira site in **Settings → Integrations → Jira** (on mobile, in the server's source control
+settings), for example `https://company.atlassian.net`. When a thread's branch name contains an issue key such as
+`feature/ABC-123-login`, the thread details card and the mobile Git overview show the issue under the
+branch. Click it to open the issue in Jira.
+
+To also see each issue's summary and status, add an API token. For Jira Cloud, enter your account
+email and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens). For Jira
+Server or Data Center, leave the email empty and enter a personal access token. The token stays on
+the server.
+
+By default only uppercase keys in branch names count, so `ABC-123` works but `abc-123` does not.
+Add **Jira project keys** to match those projects in any case, and in pull request titles too.
+With project keys set, issue keys in chat messages also link to their issues, and the latest few
+issues the chat mentions appear under the branch too, or on their own in a project folder that is
+not a repository. Projects can set their own keys.
+
+Markdown files in the workspace whose path names an issue, such as `docs/ABC-123-plan.md`, appear
+under that issue so you can open them from the thread details card. The list refreshes when a turn
+finishes. Files in folders Git ignores do not appear.
 
 ## GitHub stacks
 

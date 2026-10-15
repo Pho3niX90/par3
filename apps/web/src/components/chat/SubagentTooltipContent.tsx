@@ -126,6 +126,9 @@ export function SubagentTooltipContent(props: {
           <ProviderInstanceIcon
             driverKind={driver}
             displayName={entry?.displayName ?? props.provider?.displayName ?? driver}
+            model={childModel ?? model}
+            // Too small for a driver badge; the card names the provider.
+            showDriverBadge={false}
             accentColor={entry?.accentColor}
             acpRegistryIconUrl={props.provider?.iconUrl}
             // Same treatment as the sidebar card: accent dot, account in the label.

@@ -5,11 +5,15 @@ import {
   type ServerProvider,
   type ServerSettings,
 } from "@t3tools/contracts";
+import { CopilotSettings } from "@t3tools/provider-copilot/settings";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 const decodeClaudeSettings = Schema.decodeUnknownOption(ClaudeSettings);
 const decodeCodexSettings = Schema.decodeUnknownOption(CodexSettings);
+const decodeCopilotSettings = Schema.decodeUnknownOption(CopilotSettings);
+/** A hostname or URL that is safe to pass to `copilot login --host` without quoting. */
+const SAFE_COPILOT_HOST_PATTERN = /^[A-Za-z0-9._:/-]+$/;
 const SAFE_SHELL_BINARY_PATTERN = /^[A-Za-z0-9_./:\\-]+$/;
 
 function quoteProviderBinary(
@@ -74,9 +78,9 @@ export function selectOnboardingProvidersByDriver(
 }
 
 /**
- * Official standalone installers. Neither needs Node or npm, and both land in
- * the paths the server's provider maintenance recognizes as native, so the
- * one-click updater in Settings keeps working after install.
+ * Official installers. The Codex and Claude standalone installers need neither Node nor npm, and
+ * land in the paths the server's provider maintenance recognizes as native, so the one-click
+ * updater in Settings keeps working after install. Copilot's CLI is installed through npm.
  */
 const NATIVE_INSTALL_COMMANDS = {
   claudeAgent: {
@@ -86,6 +90,10 @@ const NATIVE_INSTALL_COMMANDS = {
   codex: {
     windows: "irm https://chatgpt.com/codex/install.ps1 | iex",
     posix: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+  },
+  copilot: {
+    windows: "npm install -g @github/copilot",
+    posix: "npm install -g @github/copilot",
   },
 } as const;
 
@@ -123,5 +131,27 @@ export function resolveOnboardingProviderLoginCommand(
     return `${quoteProviderBinary(binaryPath, "codex", platform)} login`;
   }
 
+  if (provider.driver === "copilot") {
+    const config = decodeCopilotSettings(instance?.config ?? {});
+    const binaryPath = Option.isSome(config) ? config.value.binaryPath : "copilot";
+    const host = Option.isSome(config) ? config.value.enterpriseUrl?.trim() : undefined;
+    const hostArguments = host && SAFE_COPILOT_HOST_PATTERN.test(host) ? ` --host ${host}` : "";
+    return `${quoteProviderBinary(binaryPath, "copilot", platform)} login${hostArguments}`;
+  }
+
   return provider.driver;
+}
+
+/**
+ * Copilot's sign-in cannot be read without opening a session, so a working CLI reports unknown
+ * authentication. Onboarding offers sign-in there instead of claiming the provider is signed in.
+ */
+export function onboardingProviderOffersOptionalSignIn(
+  provider: ServerProvider | undefined,
+): boolean {
+  return (
+    provider?.driver === "copilot" &&
+    provider.auth.status === "unknown" &&
+    getOnboardingProviderState(provider) === "ready"
+  );
 }
