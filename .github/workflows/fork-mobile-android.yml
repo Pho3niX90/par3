@@ -14,13 +14,13 @@ on:
         type: boolean
         default: false
       track:
-        description: Play track to upload to
+        description: Play track to upload to (beta is open testing)
         type: choice
-        default: internal
+        default: beta
         options:
+          - beta
           - internal
           - alpha
-          - beta
           - production
 
 concurrency:
