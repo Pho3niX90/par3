@@ -22,7 +22,8 @@ permissions:
   statuses: write
 
 concurrency:
-  group: relay-production
+  # The fork's own group: the shared name was left holding a stale lock on GitHub.
+  group: relay-production${{ github.repository_owner != 'pingdotgg' && '-par3' || '' }}
   cancel-in-progress: false
 
 jobs:
