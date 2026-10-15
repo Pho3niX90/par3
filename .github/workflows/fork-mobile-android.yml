@@ -41,7 +41,6 @@ jobs:
     env:
       APP_VARIANT: production
       EXPO_NO_GIT_STATUS: "1"
-      T3CODE_ANDROID_VERSION_CODE: ${{ 1000 + github.run_number }}
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ vars.CLERK_JWT_TEMPLATE }}
       T3CODE_RELAY_URL: ${{ vars.RELAY_URL }}
@@ -53,6 +52,10 @@ jobs:
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
+
+      # Play needs a strictly increasing version code; expressions can't do arithmetic.
+      - name: Set the Play version code
+        run: echo "T3CODE_ANDROID_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
       - name: Setup Java
         uses: actions/setup-java@v4
