@@ -11778,6 +11778,7 @@ export default function ChatView(props: ChatViewProps) {
                                   providerInstanceEntries,
                                 )
                               }
+                              model={activeThread?.modelSelection.model}
                               modelLabel={providerSubagentModelLabel}
                               effortLabel={providerSubagentEffortLabel}
                               status={providerSubagentStatus}

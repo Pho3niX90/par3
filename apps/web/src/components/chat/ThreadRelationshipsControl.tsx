@@ -528,6 +528,7 @@ export function ThreadRelationshipsPanel(props: {
                   <ThreadRelationshipIcon
                     driver={isSubagent && !isParent ? providerDriver : undefined}
                     provider={provider}
+                    model={agent?.model ?? agent?.modelSelection?.model}
                     fallbackIcon={RelationshipIcon}
                     status={rowStatus}
                   />

@@ -46,11 +46,14 @@ export function threadRelationshipStatusLabel(status: string | null): string {
 export function ThreadRelationshipIcon({
   driver,
   provider,
+  model,
   status,
   fallbackIcon: FallbackIcon = BotIcon,
 }: {
   driver?: ProviderDriverKind | undefined;
   provider?: ServerProvider | undefined;
+  /** The subagent's model, so multi-vendor drivers such as Copilot draw the vendor's glyph. */
+  model?: string | null | undefined;
   status: string | null;
   fallbackIcon?: LucideIcon;
 }) {
@@ -61,9 +64,12 @@ export function ThreadRelationshipIcon({
         <ProviderInstanceIcon
           driverKind={driver}
           displayName={provider?.displayName ?? driver}
+          model={model ?? undefined}
           acpRegistryIconUrl={provider?.iconUrl}
           iconClassName={iconClassName}
           className="z-auto"
+          // The status dot owns the bottom-right corner.
+          badgeClassName="top-[-0.25rem] right-[-0.25rem] bottom-auto h-3 min-w-3 px-0.5 text-5xs"
         />
       ) : (
         <FallbackIcon className={iconClassName} />
