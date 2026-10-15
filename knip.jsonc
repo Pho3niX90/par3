@@ -93,7 +93,8 @@
       "entry": ["src/*NativeComponent.ts!"],
     },
     "infra/relay": {
-      "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!"],
+      // drizzle.self-hosted.config.ts is run by deploy-relay.yml through drizzle-kit.
+      "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!", "drizzle.self-hosted.config.ts!"],
     },
     "packages/*": {
       // These workspace packages are private to this monorepo.

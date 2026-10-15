@@ -134,7 +134,7 @@ export const layer = Api.make(
     const relayApiZone = yield* RelayApiZone;
     const managedEndpointZone = yield* ManagedEndpointZone;
     const randomApnsDeliveryJobSigningSecret = yield* ApnsDeliveryJobSigningSecret;
-    yield* RelayObservability;
+    if (yield* Observability.relayAxiomEnabled) yield* RelayObservability;
 
     //
     // 2. Create bindings
@@ -482,13 +482,15 @@ export const layer = Api.make(
         // HookInboxObject calls and alarms) exports through it to Axiom.
         Layer.provideMerge(
           Layer.unwrap(
-            Effect.map(RelayObservability, (observability) =>
-              Axiom.Telemetry({
+            Effect.gen(function* () {
+              if (!(yield* Observability.relayAxiomEnabled)) return Layer.empty;
+              const observability = yield* RelayObservability;
+              return Axiom.Telemetry({
                 serviceName: "t3code-relay",
                 token: observability.workerIngestToken,
                 traces: observability.traces,
-              }),
-            ),
+              });
+            }),
           ),
         ),
       ),

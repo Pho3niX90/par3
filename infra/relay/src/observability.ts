@@ -2,6 +2,7 @@ import * as Alchemy from "alchemy";
 import * as Axiom from "alchemy/Axiom";
 import * as Output from "alchemy/Output";
 import * as Cause from "effect/Cause";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
@@ -20,6 +21,15 @@ const relayRecentSpansQuery = (dataset: string) =>
     `| order by _time desc`,
     `| limit 200`,
   ].join("\n");
+
+/**
+ * Axiom is the relay's only trace sink. A deploy without an Axiom account sets
+ * RELAY_AXIOM_ENABLED=false: no Axiom resources, no exported spans, and the
+ * client tracing config is published empty.
+ */
+export const relayAxiomEnabled = Config.Boolean("RELAY_AXIOM_ENABLED").pipe(
+  Config.withDefault(true),
+);
 
 export const RelayObservability = Effect.gen(function* () {
   const { stage } = yield* Alchemy.Stack;

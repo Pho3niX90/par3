@@ -78,7 +78,7 @@ export class NoRunningServerError extends Schema.TaggedError<NoRunningServerErro
     return [
       "No running Par3 server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
-      "Start one with `npx t3 serve`, or connect this machine with T3 Connect: `npx t3 connect`.",
+      "Start one with `npx @paritylabs/par3 serve`, or connect this machine with T3 Connect: `npx @paritylabs/par3 connect`.",
     ].join("\n");
   }
 }

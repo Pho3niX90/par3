@@ -18,9 +18,13 @@ import { toastManager } from "./ui/toast";
 // still V1 and cannot connect to a V2 server, so Nightly users need the V2 beta
 // app. Delete this file when the store apps move to V2. See #14871.
 
-/** True on Nightly desktop, `npx t3@nightly`, and the hosted Nightly app. */
+/** True on Nightly desktop, `npx @paritylabs/par3@nightly`, and the hosted Nightly app. */
 export const IS_NIGHTLY_BUILD =
   parseSemver(APP_VERSION)?.prerelease[0] === "nightly" || HOSTED_APP_CHANNEL === "nightly";
+
+// Par3 has no beta mobile channel yet, and the links below are upstream T3 Code's beta
+// apps, so the notice and row stay hidden until Par3 publishes its own.
+const PAR3_BETA_APP_AVAILABLE = false;
 
 const IOS_TESTFLIGHT_URL = "https://testflight.apple.com/join/XgaxaRtd";
 // Google banned the Play testing group, so new testers can't join it. CI mirrors
@@ -57,7 +61,7 @@ export function NightlyMobileBetaNotice() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!IS_NIGHTLY_BUILD || noticeShown || isNoticeDismissed()) return;
+    if (!PAR3_BETA_APP_AVAILABLE || !IS_NIGHTLY_BUILD || noticeShown || isNoticeDismissed()) return;
     noticeShown = true;
     const toastId = toastManager.add({
       title: "Nightly needs the beta mobile app",
@@ -104,6 +108,7 @@ function BetaLinkQr({ url, label }: { url: string; label: string }) {
 
 /** Settings → General → About row with the beta app links. Render it only for Nightly. */
 export function NightlyMobileBetaRow() {
+  if (!PAR3_BETA_APP_AVAILABLE) return null;
   return (
     <SettingsRow
       id={ROW_ID}

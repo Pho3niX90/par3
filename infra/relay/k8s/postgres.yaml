@@ -1,0 +1,28 @@
+# Postgres for the Par3 relay, run by CloudNativePG (cnpg-system) in the par3
+# namespace. The relay Worker reaches it through Hyperdrive and the par3-db
+# Cloudflare tunnel (cloudflared.yaml), never over the public internet.
+# CloudNativePG writes the app credentials to the par3-pg-app secret.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: par3-pg
+  namespace: par3
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:17
+  storage:
+    size: 10Gi
+    storageClass: longhorn-2r
+  bootstrap:
+    initdb:
+      database: relay
+      owner: relay
+  postgresql:
+    parameters:
+      max_connections: "120"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi

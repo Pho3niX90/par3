@@ -6,11 +6,13 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Drizzle from "alchemy/Drizzle";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as Planetscale from "alchemy/Planetscale";
 
 import { PublishClientConfig, tokenDigest } from "./src/clientConfig.ts";
 import * as RelayDb from "./src/db.ts";
-import { RelayObservability } from "./src/observability.ts";
+import { relayAxiomEnabled, RelayObservability } from "./src/observability.ts";
 import { ManagedEndpointZone, RelayApiZone } from "./src/zone.ts";
 import * as RelayWorker from "./src/worker.ts";
 
@@ -26,40 +28,55 @@ export default Alchemy.Stack(
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
-    const db = yield* RelayDb.PlanetscaleDatabase;
+    const selfHostedDb = yield* RelayDb.RelaySelfHostedDatabase;
+    const db = Option.isSome(selfHostedDb) ? undefined : yield* RelayDb.PlanetscaleDatabase;
     const hyperdrive = yield* RelayDb.RelayHyperdrive;
     const managedEndpointZone = yield* ManagedEndpointZone.pipe(Effect.orDie);
     const relayApiZone = yield* RelayApiZone.pipe(Effect.orDie);
-    const observability = yield* RelayObservability;
+    const observability = (yield* relayAxiomEnabled) ? yield* RelayObservability : undefined;
     const api = yield* RelayWorker.Api;
+    const tracing = observability
+      ? {
+          mobileTracingUrl: observability.traces.otelTracesEndpoint,
+          mobileTracingDataset: observability.traces.name,
+          mobileTracingToken: observability.mobileIngestToken.token,
+          clientTracingUrl: observability.traces.otelTracesEndpoint,
+          clientTracingDataset: observability.traces.name,
+          clientTracingToken: observability.clientIngestToken.token,
+        }
+      : {
+          mobileTracingUrl: "",
+          mobileTracingDataset: "",
+          mobileTracingToken: Redacted.make(""),
+          clientTracingUrl: "",
+          clientTracingDataset: "",
+          clientTracingToken: Redacted.make(""),
+        };
     yield* PublishClientConfig({
       url: api.url,
-      mobileTracingUrl: observability.traces.otelTracesEndpoint,
-      mobileTracingDataset: observability.traces.name,
-      mobileTracingToken: observability.mobileIngestToken.token,
-      clientTracingUrl: observability.traces.otelTracesEndpoint,
-      clientTracingDataset: observability.traces.name,
-      clientTracingToken: observability.clientIngestToken.token,
-      tokenDigest: Output.map(
-        Output.all(observability.mobileIngestToken.token, observability.clientIngestToken.token),
-        tokenDigest,
-      ),
+      ...tracing,
+      tokenDigest: observability
+        ? Output.map(
+            Output.all(
+              observability.mobileIngestToken.token,
+              observability.clientIngestToken.token,
+            ),
+            tokenDigest,
+          )
+        : "tracing-disabled",
     });
 
     return {
-      databaseName: db.database.name,
-      databaseBranchName: db.branch?.name ?? "main",
+      databaseName: db
+        ? db.database.name
+        : Option.match(selfHostedDb, { onNone: () => "", onSome: (self) => self.database }),
+      databaseBranchName: db?.branch?.name ?? "main",
       hyperdriveName: hyperdrive.name,
       workerName: api.workerName,
       url: api.url,
       relayApiZoneId: relayApiZone.zoneId,
       managedEndpointZoneId: managedEndpointZone.zoneId,
-      mobileTracingUrl: observability.traces.otelTracesEndpoint,
-      mobileTracingDataset: observability.traces.name,
-      mobileTracingToken: observability.mobileIngestToken.token,
-      clientTracingUrl: observability.traces.otelTracesEndpoint,
-      clientTracingDataset: observability.traces.name,
-      clientTracingToken: observability.clientIngestToken.token,
+      ...tracing,
     };
   }).pipe(Effect.provide(RelayWorker.layer)),
 );
