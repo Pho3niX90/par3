@@ -71,7 +71,7 @@ export interface IssuedBearerSession {
 }
 
 /**
- * Sessions an MCP client (an agent T3 Code did not launch) obtains through
+ * Sessions an MCP client (an agent Par3 did not launch) obtains through
  * OAuth. They are accepted only by `/mcp`, where every action is capped by the
  * access the user approved; the HTTP API and WebSocket reject them so an agent
  * token cannot reach the full RPC surface around that cap.
