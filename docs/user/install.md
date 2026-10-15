@@ -11,13 +11,13 @@ launch Par3 and configure providers afterwards.
 ## Command line
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://par3.paritylabs.co.za/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://t3.codes/install.ps1 | iex
+irm https://par3.paritylabs.co.za/install.ps1 | iex
 ```
 
 This installs the `t3` binary to `~/.local/bin`. If your shell reports `command not found`
@@ -61,7 +61,7 @@ update it with `git pull` and a rebuild.
 
 ## Desktop app
 
-Download a release from [GitHub Releases](https://github.com/pingdotgg/t3code/releases),
+Download a release from [GitHub Releases](https://github.com/Pho3niX90/t3code/releases),
 or use a package manager:
 
 | Platform           | Install                            |
@@ -118,7 +118,7 @@ shows these links as QR codes in **Settings → General → Mobile app**.
 
 - **iPhone and iPad:** join the [TestFlight beta](https://testflight.apple.com/join/XgaxaRtd).
 - **Android:** download and install the APK from the
-  [Android beta release](https://github.com/pingdotgg/t3code/releases/tag/android-nightly).
+  [Android beta release](https://github.com/Pho3niX90/t3code/releases/tag/android-nightly).
 
 If the app crashes during launch, open Settings → Diagnostics on the next launch
 that succeeds. It lists startup crashes from the last 7 days with the error and

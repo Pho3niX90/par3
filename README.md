@@ -28,13 +28,13 @@ We still merge T3 Code's improvements regularly and are grateful for the work be
 ### Command line
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://par3.paritylabs.co.za/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://t3.codes/install.ps1 | iex
+irm https://par3.paritylabs.co.za/install.ps1 | iex
 ```
 
 Then run `t3` to start the server and open the local web app. `t3 service install` keeps it running in the background, `t3 update` moves to a newer release, and `t3 --help` has the full reference.
@@ -43,49 +43,15 @@ To try it once without installing, run `npx @paritylabs/par3@latest` instead.
 
 ### Desktop app
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
-
-#### Windows (`winget`)
-
-```bash
-winget install T3Tools.T3Code
-```
-
-#### Windows (`scoop`)
-
-```bash
-scoop install extras/t3code
-```
-
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
+Install the latest version of the desktop app from [GitHub Releases](https://github.com/Pho3niX90/t3code/releases).
 
 #### Debian, Ubuntu (`.deb`)
 
-Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
+Download the `.deb` from [GitHub Releases](https://github.com/Pho3niX90/t3code/releases), then:
 
 ```bash
-sudo apt install ./T3-Code-*.deb
+sudo apt install ./Par3-*.deb
 ```
-
-#### Arch Linux (AUR)
-
-Stable:
-
-```bash
-yay -S t3code-bin
-```
-
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
 
 ## Some notes
 

@@ -59,9 +59,7 @@ function PackageGlyph(props: {
           d={path.d}
           fillRule={path.fillRule}
           fill={
-            path.gradient
-              ? `url(#${gradientId}-${index})`
-              : themeFill(path.fill ?? props.icon.fill)
+            path.gradient ? `url(#${gradientId}-${index})` : themeFill(path.fill ?? props.icon.fill)
           }
         />
       ))}
