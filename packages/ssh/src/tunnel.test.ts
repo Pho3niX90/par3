@@ -116,7 +116,7 @@ describe("ssh tunnel scripts", () => {
     assert.include(script, 'exec "$T3_RUNTIME_DIR/t3" "$@"');
     assert.notInclude(script, "npx");
     assert.notInclude(script, "npm exec");
-    assert.notInclude(script, "t3@latest");
+    assert.notInclude(script, "@paritylabs/par3@latest");
     assert.notInclude(script, 'exec t3 "$@"');
     // Concurrent launches serialize on a per-version mkdir lock and recheck
     // the completion marker after acquiring it.

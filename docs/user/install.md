@@ -41,7 +41,7 @@ If `t3` or `t3 start` reports an already running server, connect to that server
 instead. Stop it before starting a replacement, or use a different `--base-dir`
 for an independent server.
 
-To try Par3 once without installing it, run `npx t3@latest` instead (needs
+To try Par3 once without installing it, run `npx @paritylabs/par3@latest` instead (needs
 Node.js for `npx`).
 
 ### Intel Macs
