@@ -211,7 +211,7 @@ export const make = Effect.gen(function* () {
       };
       const args = yield* HostProcess.Arguments;
       args.some((value) => startProviderAuthHandoff(value) || openAppLink(value));
-      // As the default browser, macOS hands T3 Code every web link through the same event.
+      // As the default browser, macOS hands Par3 every web link through the same event.
       const openWebLink = (url: string) => {
         if (!DesktopWebLinks.isWebLink(url)) return false;
         void runPromise(webLinks.receive(url));

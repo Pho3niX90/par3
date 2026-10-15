@@ -94,7 +94,7 @@ export const make = Effect.gen(function* () {
     // Electron removes spaces from this name to build the native User-Agent
     // product token, but leaves parentheses intact. Keep the runtime name valid
     // without rewriting preview sessions (which breaks Turnstile, #7110).
-    // The name stays "T3 Code …" after the rename to Par3: macOS Keychain and Linux
+    // The name stays "Par3 …" after the rename to Par3: macOS Keychain and Linux
     // libsecret name the safeStorage key after it, and a new name would make existing
     // installs lose their encrypted sign-ins and saved environments.
     yield* electronApp.setName(`T3 Code ${environment.branding.stageLabel}`);
