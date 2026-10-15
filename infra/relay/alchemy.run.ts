@@ -19,11 +19,13 @@ import * as RelayWorker from "./src/worker.ts";
 export default Alchemy.Stack(
   "T3CodeRelay",
   {
+    // Providers resolve their credentials up front, so a self-hosted deploy without
+    // Axiom or PlanetScale must leave those providers out entirely.
     providers: Layer.mergeAll(
-      Axiom.providers(),
       Cloudflare.providers(),
       Drizzle.providers(),
-      Planetscale.providers(),
+      ...(process.env.RELAY_AXIOM_ENABLED === "false" ? [] : [Axiom.providers()]),
+      ...(process.env.RELAY_DB_HOST ? [] : [Planetscale.providers()]),
     ),
     state: Cloudflare.state(),
   },
