@@ -1233,7 +1233,6 @@ export function resolveThreadStatusPill(input: {
 
   const hasPlanReadyPrompt =
     !thread.hasPendingUserInput &&
-    thread.interactionMode === "plan" &&
     isLatestRunSettled(thread.latestRun, thread.runtime) &&
     thread.hasActionableProposedPlan;
   if (hasPlanReadyPrompt) {

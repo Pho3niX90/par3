@@ -44,7 +44,11 @@ import {
   describeUnavailableModelSelection,
   isModelSelectionUnavailable,
 } from "../lib/modelOptions";
-import { resolveProviderInteractionMode } from "./legacy-plan-mode";
+import {
+  resolvePlanModeEnabled,
+  resolveProviderInteractionMode,
+  resolveThreadInteractionMode,
+} from "./plan-mode";
 import {
   convertPastedImagesToAttachments,
   createPastedTextComposerAttachment,
@@ -305,6 +309,13 @@ export function useThreadComposerState() {
   }, [acknowledgedMessages, selectedThreadMessages]);
 
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const planModePreferenceLoaded = AsyncResult.isSuccess(preferencesResult);
+  const planModeEnabled = resolvePlanModeEnabled({
+    loaded: planModePreferenceLoaded,
+    preference: planModePreferenceLoaded
+      ? preferencesResult.value.composerPlanModeEnabled
+      : undefined,
+  });
   const followUpBehavior = AsyncResult.isSuccess(preferencesResult)
     ? (preferencesResult.value.followUpBehavior ?? DEFAULT_FOLLOW_UP_BEHAVIOR)
     : DEFAULT_FOLLOW_UP_BEHAVIOR;
@@ -349,10 +360,13 @@ export function useThreadComposerState() {
     (provider) => provider.instanceId === modelSelection?.instanceId,
   );
   const interactionMode = selectedThread
-    ? resolveProviderInteractionMode(
-        selectedProvider,
-        selectedDraft?.interactionMode ?? selectedThread.interactionMode,
-      )
+    ? resolveThreadInteractionMode({
+        provider: selectedProvider,
+        preferenceLoaded: planModePreferenceLoaded,
+        planModeEnabled,
+        draftInteractionMode: selectedDraft?.interactionMode,
+        threadInteractionMode: selectedThread.interactionMode,
+      })
     : null;
   // Whether the model picker may leave this thread's provider. Derived here
   // because the projection already drives this hook; the composer only needs
@@ -726,10 +740,13 @@ export function useThreadComposerState() {
         context: draft.context,
         modelSelection,
         runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
-        interactionMode: resolveProviderInteractionMode(
+        interactionMode: resolveThreadInteractionMode({
           provider,
-          draft.interactionMode ?? thread.interactionMode,
-        ),
+          preferenceLoaded: planModePreferenceLoaded,
+          planModeEnabled,
+          draftInteractionMode: draft.interactionMode,
+          threadInteractionMode: thread.interactionMode,
+        }),
         ...(followUpDispatchMode === null ? {} : { dispatchMode: followUpDispatchMode }),
         createdAt: metadata.createdAt,
       });
@@ -759,6 +776,8 @@ export function useThreadComposerState() {
       activeThreadBusy,
       canSteerActiveTurn,
       followUpBehavior,
+      planModeEnabled,
+      planModePreferenceLoaded,
       saveQueuedRunEdit,
       selectedEnvironmentRuntime?.connectionState,
       selectedEnvironmentRuntime?.serverConfig,

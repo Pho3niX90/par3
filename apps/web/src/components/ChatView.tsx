@@ -1,6 +1,7 @@
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
+import { subscribePlanModeToggle } from "./chat/planModeActionBus";
 import {
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftHeroState,
@@ -3289,7 +3290,7 @@ export default function ChatView(props: ChatViewProps) {
   const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
   const activeProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const { enabled: interactionModeEnabled, interactionMode } = resolveComposerInteractionMode({
-    planModeEnabled: settings.planModeEnabled,
+    planModeEnabled: settings.composerPlanModeEnabled,
     provider: activeProviderStatus,
     interactionMode:
       composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE,
@@ -3479,6 +3480,8 @@ export default function ChatView(props: ChatViewProps) {
     interactionMode,
     latestTurnSettled: latestRunSettled,
     hasActionableProposedPlan: hasActionableProposedPlan(activeProposedPlan),
+    planFromLatestRun:
+      activeLatestRun != null && activeProposedPlan?.runId === activeLatestRun.runId,
     hasComposerAttachments: composerHasAttachments,
   });
   const activePendingApproval = pendingApprovals[0] ?? null;
@@ -5431,6 +5434,7 @@ export default function ChatView(props: ChatViewProps) {
     if (!interactionModeEnabled) return;
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode, interactionModeEnabled]);
+  useEffect(() => subscribePlanModeToggle(toggleInteractionMode), [toggleInteractionMode]);
   const openProviderSetup = useCallback(
     (instanceId: ProviderInstanceId) => {
       void navigate({
@@ -9202,7 +9206,6 @@ export default function ChatView(props: ChatViewProps) {
     }
     if (
       !directAnnotation &&
-      sendInteractionModeEnabled &&
       showPlanFollowUpPrompt &&
       activeProposedPlan &&
       composerImages.length === 0 &&
@@ -9211,6 +9214,7 @@ export default function ChatView(props: ChatViewProps) {
       const followUp = resolvePlanFollowUpSubmission({
         draftText: promptForSend,
         planMarkdown: activeProposedPlan.planMarkdown,
+        planModeAvailable: sendInteractionModeEnabled,
       });
       const outgoingFollowUpText = formatOutgoingPrompt({
         provider: ctxSelectedProvider,
@@ -9242,6 +9246,7 @@ export default function ChatView(props: ChatViewProps) {
           threadContexts: composerThreadContexts,
         }),
         interactionMode: followUp.interactionMode,
+        implementsPlan: followUp.implementsPlan,
       });
       if (!followUpSent) {
         promptRef.current = followUpPromptSnapshot;
@@ -9273,7 +9278,7 @@ export default function ChatView(props: ChatViewProps) {
       }
       return;
     }
-    // Providers without the legacy toggle receive their native commands unchanged.
+    // Providers without the plan toggle receive their native commands unchanged.
     const standaloneSlashCommand =
       sendInteractionModeEnabled &&
       composerImages.length === 0 &&
@@ -9427,7 +9432,7 @@ export default function ChatView(props: ChatViewProps) {
         models: provider.models,
         modelOptions: selection.options,
         promptInjectionState: getComposerPromptInjectionState(messageTextForSend),
-        planModeEnabled: settings.planModeEnabled,
+        planModeEnabled: settings.composerPlanModeEnabled,
       });
       const text = formatOutgoingPrompt({
         provider: provider.driverKind,
@@ -9445,7 +9450,7 @@ export default function ChatView(props: ChatViewProps) {
         ),
         text,
         interactionMode: resolveComposerInteractionMode({
-          planModeEnabled: settings.planModeEnabled,
+          planModeEnabled: settings.composerPlanModeEnabled,
           provider: provider.snapshot,
           interactionMode: sendInteractionMode,
         }).interactionMode,
@@ -10498,10 +10503,13 @@ export default function ChatView(props: ChatViewProps) {
     text,
     context,
     interactionMode: nextInteractionMode,
+    implementsPlan,
   }: {
     text: string;
     context?: ReturnType<typeof buildMessageContext>;
     interactionMode: "default" | "plan";
+    /** Only Implement completes the plan; refining in build mode leaves it active. */
+    implementsPlan: boolean;
   }) {
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
@@ -10520,7 +10528,11 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
+    // Refining stays in plan mode, so it needs the toggle; implementing does not.
+    if (
+      !sendCtx?.providerAvailable ||
+      (nextInteractionMode === "plan" && !sendCtx.interactionModeEnabled)
+    ) {
       return false;
     }
     const {
@@ -10607,7 +10619,7 @@ export default function ChatView(props: ChatViewProps) {
           titleSeed: activeThread.title,
           runtimeMode,
           interactionMode: nextInteractionMode,
-          ...(nextInteractionMode === "default" && activeProposedPlan
+          ...(implementsPlan && activeProposedPlan
             ? {
                 sourceProposedPlan: {
                   threadId: activeThread.id,
@@ -10658,7 +10670,7 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
+    if (!sendCtx?.providerAvailable) {
       return;
     }
     const {

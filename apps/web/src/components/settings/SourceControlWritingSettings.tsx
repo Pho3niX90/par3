@@ -402,7 +402,7 @@ export function SourceControlWritingSettingsSection() {
                   modelOptions={activeSelection.options ?? []}
                   allowPromptInjectedEffort={false}
                   planModeEnabled={
-                    settings.planModeEnabled || selectsPlanAgent(activeSelection.options)
+                    settings.composerPlanModeEnabled || selectsPlanAgent(activeSelection.options)
                   }
                   triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                   onModelOptionsChange={(options) =>
@@ -509,7 +509,8 @@ export function SourceControlWritingSettingsSection() {
                       modelOptions={reviewGuideSelection.options ?? []}
                       allowPromptInjectedEffort={false}
                       planModeEnabled={
-                        settings.planModeEnabled || selectsPlanAgent(reviewGuideSelection.options)
+                        settings.composerPlanModeEnabled ||
+                        selectsPlanAgent(reviewGuideSelection.options)
                       }
                       triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                       onModelOptionsChange={(options) =>

@@ -11,6 +11,7 @@ import {
   type OrchestrationV2ProviderThread,
   type OrchestrationV2ThreadShellSnapshot,
   NodeId,
+  PlanId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -3007,6 +3008,126 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
     }),
   );
 
+  it.effect("counts a plan as waiting outside plan mode only when the latest run proposed it", () =>
+    Effect.gen(function* () {
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:shell-actionable-plan");
+      const thread = {
+        createdBy: "user" as const,
+        creationSource: "web" as const,
+        id: threadId,
+        projectId: ProjectId.make("project:shell-actionable-plan"),
+        title: "Actionable plan",
+        providerInstanceId,
+        modelSelection,
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        branch: null,
+        worktreePath: null,
+        activeProviderThreadId: null,
+        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+        archivedAt: null,
+        settledOverride: null,
+        settledAt: null,
+        lastVisitedAt: null,
+        deletedAt: null,
+      };
+      const run = (ordinal: number) => {
+        const id = RunId.make(`run:shell-actionable-plan:${ordinal}`);
+        return {
+          id,
+          threadId,
+          ordinal,
+          providerInstanceId,
+          modelSelection,
+          providerThreadId: null,
+          userMessageId: MessageId.make(`message:shell-actionable-plan:${ordinal}`),
+          rootNodeId: NodeId.make(`node:shell-actionable-plan:${ordinal}`),
+          activeAttemptId: null,
+          status: "completed" as const,
+          requestedAt: now,
+          startedAt: now,
+          completedAt: now,
+          checkpointId: null,
+          contextHandoffId: null,
+        };
+      };
+      const shells = Effect.gen(function* () {
+        const projection = yield* projectionStore.getThreadProjection(threadId);
+        const sqlShell = (yield* projectionStore.getShellSnapshot()).threads.find(
+          (row) => row.id === threadId,
+        )!;
+        return [sqlShell, ProjectionStore.threadShellFromProjection(projection)];
+      });
+
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:thread"),
+        type: "thread.created",
+        threadId,
+        occurredAt: now,
+        payload: thread,
+      });
+      const firstRun = run(1);
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:run-1"),
+        type: "run.created",
+        threadId,
+        runId: firstRun.id,
+        nodeId: firstRun.rootNodeId,
+        driver,
+        occurredAt: now,
+        payload: firstRun,
+      });
+      // Claude entered plan mode by itself: the thread stays in build mode.
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:plan"),
+        type: "plan.updated",
+        threadId,
+        runId: firstRun.id,
+        nodeId: firstRun.rootNodeId,
+        occurredAt: now,
+        payload: {
+          id: PlanId.make("plan:shell-actionable-plan"),
+          threadId,
+          runId: firstRun.id,
+          nodeId: firstRun.rootNodeId,
+          kind: "proposed_plan",
+          status: "active",
+          markdown: "# Plan",
+        },
+      });
+      for (const shell of yield* shells) assert.isTrue(shell.hasActionableProposedPlan);
+
+      // A later run without a plan leaves the old one behind.
+      const secondRun = run(2);
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:run-2"),
+        type: "run.created",
+        threadId,
+        runId: secondRun.id,
+        nodeId: secondRun.rootNodeId,
+        driver,
+        occurredAt: DateTime.add(now, { minutes: 1 }),
+        payload: { ...secondRun, requestedAt: DateTime.add(now, { minutes: 1 }) },
+      });
+      for (const shell of yield* shells) assert.isFalse(shell.hasActionableProposedPlan);
+
+      // In plan mode any active plan still waits on the user.
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:plan-mode"),
+        type: "thread.interaction-mode-updated",
+        threadId,
+        occurredAt: DateTime.add(now, { minutes: 2 }),
+        payload: { ...thread, interactionMode: "plan" },
+      });
+      for (const shell of yield* shells) assert.isTrue(shell.hasActionableProposedPlan);
+    }),
+  );
+
   it.effect("selects only threads with runtime state that needs recovery", () =>
     Effect.gen(function* () {
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
@@ -3290,6 +3411,24 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       });
       yield* applyRun("failed");
       yield* assertSummary("Plan limit reached.", "usage_limit");
+      // A plan the blocked run proposed outside plan mode still waits on the user.
+      yield* store.apply({
+        id: EventId.make("event:limit-shell:plan"),
+        type: "plan.updated",
+        threadId,
+        runId: original.id,
+        nodeId: NodeId.make("node:limit-shell:plan"),
+        occurredAt: now,
+        payload: {
+          id: PlanId.make("plan:limit-shell"),
+          threadId,
+          runId: original.id,
+          nodeId: NodeId.make("node:limit-shell:plan"),
+          kind: "proposed_plan",
+          status: "active",
+          markdown: "# Plan",
+        },
+      });
       const queuedRunId = RunId.make("run:limit-shell:queued");
       yield* store.apply({
         id: EventId.make("event:limit-shell:queued"),
@@ -3321,6 +3460,8 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       assert.equal(queuedMemoryShell.latestRunId, original.id);
       assert.equal(queuedSqlShell.status, "failed");
       assert.equal(queuedSqlShell.latestRunId, original.id);
+      assert.isTrue(queuedMemoryShell.hasActionableProposedPlan);
+      assert.isTrue(queuedSqlShell.hasActionableProposedPlan);
       assert.equal(queuedProjection.runs.find((run) => run.id === queuedRunId)?.status, "queued");
       const cancelledRunId = RunId.make("run:limit-shell:cancelled-queued");
       yield* store.apply({
