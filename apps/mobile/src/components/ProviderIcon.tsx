@@ -1,8 +1,8 @@
 import { Image } from "expo-image";
-import { Path, Svg } from "react-native-svg";
+import { Defs, LinearGradient, Path, Stop, Svg } from "react-native-svg";
 import { View } from "react-native";
 import { providerInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { resolveOfficialAcpRegistryIconUrl } from "@t3tools/contracts";
 import {
   MODEL_VENDOR_ICONS,
@@ -29,16 +29,40 @@ function PackageGlyph(props: {
   readonly size: number;
   readonly isDarkMode: boolean;
 }) {
+  const gradientId = useId();
   const themeFill = (fill: { readonly light: string; readonly dark: string }) =>
     props.isDarkMode ? fill.dark : fill.light;
   return (
     <Svg width={props.size} height={props.size} viewBox={props.icon.viewBox} fill="none">
-      {props.icon.paths.map((path) => (
+      <Defs>
+        {props.icon.paths.map((path, index) =>
+          path.gradient ? (
+            <LinearGradient
+              key={path.d}
+              id={`${gradientId}-${index}`}
+              x1={path.gradient.x1}
+              y1={path.gradient.y1}
+              x2={path.gradient.x2}
+              y2={path.gradient.y2}
+              gradientUnits="userSpaceOnUse"
+            >
+              {path.gradient.stops.map((stop) => (
+                <Stop key={stop.offset} offset={stop.offset} stopColor={stop.color} />
+              ))}
+            </LinearGradient>
+          ) : null,
+        )}
+      </Defs>
+      {props.icon.paths.map((path, index) => (
         <Path
           key={path.d}
           d={path.d}
           fillRule={path.fillRule}
-          fill={themeFill(path.fill ?? props.icon.fill)}
+          fill={
+            path.gradient
+              ? `url(#${gradientId}-${index})`
+              : themeFill(path.fill ?? props.icon.fill)
+          }
         />
       ))}
     </Svg>

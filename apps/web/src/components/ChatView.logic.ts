@@ -935,16 +935,22 @@ export function shouldShowBranchMismatchBanner(input: {
   return input.composerHasContent || input.wasShownForCurrentMismatch;
 }
 
+/**
+ * Offer Implement/Refine for the active plan. Outside plan mode only a plan
+ * the latest run proposed counts (Claude can enter plan mode by itself), so a
+ * plan left behind by an earlier run does not follow every later turn.
+ */
 export function shouldShowPlanFollowUpPrompt(input: {
   pendingUserInputCount: number;
   interactionMode: ProviderInteractionMode;
   latestTurnSettled: boolean;
   hasActionableProposedPlan: boolean;
+  planFromLatestRun: boolean;
   hasComposerAttachments: boolean;
 }): boolean {
   return (
     input.pendingUserInputCount === 0 &&
-    input.interactionMode === "plan" &&
+    (input.interactionMode === "plan" || input.planFromLatestRun) &&
     input.latestTurnSettled &&
     input.hasActionableProposedPlan &&
     !input.hasComposerAttachments

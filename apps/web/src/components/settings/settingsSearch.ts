@@ -442,6 +442,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["command menu dollar $ slash /"],
   },
   {
+    id: "plan-mode",
+    title: "Plan mode",
+    to: "/settings/general",
+    searchTerms: ["build plan composer toggle /plan /default shift tab"],
+  },
+  {
     id: "composer-rich-text",
     title: "Rich text composer",
     to: "/settings/general",
@@ -594,12 +600,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "open-source-licenses",
     title: "Open source licenses",
     to: "/settings/general",
-  },
-  {
-    id: "legacy-plan-mode",
-    title: "Plan mode (legacy)",
-    to: "/settings/general",
-    searchTerms: ["build plan composer old"],
   },
   {
     id: "legacy-context-window-indicator",

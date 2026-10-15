@@ -11,6 +11,7 @@ import {
   type OrchestrationV2ProviderThread,
   type OrchestrationV2ThreadShellSnapshot,
   NodeId,
+  PlanId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -382,6 +383,89 @@ const threadWorktreePathsReadActiveThreads = Effect.gen(function* () {
   ]);
 });
 
+const commandReadsSkipSettledLeafNodes = Effect.gen(function* () {
+  const store = yield* ProjectionStore.ProjectionStoreV2;
+  const now = yield* DateTime.now;
+  const threadId = yield* addRolledBackRecoveryCandidate("settled-leaf-nodes");
+  const settledRun = (yield* store.getThreadProjection(threadId)).runs[0]!;
+  const activeRun = {
+    ...settledRun,
+    id: RunId.make("run:settled-leaf-nodes:active"),
+    ordinal: 2,
+    userMessageId: MessageId.make("message:settled-leaf-nodes:active"),
+    rootNodeId: NodeId.make("node:settled-leaf-nodes:active-root"),
+    status: "running" as const,
+    completedAt: null,
+  };
+  yield* store.apply({
+    id: EventId.make("event:settled-leaf-nodes:active-run"),
+    type: "run.created",
+    threadId,
+    runId: activeRun.id,
+    nodeId: activeRun.rootNodeId,
+    driver,
+    providerInstanceId,
+    occurredAt: now,
+    payload: activeRun,
+  });
+  const nodes = [
+    ["settled-root", settledRun, "root_turn", "completed"],
+    ["settled-tool", settledRun, "tool_call", "completed"],
+    ["settled-message", settledRun, "assistant_message", "failed"],
+    ["settled-reasoning", settledRun, "reasoning", "cancelled"],
+    ["settled-subagent", settledRun, "subagent", "completed"],
+    ["settled-run-live-tool", settledRun, "tool_call", "running"],
+    ["active-run-done-tool", activeRun, "tool_call", "completed"],
+  ] as const;
+  for (const [name, run, kind, status] of nodes) {
+    const id = NodeId.make(`node:settled-leaf-nodes:${name}`);
+    yield* store.apply({
+      id: EventId.make(`event:settled-leaf-nodes:${name}`),
+      type: "node.updated",
+      threadId,
+      runId: run.id,
+      nodeId: id,
+      driver,
+      occurredAt: now,
+      payload: {
+        id,
+        threadId,
+        runId: run.id,
+        rootNodeId: kind === "root_turn" ? id : run.rootNodeId!,
+        parentNodeId: kind === "root_turn" ? null : run.rootNodeId,
+        kind,
+        status,
+        countsForRun: kind === "root_turn",
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        runtimeRequestId: null,
+        checkpointScopeId: null,
+        startedAt: now,
+        completedAt: status === "running" ? null : now,
+      },
+    });
+  }
+  const nodeNames = (records: { readonly nodes: ReadonlyArray<{ readonly id: string }> }) =>
+    records.nodes
+      .map((node) => node.id.replace("node:settled-leaf-nodes:", ""))
+      .filter((name) => nodes.some(([candidate]) => candidate === name))
+      .toSorted();
+
+  assert.deepEqual(
+    nodeNames(yield* store.getThreadRecords(threadId, ["nodes"], { omitSettledLeafNodes: true })),
+    ["active-run-done-tool", "settled-root", "settled-run-live-tool", "settled-subagent"],
+  );
+  assert.deepEqual(
+    nodeNames(yield* store.getThreadRecords(threadId, ["nodes"])),
+    nodes.map(([name]) => name).toSorted(),
+  );
+});
+
+it.effect("memory command reads skip finished leaf nodes of finished runs", () =>
+  commandReadsSkipSettledLeafNodes.pipe(Effect.provide(ProjectionStore.layerMemory)),
+);
+
 it.effect("memory worktree path lookup reads only active threads", () =>
   threadWorktreePathsReadActiveThreads.pipe(Effect.provide(ProjectionStore.layerMemory)),
 );
@@ -656,6 +740,10 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       assert.equal(recovery?.status, "completed");
       assert.deepEqual(recovery?.restartCancelledBackgroundWork, work);
     }),
+  );
+  it.effect(
+    "command reads skip finished leaf nodes of finished runs",
+    () => commandReadsSkipSettledLeafNodes,
   );
   it.effect("limits turn-start history to the requested runs, including an empty selection", () =>
     Effect.gen(function* () {
@@ -2965,6 +3053,126 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
     }),
   );
 
+  it.effect("counts a plan as waiting outside plan mode only when the latest run proposed it", () =>
+    Effect.gen(function* () {
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:shell-actionable-plan");
+      const thread = {
+        createdBy: "user" as const,
+        creationSource: "web" as const,
+        id: threadId,
+        projectId: ProjectId.make("project:shell-actionable-plan"),
+        title: "Actionable plan",
+        providerInstanceId,
+        modelSelection,
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        branch: null,
+        worktreePath: null,
+        activeProviderThreadId: null,
+        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+        archivedAt: null,
+        settledOverride: null,
+        settledAt: null,
+        lastVisitedAt: null,
+        deletedAt: null,
+      };
+      const run = (ordinal: number) => {
+        const id = RunId.make(`run:shell-actionable-plan:${ordinal}`);
+        return {
+          id,
+          threadId,
+          ordinal,
+          providerInstanceId,
+          modelSelection,
+          providerThreadId: null,
+          userMessageId: MessageId.make(`message:shell-actionable-plan:${ordinal}`),
+          rootNodeId: NodeId.make(`node:shell-actionable-plan:${ordinal}`),
+          activeAttemptId: null,
+          status: "completed" as const,
+          requestedAt: now,
+          startedAt: now,
+          completedAt: now,
+          checkpointId: null,
+          contextHandoffId: null,
+        };
+      };
+      const shells = Effect.gen(function* () {
+        const projection = yield* projectionStore.getThreadProjection(threadId);
+        const sqlShell = (yield* projectionStore.getShellSnapshot()).threads.find(
+          (row) => row.id === threadId,
+        )!;
+        return [sqlShell, ProjectionStore.threadShellFromProjection(projection)];
+      });
+
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:thread"),
+        type: "thread.created",
+        threadId,
+        occurredAt: now,
+        payload: thread,
+      });
+      const firstRun = run(1);
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:run-1"),
+        type: "run.created",
+        threadId,
+        runId: firstRun.id,
+        nodeId: firstRun.rootNodeId,
+        driver,
+        occurredAt: now,
+        payload: firstRun,
+      });
+      // Claude entered plan mode by itself: the thread stays in build mode.
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:plan"),
+        type: "plan.updated",
+        threadId,
+        runId: firstRun.id,
+        nodeId: firstRun.rootNodeId,
+        occurredAt: now,
+        payload: {
+          id: PlanId.make("plan:shell-actionable-plan"),
+          threadId,
+          runId: firstRun.id,
+          nodeId: firstRun.rootNodeId,
+          kind: "proposed_plan",
+          status: "active",
+          markdown: "# Plan",
+        },
+      });
+      for (const shell of yield* shells) assert.isTrue(shell.hasActionableProposedPlan);
+
+      // A later run without a plan leaves the old one behind.
+      const secondRun = run(2);
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:run-2"),
+        type: "run.created",
+        threadId,
+        runId: secondRun.id,
+        nodeId: secondRun.rootNodeId,
+        driver,
+        occurredAt: DateTime.add(now, { minutes: 1 }),
+        payload: { ...secondRun, requestedAt: DateTime.add(now, { minutes: 1 }) },
+      });
+      for (const shell of yield* shells) assert.isFalse(shell.hasActionableProposedPlan);
+
+      // In plan mode any active plan still waits on the user.
+      yield* projectionStore.apply({
+        id: EventId.make("event:shell-actionable-plan:plan-mode"),
+        type: "thread.interaction-mode-updated",
+        threadId,
+        occurredAt: DateTime.add(now, { minutes: 2 }),
+        payload: { ...thread, interactionMode: "plan" },
+      });
+      for (const shell of yield* shells) assert.isTrue(shell.hasActionableProposedPlan);
+    }),
+  );
+
   it.effect("selects only threads with runtime state that needs recovery", () =>
     Effect.gen(function* () {
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
@@ -3248,6 +3456,24 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       });
       yield* applyRun("failed");
       yield* assertSummary("Plan limit reached.", "usage_limit");
+      // A plan the blocked run proposed outside plan mode still waits on the user.
+      yield* store.apply({
+        id: EventId.make("event:limit-shell:plan"),
+        type: "plan.updated",
+        threadId,
+        runId: original.id,
+        nodeId: NodeId.make("node:limit-shell:plan"),
+        occurredAt: now,
+        payload: {
+          id: PlanId.make("plan:limit-shell"),
+          threadId,
+          runId: original.id,
+          nodeId: NodeId.make("node:limit-shell:plan"),
+          kind: "proposed_plan",
+          status: "active",
+          markdown: "# Plan",
+        },
+      });
       const queuedRunId = RunId.make("run:limit-shell:queued");
       yield* store.apply({
         id: EventId.make("event:limit-shell:queued"),
@@ -3279,6 +3505,8 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       assert.equal(queuedMemoryShell.latestRunId, original.id);
       assert.equal(queuedSqlShell.status, "failed");
       assert.equal(queuedSqlShell.latestRunId, original.id);
+      assert.isTrue(queuedMemoryShell.hasActionableProposedPlan);
+      assert.isTrue(queuedSqlShell.hasActionableProposedPlan);
       assert.equal(queuedProjection.runs.find((run) => run.id === queuedRunId)?.status, "queued");
       const cancelledRunId = RunId.make("run:limit-shell:cancelled-queued");
       yield* store.apply({

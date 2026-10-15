@@ -29,6 +29,10 @@ workspace, and `mod+shift+g` for the Git branch. The workspace menu includes the
 current checkout, a new worktree, and the previous worktree when available.
 Use `mod+shift+l` to reuse the previous worktree directly.
 
+`Shift+Tab` switches the composer between Build and [Plan](./composer.md#plan-mode).
+It works while the composer is focused, and inside a code block it still outdents.
+Change it under **Composer: Toggle Plan Mode**.
+
 In the model picker, press Left in an empty search field or Shift+Tab to reach
 the provider list. Use Up/Down to move and Enter to choose. Right returns to
 model search. `mod+shift+up` and `mod+shift+down` switch providers directly and clear the

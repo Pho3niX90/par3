@@ -28,6 +28,7 @@ describe("KeybindingsSettings.logic", () => {
       "composer.host",
       "composer.effort",
       "composer.mode",
+      "composer.togglePlanMode",
       "composer.workspace",
       "composer.branch",
       "composer.previousWorktree",

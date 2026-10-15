@@ -107,6 +107,7 @@ import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { ComposerPopoverAnchor } from "./ComposerPopoverAnchor";
 import { ComposerQueuedEditAttachments } from "./ComposerQueuedEdit";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
+import { usePlanModeState } from "./use-plan-mode-enabled";
 import {
   ComposerDictationCancelAction,
   ComposerDictationDraftContent,
@@ -467,6 +468,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     });
   };
   const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
+  const { enabled: planModeEnabled } = usePlanModeState();
   // T3 owns /usage-limits only where Limits has data for the selected provider;
   // elsewhere the name stays the provider's own and is sent through untouched.
   const usageLimitsOffered =
@@ -508,7 +510,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     hasCompactableConversation: props.hasCompactableConversation,
     onChangeDraftMessage: props.onChangeDraftMessage,
     onUpdateInteractionMode:
-      selectedProviderStatus?.showInteractionModeToggle === false
+      !planModeEnabled || selectedProviderStatus?.showInteractionModeToggle === false
         ? undefined
         : props.onUpdateInteractionMode,
     offersUsageLimits: usageLimitsOffered,

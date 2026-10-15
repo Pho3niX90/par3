@@ -213,6 +213,21 @@ you had typed in the composer before starting the edit is restored afterwards. I
 message starts or is removed while you are editing, the edit ends: changed content moves into the
 composer when it is empty, and is discarded otherwise.
 
+## Plan mode
+
+Switch the composer from **Build** to **Plan** to have the agent propose a plan
+before it changes anything. Use the Build/Plan control, `/plan` and `/default`,
+or **Shift+Tab** while the composer is focused. The mode belongs to the thread.
+Providers that cannot plan don't show the control.
+
+On web and desktop, when a plan is ready, send an empty message to **Implement**
+it in build mode, or type feedback to **Refine** it. The arrow next to Implement
+starts the work in a new thread instead. Claude sometimes plans without being
+asked; its plan offers the same actions.
+
+Turn plan mode off in **Settings → General → Plan mode** (on mobile, **Settings →
+Thread behavior → Composer**) to hide the control and send every turn in build mode.
+
 ## Commands and skills
 
 Type `/` for commands or `$` to add a skill from the selected environment and
@@ -269,6 +284,12 @@ composer; a multi-selection drops together. The chip shows the thread's current 
 opens it when selected. Your prompt only carries a reference: the agent reads the thread's
 history on demand, so attaching a long thread costs nothing until the agent looks. Attaching a
 thread does not change it, and the agent cannot send messages to it unless you ask.
+
+Dropping a thread from another environment attaches a saved transcript file. The source
+environment must be connected and up to date. The transcript includes the visible history and
+saved text context at the time of the drop; later messages and the contents of attached files
+are not copied. The agent can read the saved transcript after the source disconnects. Normal
+file attachment limits apply.
 
 Images keep their thumbnail shelf above the text and also get a chip at your cursor, so you can
 say exactly which image you mean. Deleting an image chip leaves the image on the shelf; removing
