@@ -14,6 +14,7 @@ import * as Logger from "effect/Logger";
 import {
   hydrateCachedProvider,
   isCachedProviderCorrelated,
+  orderProviderSnapshots,
   readProviderStatusCache,
   resolveProviderStatusCachePath,
   writeProviderStatusCache,
@@ -23,6 +24,7 @@ const emptyCapabilities = createModelCapabilities({ optionDescriptors: [] });
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
 const CLAUDE_AGENT_DRIVER = ProviderDriverKind.make("claudeAgent");
 const OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
+const COPILOT_DRIVER = ProviderDriverKind.make("copilot");
 
 const makeProvider = (
   provider: ProviderDriverKind,
@@ -296,5 +298,30 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
       }),
       fallbackCodex,
     );
+  });
+  it("puts a working Copilot first and leaves the built-in order otherwise", () => {
+    const codex = makeProvider(CODEX_DRIVER);
+    const claude = makeProvider(CLAUDE_AGENT_DRIVER);
+    const driversOf = (providers: ReadonlyArray<ServerProvider>) =>
+      orderProviderSnapshots(providers).map((provider) => provider.driver);
+
+    assert.deepStrictEqual(driversOf([claude, makeProvider(COPILOT_DRIVER), codex]), [
+      COPILOT_DRIVER,
+      CODEX_DRIVER,
+      CLAUDE_AGENT_DRIVER,
+    ]);
+
+    for (const notWorking of [
+      { enabled: false },
+      { installed: false },
+      { status: "error" as const },
+      { status: "warning" as const },
+    ]) {
+      assert.deepStrictEqual(driversOf([makeProvider(COPILOT_DRIVER, notWorking), claude, codex]), [
+        CODEX_DRIVER,
+        CLAUDE_AGENT_DRIVER,
+        COPILOT_DRIVER,
+      ]);
+    }
   });
 });

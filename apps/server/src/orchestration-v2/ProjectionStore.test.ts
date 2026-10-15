@@ -757,6 +757,51 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       assert.deepEqual(yield* store.getTurnStartHistory(threadId, [RunId.make("run:other")]), []);
     }),
   );
+  it.effect("reads the paths a thread's file changes reported, without repeats", () =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const threadId = yield* addRolledBackRecoveryCandidate("edited-paths");
+      const run = (yield* store.getThreadProjection(threadId)).runs[0]!;
+      const nodeId = NodeId.make("node:edited-paths:rolled-back");
+      const now = yield* DateTime.now;
+      const fileChange = (ordinal: number, fileName: string, paths: ReadonlyArray<string>) =>
+        store.apply({
+          id: EventId.make(`event:edited-paths:file-change-${ordinal}`),
+          type: "turn-item.updated",
+          threadId,
+          runId: run.id,
+          nodeId,
+          driver,
+          occurredAt: now,
+          payload: {
+            id: TurnItemId.make(`item:edited-paths:${ordinal}`),
+            threadId,
+            runId: run.id,
+            nodeId,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 10 + ordinal,
+            status: "completed",
+            title: "Edit",
+            startedAt: now,
+            completedAt: now,
+            updatedAt: now,
+            type: "file_change",
+            fileName,
+            diffStr: "@@ -1 +1 @@",
+            changes: paths.map((path) => ({ operation: "update", path })),
+          },
+        });
+      yield* fileChange(1, "apis/src/a.ts", []);
+      yield* fileChange(2, "config/x.yaml", ["config/x.yaml", "config/sub/y.yaml"]);
+      assert.sameMembers(
+        [...(yield* store.getThreadEditedPaths(threadId))],
+        ["apis/src/a.ts", "config/x.yaml", "config/sub/y.yaml"],
+      );
+    }),
+  );
   it.effect("preserves stored provider usage when a terminal update omits it", () =>
     Effect.gen(function* () {
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
