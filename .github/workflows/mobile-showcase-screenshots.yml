@@ -154,6 +154,19 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # Build before the emulator boots: compiling the native modules alongside a
+      # running emulator starves a standard runner and the emulator hangs.
+      - name: Build Android debug APK
+        working-directory: apps/mobile
+        env:
+          APP_VARIANT: production
+          EXPO_NO_GIT_STATUS: "1"
+          T3_SHOWCASE_CAPTURE_BUILD: "1"
+          NODE_ENV: development
+        run: |
+          pnpm exec expo prebuild --clean --platform android
+          cd android && ./gradlew app:assembleDebug -PreactNativeArchitectures=x86_64
+
       - name: Capture Android showcase
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -162,10 +175,10 @@ jobs:
           arch: x86_64
           profile: pixel_7_pro
           avd-name: Pixel_10_Pro
-          cores: 8
+          cores: 4
           ram-size: 4096M
           disable-animations: false
-          script: pnpm screenshots:mobile --platform android --appearance "${{ inputs.appearance }}" --theme "${{ inputs.theme }}"
+          script: pnpm screenshots:mobile --platform android --skip-build --appearance "${{ inputs.appearance }}" --theme "${{ inputs.theme }}"
 
       - name: Validate Google Play assets
         run: pnpm screenshots:mobile --platform android --appearance "${{ inputs.appearance }}" --theme "${{ inputs.theme }}" --validate-only
