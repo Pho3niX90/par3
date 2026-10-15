@@ -49,6 +49,7 @@ function SubagentElapsed({ agents }: { readonly agents: ReadonlyArray<AgentTimin
 
 function SubagentAvatar(props: {
   readonly item: SubagentItem;
+  readonly model: string | null;
   readonly iconUrl?: string | null | undefined;
 }) {
   return (
@@ -56,7 +57,12 @@ function SubagentAvatar(props: {
       accessible={false}
       className="h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card"
     >
-      <ProviderIcon provider={props.item.driver} iconUrl={props.iconUrl} size={15} />
+      <ProviderIcon
+        provider={props.item.driver}
+        model={props.model}
+        iconUrl={props.iconUrl}
+        size={15}
+      />
     </View>
   );
 }
@@ -88,7 +94,7 @@ export function ThreadSubagentGroup(props: {
       completedAt: live?.completedAt ?? item.completedAt,
       result: live?.result ?? item.result,
       progress: live?.progress ?? item.progress,
-      model: live?.model ?? null,
+      model: live?.model ?? live?.modelSelection?.model ?? null,
     };
   });
   const grouped = agents.length > 1;
@@ -110,7 +116,11 @@ export function ThreadSubagentGroup(props: {
           <View className="flex-row items-center">
             {agents.slice(0, 3).map((agent, index) => (
               <View key={agent.item.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
-                <SubagentAvatar item={agent.item} iconUrl={iconUrl(agent.item)} />
+                <SubagentAvatar
+                  item={agent.item}
+                  model={agent.model}
+                  iconUrl={iconUrl(agent.item)}
+                />
               </View>
             ))}
             {agents.length > 3 ? (
