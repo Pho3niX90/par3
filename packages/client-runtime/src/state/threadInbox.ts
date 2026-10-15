@@ -10,7 +10,6 @@ type WorkingThreadInput = Pick<
   | "hasPendingApprovals"
   | "hasPendingUserInput"
   | "pendingSubagentRequest"
-  | "interactionMode"
   | "latestRun"
   | "runtime"
 >;
