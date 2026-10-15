@@ -17,6 +17,7 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 
 import {
   createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
   createEnvironmentSubscriptionAtomFamily,
 } from "./runtime.ts";
@@ -300,6 +301,12 @@ export function createVcsEnvironmentAtoms<R, E>(
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,
+    }),
+    // The child repositories a thread edited, for a thread whose folder is not a repository.
+    // Readers refresh it after the thread's file edits settle.
+    threadRepositories: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:vcs:thread-repositories",
+      tag: WS_METHODS.vcsThreadRepositories,
     }),
     refreshStatus: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:refresh-status",

@@ -304,7 +304,39 @@ export interface ProjectionRecordFilter {
   readonly runIds?: ReadonlyArray<RunId>;
   readonly turnItemTypes?: ReadonlyArray<OrchestrationV2TurnItem["type"]>;
   readonly turnItemStatuses?: ReadonlyArray<OrchestrationV2TurnItem["status"]>;
+  // Skips finished tool call, assistant message and reasoning nodes of finished
+  // runs. Command decisions only read root, subagent and active-run nodes.
+  readonly omitSettledLeafNodes?: boolean;
 }
+
+type ProjectionNode = OrchestrationV2ThreadProjection["nodes"][number];
+type ProjectionRun = OrchestrationV2ThreadProjection["runs"][number];
+const settledLeafNodeKinds: ReadonlySet<ProjectionNode["kind"]> = new Set([
+  "tool_call",
+  "assistant_message",
+  "reasoning",
+]);
+const settledNodeStatuses: ReadonlySet<ProjectionNode["status"]> = new Set([
+  "completed",
+  "interrupted",
+  "failed",
+  "cancelled",
+  "rolled_back",
+]);
+const activeRunStatuses: ReadonlySet<ProjectionRun["status"]> = new Set([
+  "preparing",
+  "queued",
+  "starting",
+  "running",
+  "waiting",
+]);
+
+// In-memory twin of the omitSettledLeafNodes SQL clause in readCanonicalProjection.
+const isSettledLeafNode = (node: ProjectionNode, runs: ReadonlyArray<ProjectionRun>) =>
+  settledLeafNodeKinds.has(node.kind) &&
+  settledNodeStatuses.has(node.status) &&
+  node.runId !== null &&
+  !runs.some((run) => run.id === node.runId && activeRunStatuses.has(run.status));
 export type ProjectionRecordField = Exclude<
   keyof OrchestrationV2ThreadProjection,
   "thread" | "updatedAt" | "visibleTurnItems"
@@ -447,6 +479,13 @@ export interface ProjectionStoreV2Shape {
     > & { readonly hasConversation: boolean },
     ProjectionStoreV2Error
   >;
+  /**
+   * The paths the thread's file changes reported, as recorded and without repeats. Reads only the
+   * path fields, not the diffs the items carry.
+   */
+  readonly getThreadEditedPaths: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<string>, ProjectionStoreV2Error>;
   readonly getTurnStartHistory: (
     threadId: ThreadId,
     runIds?: ReadonlyArray<RunId>,
@@ -3076,9 +3115,23 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             : window === undefined
               ? sql<PayloadRow>`
             SELECT payload_json
-            FROM orchestration_v2_projection_nodes
-            WHERE thread_id = ${threadId}
-            ORDER BY COALESCE(started_at, ''), node_id ASC
+            FROM orchestration_v2_projection_nodes AS node
+            WHERE node.thread_id = ${threadId}
+              ${
+                filter?.omitSettledLeafNodes === true
+                  ? sql`AND NOT (
+                      node.kind IN ('tool_call', 'assistant_message', 'reasoning')
+                      AND node.status IN ('completed', 'interrupted', 'failed', 'cancelled', 'rolled_back')
+                      AND node.run_id IS NOT NULL
+                      AND NOT EXISTS (
+                        SELECT 1 FROM orchestration_v2_projection_runs AS run
+                        WHERE run.run_id = node.run_id
+                          AND run.status IN ('preparing', 'queued', 'starting', 'running', 'waiting')
+                      )
+                    )`
+                  : sql``
+              }
+            ORDER BY COALESCE(node.started_at, ''), node.node_id ASC
               `
               : sql<PayloadRow & { readonly position: number }>`
             -- Keep retained IDs outermost so SQLite looks up each node by its
@@ -4054,6 +4107,23 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               : new ProjectionStoreReadError({ threadId, cause }),
           ),
         );
+
+    const getThreadEditedPaths: ProjectionStoreV2Shape["getThreadEditedPaths"] = (threadId) =>
+      Effect.gen(function* () {
+        const rows = yield* sql<{ readonly path: unknown }>`
+          SELECT json_extract(payload_json, '$.fileName') AS path
+          FROM orchestration_v2_projection_turn_items
+          WHERE thread_id = ${threadId} AND type = 'file_change'
+          UNION
+          SELECT json_extract(change.value, '$.path') AS path
+          FROM orchestration_v2_projection_turn_items AS item,
+            json_each(item.payload_json, '$.changes') AS change
+          WHERE item.thread_id = ${threadId} AND item.type = 'file_change'
+        `;
+        return rows.flatMap((row) =>
+          typeof row.path === "string" && row.path.length > 0 ? [row.path] : [],
+        );
+      }).pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
 
     const getTurnStartHistory: ProjectionStoreV2Shape["getTurnStartHistory"] = (threadId, runIds) =>
       Effect.gen(function* () {
@@ -6087,6 +6157,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getThreadWorktreePaths,
       getThreadProjection,
       getTurnStartContext,
+      getThreadEditedPaths,
       getTurnStartHistory,
       getRuntimeRecoveryProjection,
       getRunningTurnContext,
@@ -6446,6 +6517,10 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   filter.turnItemStatuses.includes(row.status)) &&
                 (filter?.turnItemRunId === undefined || filter.turnItemRunId === row.runId),
             ),
+            nodes:
+              filter?.omitSettledLeafNodes === true
+                ? projection.nodes.filter((node) => !isSettledLeafNode(node, projection.runs))
+                : projection.nodes,
           };
           return Object.fromEntries([
             ["thread", projection.thread],
@@ -6676,6 +6751,20 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             turnItems: projection.turnItems.filter((item) => item.runId === runId),
           })),
         ),
+      getThreadEditedPaths: (threadId) =>
+        service
+          .getThreadProjection(threadId)
+          .pipe(
+            Effect.map((projection) => [
+              ...new Set(
+                projection.turnItems.flatMap((item) =>
+                  item.type === "file_change"
+                    ? [item.fileName, ...(item.changes ?? []).map((change) => change.path)]
+                    : [],
+                ),
+              ),
+            ]),
+          ),
       getTurnStartHistory: (threadId, runIds) =>
         service
           .getThreadProjection(threadId)

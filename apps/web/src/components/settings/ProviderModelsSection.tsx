@@ -16,6 +16,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ModelVendorIcon } from "../chat/ModelVendorIcon";
 import { CustomModelEditor } from "./CustomModelEditor";
 
 /**
@@ -483,6 +484,7 @@ export function ProviderModelsSection({
       >
         {starButton(model, isFavorite)}
         <span className="flex min-w-0 items-baseline gap-2">
+          <ModelVendorIcon driverKind={driverKind} model={model.slug} className="self-center" />
           <span className={cn(nameClassName, "truncate")}>{model.name}</span>
           {model.name !== model.slug ? (
             <code className="truncate font-mono text-2xs text-muted-foreground/70">

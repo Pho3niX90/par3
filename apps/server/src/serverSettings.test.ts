@@ -580,7 +580,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     ).pipe(Effect.provide(layerServerSettings())),
   );
 
-  it.effect("persists custom usage prices and removes them from the settings file", () =>
+  it.effect("preserves saved usage settings during cleanup edits and removes custom prices", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const serverConfig = yield* ServerConfig.ServerConfig;
@@ -596,8 +596,30 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(ServerSettings))));
 
         yield* serverSettings.updateSettings({ usagePriceOverrides: { "example-model": prices } });
+        const usageModelAliases = { "example-preview": "example-model" };
+        const sourceId = UsageLimitSourceId.make("hub");
+        const usageLimitSources = {
+          [sourceId]: {
+            kind: "cliproxy" as const,
+            url: "https://hub.example.test",
+            managementKey: "",
+            enabled: true,
+          },
+        };
+        const saved = yield* serverSettings.updateSettings({
+          usageModelAliases,
+          usageLimitSources,
+        });
+        const updated = yield* serverSettings.updateSettings({
+          storageCleanup: { worktreeSettledAfterDays: 0, worktreeKeepWhen: "any-local-files" },
+        });
+        assert.deepStrictEqual(updated.usageLimitSources, saved.usageLimitSources);
         const persisted = yield* readPersisted;
         assert.deepStrictEqual(persisted.usagePriceOverrides, { "example-model": prices });
+        assert.deepStrictEqual(persisted.usageModelAliases, usageModelAliases);
+        assert.deepStrictEqual(persisted.usageLimitSources, usageLimitSources);
+        assert.equal(persisted.storageCleanup.worktreeSettledAfterDays, 0);
+        assert.equal(persisted.storageCleanup.worktreeKeepWhen, "any-local-files");
 
         yield* serverSettings.updateSettings({ usagePriceOverrides: { "example-model": null } });
         const restored = yield* readPersisted;
@@ -1627,6 +1649,37 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         JSON.stringify(ServerSettingsModule.redactServerSettingsForClient(saved)),
         "legacy-api-key",
       );
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("keeps the Jira API token in the secret store and redacts it for clients", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+
+      const saved = yield* serverSettings.updateSettings({
+        jira: { baseUrl: "https://company.atlassian.net", apiToken: "jira-secret" },
+      });
+      assert.equal(saved.jira.apiToken, "jira-secret");
+      assert.notInclude(yield* fileSystem.readFileString(serverConfig.settingsPath), "jira-secret");
+      assert.equal(
+        ServerSettingsModule.redactServerSettingsForClient(saved).jira.apiToken.includes(
+          "jira-secret",
+        ),
+        false,
+      );
+
+      // A client echoes the redaction marker back with other edits; the token survives.
+      const redacted = ServerSettingsModule.redactServerSettingsForClient(saved).jira.apiToken;
+      const kept = yield* serverSettings.updateSettings({
+        jira: { email: "dev@company.test", apiToken: redacted },
+      });
+      assert.equal(kept.jira.apiToken, "jira-secret");
+
+      const cleared = yield* serverSettings.updateSettings({ jira: { apiToken: "" } });
+      assert.equal(cleared.jira.apiToken, "");
+      assert.equal((yield* serverSettings.getSettings).jira.apiToken, "");
     }).pipe(Effect.provide(layerServerSettings())),
   );
 

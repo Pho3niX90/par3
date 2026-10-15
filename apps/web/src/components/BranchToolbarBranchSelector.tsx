@@ -43,6 +43,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { vcsEnvironment } from "../state/vcs";
 import { cn } from "../lib/utils";
 import { THREAD_DETAILS_PANEL_ICON_CLASS } from "./chat/threadDetailsPanelStyles";
+import { ThreadDetailsJiraRows } from "./chat/ThreadDetailsJiraRows";
 import { ThreadDetailsPrRows } from "./chat/ThreadDetailsPrRows";
 import { parsePullRequestReference } from "../pullRequestReference";
 import { getSourceControlPresentation } from "../sourceControlPresentation";
@@ -819,6 +820,17 @@ export function BranchToolbarBranchSelector({
             openAriaLabel={prUrl ?? "Open pull request"}
             onOpen={(event) => openPrLink(event, prUrl)}
             onActed={() => branchStatusQuery.refresh()}
+          />
+        ) : null}
+        {displayMode === "panel" ? (
+          <ThreadDetailsJiraRows
+            environmentId={environmentId}
+            projectId={activeProject?.id ?? null}
+            threadRef={threadRef}
+            branch={resolvedActiveBranch}
+            pullRequestTitle={displayedPr?.title ?? currentLinkedPr?.snapshot?.title ?? null}
+            cwd={branchCwd}
+            turnCompletedAt={serverThread?.latestRun?.completedAt ?? null}
           />
         ) : null}
       </div>

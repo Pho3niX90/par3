@@ -14,6 +14,10 @@
 import type { ProviderDriverKind } from "@t3tools/contracts";
 import type * as Schema from "effect/Schema";
 
+import { MODEL_VENDOR_ICONS, modelVendorForSlug } from "./modelVendors.ts";
+
+export { MODEL_VENDOR_ICONS, type ModelVendor } from "./modelVendors.ts";
+
 /**
  * A provider's instance settings schema. Fields carry `providerSettingsForm`
  * annotations, which the settings form renders generically.
@@ -33,8 +37,8 @@ export interface ProviderEnvironmentField {
 
 /**
  * A provider glyph as plain data, so web and mobile can each draw it with
- * their own SVG renderer. Colors are per theme; a path without a fill uses
- * the icon's `fill`.
+ * their own SVG renderer. Colors are per theme; a path without a fill or
+ * gradient uses the icon's `fill`.
  */
 export interface ProviderIcon {
   readonly viewBox: string;
@@ -43,7 +47,17 @@ export interface ProviderIcon {
     readonly d: string;
     readonly fillRule?: "evenodd" | "nonzero";
     readonly fill?: { readonly light: string; readonly dark: string };
+    /** A brand gradient, the same in both themes. Coordinates are in viewBox units. */
+    readonly gradient?: ProviderIconGradient;
   }>;
+}
+
+export interface ProviderIconGradient {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+  readonly stops: ReadonlyArray<{ readonly offset: number; readonly color: string }>;
 }
 
 export interface ProviderClientDefinition {
@@ -60,6 +74,21 @@ export interface ProviderClientDefinition {
    * It marks the driver kind, so built-in and custom instances show it alike.
    */
   readonly badgeLabel?: string;
+  /**
+   * The driver routes to several vendors' models, so clients draw each
+   * model's vendor glyph and keep the driver glyph as a corner badge.
+   */
+  readonly modelVendorIcons?: boolean;
+}
+
+/** The vendor glyph to draw for `model`, or `undefined` to draw the driver's own glyph. */
+export function modelVendorIcon(
+  definition: ProviderClientDefinition | undefined,
+  model: string | null | undefined,
+): ProviderIcon | undefined {
+  if (!definition?.modelVendorIcons || !model) return undefined;
+  const vendor = modelVendorForSlug(model);
+  return vendor ? MODEL_VENDOR_ICONS[vendor] : undefined;
 }
 
 export function defineProviderClient<const Definition extends ProviderClientDefinition>(
