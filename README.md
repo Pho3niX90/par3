@@ -1,6 +1,6 @@
 # Par3
 
-Par3 is an "agent harness control surface" for teams, built by [Parity Labs](https://paritylabs.co.za). It lets you control the coding agents on your machines from a desktop app, a web app and a mobile app.
+Par3 is an "agent harness control surface" for teams. It lets you control the coding agents on your machines from a desktop app, a web app and a mobile app.
 
 Works with your subscriptions on Claude Code, Codex, Cursor, GitHub Copilot, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, Par3 can control them.
 
