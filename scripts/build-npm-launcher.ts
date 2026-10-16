@@ -86,8 +86,10 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
     yield* fs.copyFile(readme, path.join(stageDir, "README.md"));
   }
 
-  const packageDir = path.join(input.outputDir, NPM_LAUNCHER_PACKAGE_NAME);
-  const tarball = path.join(input.outputDir, `${NPM_LAUNCHER_PACKAGE_NAME}.tgz`);
+  // Fixed file names: the scoped package name would nest them under `@paritylabs/`, and
+  // `cli.ts publish` reads `t3.tgz`.
+  const packageDir = path.join(input.outputDir, "t3");
+  const tarball = path.join(input.outputDir, "t3.tgz");
   yield* fs.remove(tarball, { force: true });
   const tar = (yield* HostProcess.Platform) === "win32" ? windowsSystemTar() : "tar";
   // npm tarballs root everything under `package/`.
