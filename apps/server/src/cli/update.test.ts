@@ -8,7 +8,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import { repointLauncher, resolveLauncherPath } from "./update.ts";
 
-it.layer(NodeServices.layer)("t3 update launcher", (it) => {
+it.layer(NodeServices.layer)("par3 update launcher", (it) => {
   it.effect("repoints a symlink that lives in a runtime versions tree", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -16,7 +16,7 @@ it.layer(NodeServices.layer)("t3 update launcher", (it) => {
       const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-update-" });
       const oldExe = path.join(root, "runtime/versions/1.0.0/t3");
       const newExe = path.join(root, "runtime/versions/2.0.0/t3");
-      const launcher = path.join(root, "bin/t3");
+      const launcher = path.join(root, "bin/par3");
       for (const file of [oldExe, newExe]) {
         yield* fs.makeDirectory(path.dirname(file), { recursive: true });
         yield* fs.writeFileString(file, "");
@@ -46,7 +46,7 @@ it.layer(NodeServices.layer)("t3 update launcher", (it) => {
       const elsewhere = path.join(root, "elsewhere/t3");
       // Another install's versions tree: same shape, different home.
       const otherHome = path.join(root, "other/runtime/versions/1.0.0/t3");
-      const otherLauncher = path.join(root, "other/bin/t3");
+      const otherLauncher = path.join(root, "other/bin/par3");
       for (const file of [newExe, copy, elsewhere, otherHome]) {
         yield* fs.makeDirectory(path.dirname(file), { recursive: true });
         yield* fs.writeFileString(file, "");
@@ -74,24 +74,24 @@ it.layer(NodeServices.layer)("t3 update launcher", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-update-" });
-      const launcher = path.join(root, "bin/t3");
+      const launcher = path.join(root, "bin/par3");
       yield* fs.makeDirectory(path.dirname(launcher), { recursive: true });
       yield* fs.writeFileString(launcher, "");
 
       const bare = yield* resolveLauncherPath.pipe(
-        Effect.provideService(HostProcess.InvokedAs, "t3"),
+        Effect.provideService(HostProcess.InvokedAs, "par3"),
         Effect.provideService(HostProcess.Environment, {
           PATH: `${path.join(root, "missing")}:${path.join(root, "bin")}`,
         }),
         Effect.provideService(HostProcess.WorkingDirectory, root),
       );
       const relative = yield* resolveLauncherPath.pipe(
-        Effect.provideService(HostProcess.InvokedAs, "./bin/t3"),
+        Effect.provideService(HostProcess.InvokedAs, "./bin/par3"),
         Effect.provideService(HostProcess.Environment, { PATH: "" }),
         Effect.provideService(HostProcess.WorkingDirectory, root),
       );
       const absent = yield* resolveLauncherPath.pipe(
-        Effect.provideService(HostProcess.InvokedAs, "t3"),
+        Effect.provideService(HostProcess.InvokedAs, "par3"),
         Effect.provideService(HostProcess.Environment, { PATH: path.join(root, "missing") }),
         Effect.provideService(HostProcess.WorkingDirectory, root),
       );
@@ -99,6 +99,33 @@ it.layer(NodeServices.layer)("t3 update launcher", (it) => {
       assert.equal(bare, launcher);
       assert.equal(relative, launcher);
       assert.equal(absent, undefined);
+    }).pipe(Effect.scoped, Effect.provideService(HostProcess.Platform, "linux")),
+  );
+
+  it.effect("follows the p3 alias to the par3 launcher it runs", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-update-" });
+      const launcher = path.join(root, "bin/par3");
+      yield* fs.makeDirectory(path.dirname(launcher), { recursive: true });
+      yield* fs.writeFileString(launcher, "");
+      yield* fs.symlink("par3", path.join(root, "bin/p3"));
+      // A p3 that is not the alias, such as some other tool's, stays itself.
+      const foreign = path.join(root, "other/p3");
+      yield* fs.makeDirectory(path.dirname(foreign), { recursive: true });
+      yield* fs.writeFileString(foreign, "");
+
+      const resolve = (invokedAs: string, PATH: string) =>
+        resolveLauncherPath.pipe(
+          Effect.provideService(HostProcess.InvokedAs, invokedAs),
+          Effect.provideService(HostProcess.Environment, { PATH }),
+          Effect.provideService(HostProcess.WorkingDirectory, root),
+        );
+
+      assert.equal(yield* resolve("p3", path.join(root, "bin")), launcher);
+      assert.equal(yield* resolve("./bin/p3", ""), launcher);
+      assert.equal(yield* resolve("p3", path.join(root, "other")), foreign);
     }).pipe(Effect.scoped, Effect.provideService(HostProcess.Platform, "linux")),
   );
 });

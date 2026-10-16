@@ -13,7 +13,7 @@ import { discardResponseBody, responsePayloads } from "@t3tools/shared/mcpRespon
  * Stdio-to-HTTP bridge for T3's MCP endpoint.
  *
  * ACP agents must support stdio MCP servers, while optional http/sse support
- * is unevenly implemented. `t3 acp-mcp-bridge` runs as the stdio MCP server an
+ * is unevenly implemented. `par3 acp-mcp-bridge` runs as the stdio MCP server an
  * ACP agent spawns and forwards each JSON-RPC line to T3's authenticated
  * streamable-HTTP endpoint: single JSON responses and SSE streams are written
  * back as newline-delimited JSON-RPC, notification acknowledgements (202/204)
@@ -308,7 +308,7 @@ export function runAcpMcpStdioBridge(options: AcpMcpStdioBridgeOptions): Effect.
 }
 
 /**
- * Argv runner for `t3 acp-mcp-bridge` and `t3 acp-mcp-call`, shared by the
+ * Argv runner for `par3 acp-mcp-bridge` and `par3 acp-mcp-call`, shared by the
  * fast-path dispatch in bin.ts and the full CLI's command handlers. Kept free
  * of heavy imports: these commands run on the ACP first-message critical path.
  */

@@ -22,7 +22,7 @@ export type CliRunner = "npx" | "pnpm dlx" | "bunx";
  *   bunx     ~/.bun/install/cache/... or $TMPDIR/bunx-<uid>-<spec>/...
  *
  * Global installs and repo checkouts match none of these and return null.
- * Detection is best-effort; callers must fail closed to a plain `t3` command.
+ * Detection is best-effort; callers must fail closed to a plain `par3` command.
  */
 function detectCliRunner(entryPath: string): CliRunner | null {
   const path = entryPath.replaceAll("\\", "/");
@@ -45,7 +45,7 @@ function detectCliRunner(entryPath: string): CliRunner | null {
 const InstallManifest = Schema.Struct({
   name: Schema.String,
   version: Schema.String,
-  bin: Schema.optionalKey(Schema.Struct({ t3: Schema.String })),
+  bin: Schema.optionalKey(Schema.Struct({ par3: Schema.String })),
   optionalDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 const decodeInstallManifest = Schema.decodeUnknownEffect(Schema.fromJsonString(InstallManifest));
@@ -85,15 +85,15 @@ export const resolveServerInstallation = Effect.gen(function* () {
     .readFileString(path.join(packageRoot, "package.json"))
     .pipe(Effect.flatMap(decodeInstallManifest));
   if (manifest.name !== "@paritylabs/par3" || !manifest.bin) return null;
-  const bin = yield* fs.realPath(path.join(packageRoot, manifest.bin.t3));
-  const globalBin = yield* fs.realPath(path.join(prefix, "bin/t3"));
+  const bin = yield* fs.realPath(path.join(packageRoot, manifest.bin.par3));
+  const globalBin = yield* fs.realPath(path.join(prefix, "bin/par3"));
   if (globalBin !== bin) return null;
   if (executable) {
     const nativeManifest = yield* fs
       .readFileString(path.join(path.dirname(entry), "package.json"))
       .pipe(Effect.flatMap(decodeInstallManifest));
     if (
-      manifest.bin.t3 !== "./bin/t3.js" ||
+      manifest.bin.par3 !== "./bin/t3.js" ||
       manifest.optionalDependencies?.[nativeManifest.name] !== nativeManifest.version ||
       nativeManifest.version !== manifest.version
     )
@@ -116,9 +116,9 @@ function suggestedPackageSpec(version: string): string {
 }
 
 /**
- * Render a `t3 <subcommand>` suggestion that matches how this process was
+ * Render a `par3 <subcommand>` suggestion that matches how this process was
  * launched, so copy/pasting it actually works: `npx @paritylabs/par3 connect` suggests
- * `npx @paritylabs/par3 serve`, a global install suggests `t3 serve`, and a nightly build
+ * `npx @paritylabs/par3 serve`, a global install suggests `par3 serve`, and a nightly build
  * keeps the `@nightly` tag.
  */
 export function formatCliCommand(input: {
@@ -128,7 +128,7 @@ export function formatCliCommand(input: {
 }): string {
   const runner = detectCliRunner(input.entryPath);
   if (runner === null) {
-    return `t3 ${input.subcommand}`;
+    return `par3 ${input.subcommand}`;
   }
   return `${runner} ${suggestedPackageSpec(input.version)} ${input.subcommand}`;
 }
@@ -164,10 +164,10 @@ const hostShellWord = (platform: NodeJS.Platform, value: string) =>
   platform === "win32" ? powershellWord(value) : shellWord(value);
 
 /**
- * The launcher a person can type to run this install when `t3` is not on
- * PATH: the desktop app's `t3` shim, which the app and the shim itself name in
+ * The launcher a person can type to run this install when `par3` is not on
+ * PATH: the desktop app's `par3` shim, which the app and the shim itself name in
  * `T3CODE_CLI_PATH`, or a standalone binary's own path. Script installs (a
- * repo checkout) have no single launcher and keep plain `t3`.
+ * repo checkout) have no single launcher and keep plain `par3`.
  */
 const resolveInstallLauncher = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -181,7 +181,7 @@ const resolveInstallLauncher = Effect.gen(function* () {
 });
 
 /**
- * `t3 <subcommand> <args>` for a person to run on this host: `t3` when it is
+ * `par3 <subcommand> <args>` for a person to run on this host: `par3` when it is
  * on PATH, the package runner this process came from, or else the absolute
  * path of the launcher for this install, such as the one the desktop app
  * installs. `args` are quoted for the host's shell: POSIX, or PowerShell on
@@ -193,8 +193,8 @@ export const resolveHostCliCommand = (subcommand: string, args: ReadonlyArray<st
     const withArgs = (prefix: string) =>
       [prefix, ...args.map((arg) => hostShellWord(platform, arg))].join(" ");
     const command = yield* resolveCliCommand(subcommand);
-    if (command !== `t3 ${subcommand}`) return { command: withArgs(command), launcher: false };
-    if (yield* isCommandAvailable("t3")) return { command: withArgs(command), launcher: false };
+    if (command !== `par3 ${subcommand}`) return { command: withArgs(command), launcher: false };
+    if (yield* isCommandAvailable("par3")) return { command: withArgs(command), launcher: false };
     const launcher = yield* resolveInstallLauncher;
     if (Option.isNone(launcher)) return { command: withArgs(command), launcher: false };
     // PowerShell runs a quoted path only through the call operator.
@@ -204,9 +204,9 @@ export const resolveHostCliCommand = (subcommand: string, args: ReadonlyArray<st
   });
 
 /**
- * `t3 <subcommand>` as root, for setup a person runs once on the host. `sudo`
+ * `par3 <subcommand>` as root, for setup a person runs once on the host. `sudo`
  * resets PATH on most distributions, which drops a user-installed Node (nvm,
- * fnm, a tarball) and with it `npx` or a global `t3`, so the command carries
+ * fnm, a tarball) and with it `npx` or a global `par3`, so the command carries
  * PATH through unless Node is on root's PATH too. An absolute launcher needs
  * neither.
  */

@@ -17,7 +17,12 @@ import * as BootService from "../cloud/bootService.ts";
 import { pinnedRuntimeVersionsDir } from "../cloud/pinnedRuntime.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 import * as CliService from "./service.ts";
-import { findWindowsShim, launcherOwnsVersionsDir, resolveLauncherPath } from "./update.ts";
+import {
+  findWindowsShim,
+  launcherAliasPath,
+  launcherOwnsVersionsDir,
+  resolveLauncherPath,
+} from "./update.ts";
 
 export class CliUninstallError extends Schema.TaggedError<CliUninstallError>()(
   "CliUninstallError",
@@ -29,14 +34,16 @@ export class CliUninstallError extends Schema.TaggedError<CliUninstallError>()(
 }
 
 /**
- * What `t3 uninstall` would remove for one T3 home. Computed before anything
+ * What `par3 uninstall` would remove for one T3 home. Computed before anything
  * is touched so the user sees the whole plan in one place.
  */
 export interface UninstallPlan {
   /** The background service serves this home and will be stopped and removed. */
   readonly service: boolean;
-  /** The `t3` launcher (symlink or `.cmd` shim) that points into this home's runtime tree. */
+  /** The `par3` launcher (symlink or `.cmd` shim) that points into this home's runtime tree. */
   readonly launcher: string | undefined;
+  /** The `p3` alias beside the launcher, when it runs that launcher. */
+  readonly launcherAlias: string | undefined;
   /** `<home>/runtime`, holding every downloaded version, when it exists. */
   readonly runtimeDir: string | undefined;
   /** `<home>/userdata`, which is never removed; shown so the user knows where it is. */
@@ -71,6 +78,23 @@ export const findOwnedLauncher = Effect.fn("cli.uninstall.find_launcher")(functi
   return launcherOwnsVersionsDir(path, input.versionsDir, resolved) ? input.launchedAs : undefined;
 });
 
+/** The `p3` alias next to `launcher`, when it is the one the install scripts wrote for it. */
+export const findOwnedAlias = Effect.fn("cli.uninstall.find_alias")(function* (launcher: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const alias = launcherAliasPath(path, launcher);
+  if (path.extname(launcher) === ".cmd") {
+    const contents = yield* fs.readFileString(alias).pipe(Effect.option);
+    return Option.isSome(contents) && contents.value.includes(`"%~dp0${path.basename(launcher)}"`)
+      ? alias
+      : undefined;
+  }
+  const target = yield* fs.readLink(alias).pipe(Effect.option);
+  return Option.isSome(target) && path.resolve(path.dirname(alias), target.value) === launcher
+    ? alias
+    : undefined;
+});
+
 const planUninstall = Effect.fn("cli.uninstall.plan")(function* (input: {
   readonly baseDir: string;
 }) {
@@ -84,9 +108,11 @@ const planUninstall = Effect.fn("cli.uninstall.plan")(function* (input: {
   const versionsDir = pinnedRuntimeVersionsDir(path, input.baseDir);
   const runtimeDir = path.dirname(versionsDir);
   const launchedAs = (yield* HostProcess.IsExecutable) ? yield* resolveLauncherPath : undefined;
+  const launcher = yield* findOwnedLauncher({ launchedAs, versionsDir });
   const plan: UninstallPlan = {
     service: status.supported && status.installed && servesThisHome,
-    launcher: yield* findOwnedLauncher({ launchedAs, versionsDir }),
+    launcher,
+    launcherAlias: launcher === undefined ? undefined : yield* findOwnedAlias(launcher),
     runtimeDir: (yield* fs.exists(runtimeDir).pipe(Effect.orElseSucceed(() => false)))
       ? runtimeDir
       : undefined,
@@ -106,7 +132,7 @@ export const uninstallCommand = Command.make("uninstall", {
   ),
 }).pipe(
   Command.withDescription(
-    "Remove t3 from this machine: the background service, the launcher, and every downloaded version. Your projects and threads are kept.",
+    "Remove Par3 from this machine: the background service, the launcher, and every downloaded version. Your projects and threads are kept.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
@@ -130,10 +156,10 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
   const plan = yield* planUninstall({ baseDir: input.baseDir });
 
   if (!plan.service && plan.launcher === undefined && plan.runtimeDir === undefined) {
-    yield* Console.log(`Nothing to remove: t3 is not installed for ${input.baseDir}.`);
+    yield* Console.log(`Nothing to remove: Par3 is not installed for ${input.baseDir}.`);
     if (!(yield* HostProcess.IsExecutable)) {
       yield* Console.log(
-        "  This t3 runs from a Node script, so it was installed by npm or built from source. Remove it the same way (`npm uninstall -g @paritylabs/par3`, or delete the checkout).",
+        "  This Par3 runs from a Node script, so it was installed by npm or built from source. Remove it the same way (`npm uninstall -g @paritylabs/par3`, or delete the checkout).",
       );
     }
     return;
@@ -142,6 +168,7 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
   yield* Console.log("This will remove:");
   if (plan.service) yield* Console.log("  the background service (stopping it first)");
   if (plan.launcher !== undefined) yield* Console.log(`  the launcher at ${plan.launcher}`);
+  if (plan.launcherAlias !== undefined) yield* Console.log(`  its alias at ${plan.launcherAlias}`);
   if (plan.runtimeDir !== undefined) {
     yield* Console.log(`  every downloaded version under ${plan.runtimeDir}`);
   }
@@ -157,7 +184,7 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
       });
     }
     const confirmed = yield* Prompt.run(
-      Prompt.Confirm({ message: "Remove t3 from this machine?", initial: false }),
+      Prompt.Confirm({ message: "Remove Par3 from this machine?", initial: false }),
     ).pipe(Effect.catchTags({ QuitError: () => Effect.succeed(false) }));
     if (!confirmed) {
       yield* Console.log("Left as is.");
@@ -180,6 +207,17 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
       );
     yield* Console.log(`Removed ${plan.launcher}.`);
   }
+  if (plan.launcherAlias !== undefined) {
+    const alias = plan.launcherAlias;
+    yield* fs
+      .remove(alias, { force: true })
+      .pipe(
+        Effect.mapError(
+          () => new CliUninstallError({ reason: `Could not remove the alias at ${alias}.` }),
+        ),
+      );
+    yield* Console.log(`Removed ${alias}.`);
+  }
   if (plan.runtimeDir !== undefined) {
     // This process runs from inside runtimeDir. POSIX unlinks a running
     // executable fine; Windows refuses, so the tree is removed after this
@@ -201,7 +239,7 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
             reason: `Could not schedule removal of ${runtimeDir}. Delete it yourself once this window is closed.`,
           }),
       });
-      yield* Console.log(`${runtimeDir} will be removed once t3 exits.`);
+      yield* Console.log(`${runtimeDir} will be removed once Par3 exits.`);
     } else {
       yield* fs
         .remove(plan.runtimeDir, { recursive: true, force: true })
@@ -214,5 +252,5 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
     }
   }
   yield* Console.log("");
-  yield* Console.log("t3 is uninstalled. Thanks for trying Par3.");
+  yield* Console.log("Par3 is uninstalled. Thanks for trying it.");
 });

@@ -171,7 +171,7 @@ it.layer(NodeServices.layer)("build-npm-platform-packages", (it) => {
       );
       assert.equal(launcherManifest.name, "@paritylabs/par3");
       assert.equal(launcherManifest.version, VERSION);
-      assert.deepStrictEqual(launcherManifest.bin, { t3: "./bin/t3.js" });
+      assert.deepStrictEqual(launcherManifest.bin, { par3: "./bin/t3.js", p3: "./bin/t3.js" });
       assert.deepStrictEqual(launcherManifest.files, ["bin", "dist"]);
       assert.deepStrictEqual(launcherManifest.optionalDependencies, {
         "@paritylabs/par3-darwin-arm64": VERSION,

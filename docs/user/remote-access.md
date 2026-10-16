@@ -12,12 +12,12 @@ Connections**, sign in, and enable **T3 Connect** for that environment.
 For a command-line host, run:
 
 ```bash
-t3 connect
+par3 connect
 ```
 
 Follow the sign-in instructions. Setup offers a
 [background service](./background-service.md); if you decline it, start the
-server with `t3 serve`. Saving your sign-in alone does not make the machine
+server with `par3 serve`. Saving your sign-in alone does not make the machine
 reachable.
 
 On your other device, sign in to the same T3 Connect account and choose the
@@ -42,13 +42,13 @@ For a command-line host, replace `<private-ip>` with the host's LAN or tailnet
 address:
 
 ```bash
-t3 serve --host <private-ip>
+par3 serve --host <private-ip>
 ```
 
 If a server is already running, generate a fresh link without restarting it:
 
 ```bash
-t3 pair
+par3 pair
 ```
 
 Scan the QR code on your phone or paste the pairing URL into **Add environment**
@@ -127,13 +127,13 @@ HTTPS** in **Settings → Connections**. Turn it off there to remove that route.
 To start a command-line server with Tailscale HTTPS:
 
 ```bash
-t3 serve --tailscale-serve
+par3 serve --tailscale-serve
 ```
 
 For an already-running server:
 
 ```bash
-t3 pair --tailscale
+par3 pair --tailscale
 ```
 
 The pairing link uses an address such as `https://machine.tailnet.ts.net/`.
@@ -145,7 +145,7 @@ tailscale serve --https=443 off
 ```
 
 If that port is already in use, choose another with
-`--tailscale-serve-port`. See `t3 pair --help` for other pairing options.
+`--tailscale-serve-port`. See `par3 pair --help` for other pairing options.
 
 ### Hosted web app
 
@@ -218,13 +218,13 @@ the server says so at startup, and browser tabs and HTML previews show the
 command to run on the host:
 
 ```sh
-sudo t3 browser setup
+sudo par3 browser setup
 ```
 
 The server shows the exact line for how you started it, such as
 `sudo npx @paritylabs/par3 browser setup`, and keeps your `PATH` when Node is installed only
-for your user. Where `t3` is not on your `PATH`, such as with only the
-desktop app installed, it names the full path of the app's own `t3` instead. It allows Chrome's sandbox with an AppArmor profile and installs
+for your user. Where `par3` is not on your `PATH`, such as with only the
+desktop app installed, it names the full path of the app's own `par3` instead. It allows Chrome's sandbox with an AppArmor profile and installs
 any missing libraries with apt. It is safe to run again. Without `sudo`, it
 only reports what it would change.
 
@@ -242,7 +242,7 @@ threads on an environment through its MCP server. See
 On the host, **Settings → Connections** lets authorized administrators create
 pairing links and revoke client sessions. Revoking an unused link prevents new
 pairings; revoke a device's session to remove its existing access. Command-line
-management is available through `t3 auth --help`.
+management is available through `par3 auth --help`.
 
 A session with an open connection stays listed after its access credential
 expires.
@@ -293,9 +293,9 @@ revokes its cloud access and frees its host space even when the environment is
 offline or has been wiped. When T3 Connect rejects a host's link, the host
 shows that it was removed from T3 Connect. To link it again, turn on
 **T3 Connect** in **Settings → Connections** on a desktop host, or run
-`t3 connect link` on a command-line host and then restart Par3 there. A
+`par3 connect link` on a command-line host and then restart Par3 there. A
 command-line host that released its tunnel when it last stopped may link itself
-again on its next start; run `t3 connect unlink` on that host to keep it off.
+again on its next start; run `par3 connect unlink` on that host to keep it off.
 Removing an environment from a device's connection settings only forgets it on
 that device; it stays registered to your account.
 
@@ -310,8 +310,8 @@ Par3 once it has been offline for seven days. That environment shows a message
 asking you to update. Start Par3 on that computer and update it to the latest
 version; it reconnects at the same address without pairing again.
 
-On a command-line host, `t3 connect unlink` disables exposure while retaining
-your login; `t3 connect logout` also clears that login. Background-service
+On a command-line host, `par3 connect unlink` disables exposure while retaining
+your login; `par3 connect logout` also clears that login. Background-service
 [removal](./background-service.md#manage-the-service) is separate.
 
 Treat pairing URLs and authorization codes as passwords. Do not include them in
@@ -319,22 +319,22 @@ screenshots, logs, or bug reports.
 
 ## T3 Connect troubleshooting
 
-Run `t3 connect status` on the host to inspect saved authorization and link
+Run `par3 connect status` on the host to inspect saved authorization and link
 configuration. It is not a live reachability check. If the environment appears
-offline, run `t3 service status` and read the displayed log. If it disappears
+offline, run `par3 service status` and read the displayed log. If it disappears
 when SSH closes, see [background-service troubleshooting](./background-service.md#troubleshooting).
 
-| Error                                                     | Recovery                                                                                                                                    |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `environment_link_limit_exceeded` or managed tunnel limit | Deregister an unused environment, then restart Par3 on the host.                                                                            |
-| `auth_invalid` or `invalid_bearer`                        | Run `t3 connect login`. If credentials were revoked, run `t3 connect logout`, then `t3 connect` again. Restart the server after signing in. |
-| Expired or invalid link proof                             | Check the host's date and time, update Par3, then restart it.                                                                               |
-| HTTP 403 without a recognized error                       | Check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report.                                               |
-| HTTP 408, 429, or 5xx                                     | Check network and relay availability. Startup retries temporary failures for up to ten minutes.                                             |
+| Error                                                     | Recovery                                                                                                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `environment_link_limit_exceeded` or managed tunnel limit | Deregister an unused environment, then restart Par3 on the host.                                                                                  |
+| `auth_invalid` or `invalid_bearer`                        | Run `par3 connect login`. If credentials were revoked, run `par3 connect logout`, then `par3 connect` again. Restart the server after signing in. |
+| Expired or invalid link proof                             | Check the host's date and time, update Par3, then restart it.                                                                                     |
+| HTTP 403 without a recognized error                       | Check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report.                                                     |
+| HTTP 408, 429, or 5xx                                     | Check network and relay availability. Startup retries temporary failures for up to ten minutes.                                                   |
 
 After fixing a permanent rejection, restart the host's server. On Linux, use
 `systemctl --user restart t3code.service` for the background service. For a
-foreground server, stop it and run `t3 serve` again with your usual options.
+foreground server, stop it and run `par3 serve` again with your usual options.
 Include the diagnostic message and trace ID when reporting a persistent failure.
 
 For a connection that still fails after linking, check the date and time on both

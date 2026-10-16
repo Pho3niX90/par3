@@ -2,7 +2,7 @@
 /**
  * Turns the per-platform CLI archives of one release into the npm packages
  * behind `npx @paritylabs/par3` / `npm i -g @paritylabs/par3`: one `@paritylabs/par3-<platformKey>` package per
- * archive holding the archive's contents verbatim, plus the `t3` launcher
+ * archive holding the archive's contents verbatim, plus the `par3` launcher
  * that lists them as optionalDependencies and execs the one npm installed.
  * The bytes a user gets from npm are therefore the release archive's, and
  * running them needs neither a Node runtime, npm, nor a native build.
@@ -170,7 +170,7 @@ export function npmPlatformPackageReadme(platformKey: CliArchivePlatformKey): st
   ].join("\n");
 }
 
-/** package.json for the `t3` launcher. No engines: bin/t3.js is trivial CJS. */
+/** package.json for the `par3` launcher. No engines: bin/t3.js is trivial CJS. */
 export function npmLauncherPackageManifest(
   version: string,
   platformKeys: ReadonlyArray<CliArchivePlatformKey>,
@@ -181,7 +181,7 @@ export function npmLauncherPackageManifest(
     description: "Par3 CLI. Installs the self-contained executable for this platform.",
     license: serverPackageJson.license,
     repository: serverPackageJson.repository,
-    bin: { t3: "./bin/t3.js" },
+    bin: { par3: "./bin/t3.js", p3: "./bin/t3.js" },
     files: ["bin", "dist"],
     optionalDependencies: Object.fromEntries(
       platformKeys.map((key) => [npmPlatformPackageName(key), version]),
@@ -209,9 +209,9 @@ try {
 } catch {
   process.stderr.write(
     [
-      "t3: no Par3 CLI build is available for this platform (" + key + ").",
+      "par3: no Par3 CLI build is available for this platform (" + key + ").",
       "Supported platforms: " + SUPPORTED.join(", ") + ".",
-      "If yours is listed, reinstall t3 so npm fetches its optional dependency.",
+      "If yours is listed, reinstall Par3 so npm fetches its optional dependency.",
       "The desktop app and release archives are at https://github.com/Pho3niX90/t3code/releases",
       "",
     ].join("\\n"),
@@ -222,7 +222,7 @@ try {
 const executable = join(packageDir, process.platform === "win32" ? "t3.exe" : "t3");
 const result = spawnSync(executable, process.argv.slice(2), { stdio: "inherit" });
 if (result.error) {
-  process.stderr.write("t3: failed to start " + executable + ": " + result.error.message + "\\n");
+  process.stderr.write("par3: failed to start " + executable + ": " + result.error.message + "\\n");
   process.exit(1);
 }
 // A child killed by a signal has no status; report it the way a shell would.
@@ -479,7 +479,7 @@ const command = Command.make(
   buildNpmPlatformPackages,
 ).pipe(
   Command.withDescription(
-    "Build the t3 launcher and @paritylabs/par3-<platform> npm packages from CLI release archives.",
+    "Build the par3 launcher and @paritylabs/par3-<platform> npm packages from CLI release archives.",
   ),
 );
 

@@ -330,9 +330,9 @@ export function createDevRunnerEnv({
     }
 
     // A dev-runner server is never launcher-managed. When the shell that runs
-    // this script was itself spawned by the machine's managed t3 service (an
+    // this script was itself spawned by the machine's managed par3 service (an
     // agent working inside Par3), these leak through and the child server
-    // fails startup with "The service launcher started a different t3 version"
+    // fails startup with "The service launcher started a different Par3 version"
     // (serviceLauncherClient.ts resolveStartup).
     delete output.T3_SERVICE_LAUNCHER_CONTEXT;
     delete output.T3_BOOT_SERVICE_UNIT;

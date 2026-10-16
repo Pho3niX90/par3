@@ -8,7 +8,8 @@
     "directory": "apps/server"
   },
   "bin": {
-    "t3": "./dist/bin.mjs"
+    "p3": "./dist/bin.mjs",
+    "par3": "./dist/bin.mjs"
   },
   "files": [
     "dist"

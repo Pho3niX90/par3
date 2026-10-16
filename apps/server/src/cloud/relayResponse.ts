@@ -42,7 +42,7 @@ function recoveryHint(error: RelayProtectedError): string {
     case "RelayEnvironmentLinkLimitExceededError":
       return "Unlink an unused environment in T3 Connect, then restart Par3 on this machine.";
     case "RelayAuthInvalidError":
-      return "Run `t3 connect login` to check this machine's authorization. If the stored credential was revoked, sign out with `t3 connect logout`, then run `t3 connect` again. Restart Par3 after signing in.";
+      return "Run `par3 connect login` to check this machine's authorization. If the stored credential was revoked, sign out with `par3 connect logout`, then run `par3 connect` again. Restart Par3 after signing in.";
     case "RelayEnvironmentLinkProofExpiredError":
     case "RelayEnvironmentLinkProofInvalidError":
       return "Check this machine's date and time, update Par3, then restart it.";

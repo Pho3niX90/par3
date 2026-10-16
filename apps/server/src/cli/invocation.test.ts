@@ -51,7 +51,7 @@ it("treats stable installs as direct invocations", () => {
   ]) {
     assert.equal(
       formatCliCommand({ subcommand: "serve", entryPath, version: "0.0.31" }),
-      "t3 serve",
+      "par3 serve",
     );
   }
 });
@@ -97,12 +97,12 @@ it("formats serve suggestions to match the launching command", () => {
       entryPath: "/usr/local/lib/node_modules/@paritylabs/par3/dist/bin.mjs",
       version: "0.0.31-nightly.20260729",
     }),
-    "t3 serve",
+    "par3 serve",
   );
 });
 
 it.layer(NodeServices.layer)("root CLI commands", (it) => {
-  /** `sudo t3 browser setup` as this process would render it, with `t3` on PATH or not. */
+  /** `sudo par3 browser setup` as this process would render it, with `par3` on PATH or not. */
   const rootCommand = (input: {
     readonly node: string;
     readonly entry: string;
@@ -118,12 +118,12 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
       Effect.provideService(HostProcess.Environment, { PATH: input.path ?? "", ...input.env }),
     );
 
-  /** A directory holding an executable `t3`, to stand in for one on PATH. */
-  const pathWithT3 = Effect.gen(function* () {
+  /** A directory holding an executable `par3`, to stand in for one on PATH. */
+  const pathWithPar3 = Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const bin = yield* fs.makeTempDirectoryScoped();
-    yield* fs.writeFileString(path.join(bin, "t3"), "#!/bin/sh\n", { mode: 0o755 });
+    yield* fs.writeFileString(path.join(bin, "par3"), "#!/bin/sh\n", { mode: 0o755 });
     return bin;
   });
 
@@ -142,9 +142,9 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
         yield* rootCommand({
           node: "/home/theo/.local/node/bin/node",
           entry: "/home/theo/.local/lib/node_modules/@paritylabs/par3/dist/bin.mjs",
-          path: yield* pathWithT3,
+          path: yield* pathWithPar3,
         }),
-      ).toBe('sudo env "PATH=$PATH" t3 browser setup');
+      ).toBe('sudo env "PATH=$PATH" par3 browser setup');
     }).pipe(Effect.scoped),
   );
 
@@ -163,9 +163,9 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
       };
       // The desktop app's shim, quoted for the shell and run as root as is.
       expect(yield* rootCommand(desktop)).toBe(`sudo '${shim}' browser setup`);
-      // A `t3` the person put on PATH still wins.
-      expect(yield* rootCommand({ ...desktop, path: yield* pathWithT3 })).toBe(
-        'sudo env "PATH=$PATH" t3 browser setup',
+      // A `par3` the person put on PATH still wins.
+      expect(yield* rootCommand({ ...desktop, path: yield* pathWithPar3 })).toBe(
+        'sudo env "PATH=$PATH" par3 browser setup',
       );
       // A standalone binary names itself.
       expect(
@@ -175,10 +175,10 @@ it.layer(NodeServices.layer)("root CLI commands", (it) => {
           executable: true,
         }),
       ).toBe("sudo /opt/t3/t3 browser setup");
-      // A stale shim path, then no launcher at all, fall back to plain `t3`.
+      // A stale shim path, then no launcher at all, fall back to plain `par3`.
       expect(
         yield* rootCommand({ ...desktop, env: { T3CODE_CLI_PATH: path.join(home, "gone") } }),
-      ).toBe('sudo env "PATH=$PATH" t3 browser setup');
+      ).toBe('sudo env "PATH=$PATH" par3 browser setup');
     }).pipe(Effect.scoped),
   );
 });
@@ -207,9 +207,9 @@ it.layer(NodeServices.layer)("host CLI commands", (it) => {
       expect((yield* hostCommand("win32", { T3CODE_CLI_PATH: shim })).command).toBe(
         `& "${shim}" doctor "--base-dir" "C:\\Users\\Jane Doe\\.t3"`,
       );
-      // Without a launcher, plain `t3` with PowerShell-quoted arguments.
+      // Without a launcher, plain `par3` with PowerShell-quoted arguments.
       expect((yield* hostCommand("win32", {})).command).toBe(
-        't3 doctor "--base-dir" "C:\\Users\\Jane Doe\\.t3"',
+        'par3 doctor "--base-dir" "C:\\Users\\Jane Doe\\.t3"',
       );
       // Typographic quotes also delimit PowerShell strings; doubling keeps them.
       expect(
@@ -220,7 +220,7 @@ it.layer(NodeServices.layer)("host CLI commands", (it) => {
           Effect.provideService(HostProcess.Arguments, ["C:\\t3.exe", "C:\\bin.mjs"]),
           Effect.provideService(HostProcess.IsExecutable, false),
         )).command,
-      ).toBe('t3 doctor "--base-dir" "C:\\T3\\\u201C\u201CArchive\u201D\u201D"');
+      ).toBe('par3 doctor "--base-dir" "C:\\T3\\\u201C\u201CArchive\u201D\u201D"');
       // POSIX hosts keep single quotes for the same input. The shim prefix is
       // a host path, so only the arguments are asserted.
       expect((yield* hostCommand("linux", { T3CODE_CLI_PATH: shim })).command).toMatch(
@@ -263,13 +263,13 @@ it.layer(NodeServices.layer)("manual server installation ownership", (it) => {
       const prefix = path.join(root, "bunx-tools");
       const packageRoot = path.join(prefix, "lib/node_modules/@paritylabs/par3");
       const entry = path.join(packageRoot, "dist/bin.mjs");
-      const globalBin = path.join(prefix, "bin/t3");
+      const globalBin = path.join(prefix, "bin/par3");
       yield* fs.makeDirectory(path.dirname(entry), { recursive: true });
       yield* fs.makeDirectory(path.dirname(globalBin), { recursive: true });
       yield* fs.writeFileString(entry, "");
       yield* fs.writeFileString(
         path.join(packageRoot, "package.json"),
-        '{"name":"@paritylabs/par3","version":"0.0.45","bin":{"t3":"./dist/bin.mjs"}}',
+        '{"name":"@paritylabs/par3","version":"0.0.45","bin":{"par3":"./dist/bin.mjs"}}',
       );
       const resolve = resolveServerInstallation.pipe(
         Effect.provideService(HostProcess.Arguments, ["node", entry]),
@@ -302,9 +302,9 @@ it.layer(NodeServices.layer)("manual server installation ownership", (it) => {
       yield* fs.writeFileString(entry, "");
       yield* fs.writeFileString(
         path.join(packageRoot, "package.json"),
-        '{"name":"@paritylabs/par3","version":"0.0.45","bin":{"t3":"./bin/t3.js"},"optionalDependencies":{"@paritylabs/par3-linux-x64":"0.0.45"}}',
+        '{"name":"@paritylabs/par3","version":"0.0.45","bin":{"par3":"./bin/t3.js"},"optionalDependencies":{"@paritylabs/par3-linux-x64":"0.0.45"}}',
       );
-      yield* fs.symlink(launcher, path.join(prefix, "bin/t3"));
+      yield* fs.symlink(launcher, path.join(prefix, "bin/par3"));
       const resolve = resolveServerInstallation.pipe(
         Effect.provideService(HostProcess.ExecutablePath, entry),
         Effect.provideService(HostProcess.IsExecutable, true),

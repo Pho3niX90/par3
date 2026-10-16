@@ -6,10 +6,10 @@ import * as Option from "effect/Option";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import { makeComponentLogger } from "./DesktopObservability.ts";
 
-// A desktop install puts no `t3` on PATH, so commands the server asks a person
-// to run (`sudo t3 browser setup`) had nothing to call. The app keeps a small
+// A desktop install puts no `par3` on PATH, so commands the server asks a person
+// to run (`sudo par3 browser setup`) had nothing to call. The app keeps a small
 // launcher for its bundled CLI in the T3 home, which is never on PATH and so
-// never shadows another `t3`, and the server names it by absolute path in those
+// never shadows another `par3`, and the server names it by absolute path in those
 // commands through T3CODE_CLI_PATH. An AppImage mounts somewhere new each run,
 // so its launcher mounts the AppImage itself instead of pointing into it.
 const { logInfo, logWarning } = makeComponentLogger("desktop-cli-shim");
@@ -125,13 +125,27 @@ export const renderCliShim = (input: {
   ].join("\n");
 };
 
-/** Where the packaged app keeps its launcher: `<T3 home>/bin/t3`, `t3.cmd` on Windows. */
-export const launcherPath = (environment: DesktopEnvironment.DesktopEnvironment["Service"]) =>
+const binPath = (environment: DesktopEnvironment.DesktopEnvironment["Service"], name: string) =>
   environment.path.join(
     environment.baseDir,
     "bin",
-    environment.platform === "win32" ? "t3.cmd" : "t3",
+    environment.platform === "win32" ? `${name}.cmd` : name,
   );
+
+/** Where the packaged app keeps its launcher: `<T3 home>/bin/par3`, `par3.cmd` on Windows. */
+export const launcherPath = (environment: DesktopEnvironment.DesktopEnvironment["Service"]) =>
+  binPath(environment, "par3");
+
+/** The launcher builds before the rename wrote, removed once the new one is in place. */
+export const legacyLauncherPath = (environment: DesktopEnvironment.DesktopEnvironment["Service"]) =>
+  binPath(environment, "t3");
+
+/**
+ * `p3.cmd`, which runs `par3.cmd` beside it. Windows puts the launcher's folder
+ * on PATH, so the alias lives there too; on Unix, PATH gets a `p3` link instead.
+ */
+const renderWindowsAlias = () =>
+  ["@echo off", `rem ${MARKER}`, '"%~dp0par3.cmd" %*', ""].join("\r\n");
 
 /**
  * Writes the packaged app's launcher to `<T3 home>/bin` and returns its path
@@ -162,23 +176,38 @@ export const install = Effect.gen(function* () {
   return yield* Effect.gen(function* () {
     const existing = yield* fs.readFileString(shimPath).pipe(Effect.option);
     if (Option.isSome(existing) && !existing.value.includes(MARKER)) {
-      // Someone else's file; leave it, and let commands fall back to plain `t3`.
-      yield* logWarning("leaving a t3 launcher the app did not write", { shimPath });
+      // Someone else's file; leave it, and let commands fall back to plain `par3`.
+      yield* logWarning("leaving a par3 launcher the app did not write", { shimPath });
       return Option.none<string>();
     }
-    if (Option.getOrUndefined(existing) !== content) {
-      yield* fs.makeDirectory(path.dirname(shimPath), { recursive: true });
-      // Written beside the launcher and renamed over it, so a running `t3` never reads half a file.
-      const staging = `${shimPath}.${process.pid}.tmp`;
-      yield* fs.writeFileString(staging, content, { mode: 0o755 });
-      yield* fs.rename(staging, shimPath);
-      yield* logInfo("installed t3 launcher", { shimPath });
+    /** Our file at `target`, or nothing there: never replace a file the app did not write. */
+    const writeOwned = (target: string, text: string) =>
+      Effect.gen(function* () {
+        const current = yield* fs.readFileString(target).pipe(Effect.option);
+        if (Option.isSome(current) && !current.value.includes(MARKER)) return;
+        if (Option.getOrUndefined(current) === text) return;
+        yield* fs.makeDirectory(path.dirname(target), { recursive: true });
+        // Written beside the launcher and renamed over it, so a running `par3` never reads half a file.
+        const staging = `${target}.${process.pid}.tmp`;
+        yield* fs.writeFileString(staging, text, { mode: 0o755 });
+        yield* fs.rename(staging, target);
+        yield* logInfo("installed par3 launcher", { target });
+      });
+    yield* writeOwned(shimPath, content);
+    if (windows)
+      yield* writeOwned(path.join(path.dirname(shimPath), "p3.cmd"), renderWindowsAlias());
+    // Builds before the rename installed `t3`; take it out once `par3` replaces it.
+    const legacy = legacyLauncherPath(environment);
+    const legacyContent = yield* fs.readFileString(legacy).pipe(Effect.option);
+    if (Option.isSome(legacyContent) && legacyContent.value.includes(MARKER)) {
+      yield* fs.remove(legacy).pipe(Effect.ignore);
+      yield* logInfo("removed the t3 launcher replaced by par3", { legacy });
     }
     return Option.some(shimPath);
   }).pipe(
-    // Best-effort: nothing here may block the backend's start; commands then fall back to plain `t3`.
+    // Best-effort: nothing here may block the backend's start; commands then fall back to plain `par3`.
     Effect.catchCause((cause) =>
-      logWarning("could not install t3 launcher", { shimPath, cause: Cause.pretty(cause) }).pipe(
+      logWarning("could not install par3 launcher", { shimPath, cause: Cause.pretty(cause) }).pipe(
         Effect.as(Option.none<string>()),
       ),
     ),

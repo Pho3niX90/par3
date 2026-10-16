@@ -18,13 +18,13 @@ Lots of apps have gotten bogged down with bad tech decisions and "slop". Upstrea
 
 ### 3. Remote ready
 
-The websocket layer (`npx t3`) enables remote use, and it is core to the product. Whether users connect over their local network, Tailscale, or the Connect tunnel (the relay in `infra/relay`, inherited from T3 Connect), new features need to work there too.
+The websocket layer (`npx @paritylabs/par3`) enables remote use, and it is core to the product. Whether users connect over their local network, Tailscale, or the Connect tunnel (the relay in `infra/relay`, inherited from T3 Connect), new features need to work there too.
 
 ### 4. Multi-surface
 
 Par3 has 3 key app surfaces: **web**, **desktop**, and **mobile**.
 
-**Web** is two surfaces: the hosted web app and the web app served locally by `npx t3`. Both need to be supported by new features where reasonable.
+**Web** is two surfaces: the hosted web app and the web app served locally by `npx @paritylabs/par3`. Both need to be supported by new features where reasonable.
 
 **Desktop** is the main surface most users install first. It's a full Electron app that bundles the server runner. The desktop app can also be the host server for remote connections from the hosted web app or the mobile app.
 

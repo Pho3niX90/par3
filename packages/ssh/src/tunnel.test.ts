@@ -942,7 +942,7 @@ describe("archive runner script", () => {
 
 // Reuse decisions also live in generated shell. Drive the real launch script
 // against a fake server that answers readiness probes and writes the default
-// runtime file the way `t3 serve` does.
+// runtime file the way `par3 serve` does.
 describe("launch script", () => {
   const windowsHost = HostProcess.Platform.defaultValue() === "win32";
   const FAKE_SERVER = `const fs = require("node:fs");

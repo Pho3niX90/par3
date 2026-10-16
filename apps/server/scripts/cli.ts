@@ -231,7 +231,7 @@ const publishCmd = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Publish the @paritylabs/par3-<platform> tarballs and then the t3 launcher to npm.",
+    "Publish the @paritylabs/par3-<platform> tarballs and then the par3 launcher to npm.",
   ),
 );
 

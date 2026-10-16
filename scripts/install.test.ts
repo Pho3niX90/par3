@@ -97,11 +97,13 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer term
           expect(
             await NodeFSP.readFile(NodePath.join(versions, version, ".install-complete"), "utf8"),
           ).toBe("1.2.3\n");
-          expect(
-            NodeChildProcess.execFileSync(NodePath.join(root, "bin/t3"), ["--version"], {
-              encoding: "utf8",
-            }).trim(),
-          ).toBe("t3 v1.2.3");
+          for (const command of ["bin/par3", "bin/p3"]) {
+            expect(
+              NodeChildProcess.execFileSync(NodePath.join(root, command), ["--version"], {
+                encoding: "utf8",
+              }).trim(),
+            ).toBe("t3 v1.2.3");
+          }
           expect(await NodeFSP.readdir(versions)).toEqual([version]);
         }
       } finally {

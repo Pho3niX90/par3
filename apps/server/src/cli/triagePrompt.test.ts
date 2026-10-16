@@ -72,7 +72,7 @@ it("context file carries every path the playbook depends on", () => {
 });
 
 it("context file labels the CLI version as the CLI's, not the user's build", () => {
-  // `npx @paritylabs/par3 triage` can resolve a different `t3` than the app the bug
+  // `npx @paritylabs/par3 triage` can resolve a different `par3` than the app the bug
   // happened on (#13337), so the agent must not read it as the user's version.
   const context = buildTriageContext({
     generatedAt: "2026-09-24T00:00:00.000Z",
