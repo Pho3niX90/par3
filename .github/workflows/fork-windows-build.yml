@@ -7,12 +7,18 @@ name: Fork Windows build
 # its own release pipeline (release.yml).
 #
 # Update feeds must be public URLs, so this uses a release rather than a PR artifact. Every
-# push gets a version one patch higher than the last (base version + run number), which is
+# build gets a version one patch higher than the last (base version + run number), which is
 # what the updater compares.
+#
+# Runs nightly and on demand rather than on every push, so merges and upstream syncs don't each
+# cost a 60-minute Windows build. The nightly skips when fork/main hasn't moved since the latest
+# release; a manual run always builds. Scheduled runs only fire from the default branch
+# (fork/main).
 
 on:
-  push:
-    branches: [fork/main]
+  schedule:
+    # 01:17 UTC. Avoid minute zero, when GitHub scheduled jobs are busiest.
+    - cron: "17 1 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -23,9 +29,35 @@ permissions:
   contents: write
 
 jobs:
+  changes:
+    name: Check for new commits
+    if: github.repository_owner != 'pingdotgg'
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - name: Compare with the latest release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != "schedule" ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          released="$(gh release view --repo "$GITHUB_REPOSITORY"             --json targetCommitish --jq .targetCommitish 2>/dev/null || true)"
+          if [[ "$released" == "$GITHUB_SHA" ]]; then
+            echo "The latest release already covers ${GITHUB_SHA}; skipping."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build Windows x64 installer
-    if: github.repository_owner != 'pingdotgg'
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: windows-2022
     timeout-minutes: 60
     env:

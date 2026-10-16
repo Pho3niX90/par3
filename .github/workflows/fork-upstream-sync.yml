@@ -8,9 +8,9 @@ name: Fork upstream sync
 #   fork/main  the fork's default branch: upstream plus the fork's own changes. Fork builds and
 #              releases come from here (fork-windows-build.yml).
 #
-# A clean merge of main into fork/main is pushed straight away, which runs CI and the fork
-# build. A conflicting one is left as a main -> fork/main pull request listing the conflicting
-# files; resolve it by merging main into fork/main locally and pushing. Always merge, never
+# A clean merge of main into fork/main is pushed straight away, which runs CI; the nightly fork
+# build picks it up. A conflicting one is left as a main -> fork/main pull request listing the
+# conflicting files; resolve it by merging main into fork/main locally and pushing. Always merge, never
 # rebase: fork releases compare from the previous release's commit.
 #
 # Upstream runs on Blacksmith runners, which this fork has no access to. Every run rewrites
