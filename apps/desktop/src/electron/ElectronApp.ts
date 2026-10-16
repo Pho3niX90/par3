@@ -69,6 +69,9 @@ export class ElectronApp extends Context.Service<
       path?: string,
       args?: readonly string[],
     ) => Effect.Effect<boolean>;
+    readonly isDefaultProtocolClient: (protocol: string) => Effect.Effect<boolean>;
+    /** The app the OS opens `url` with, or an empty string when no app handles it. */
+    readonly getApplicationNameForProtocol: (url: string) => Effect.Effect<string>;
     readonly setDesktopName: (desktopName: string) => Effect.Effect<void>;
     readonly setDockIcon: (iconPath: string) => Effect.Effect<void>;
     readonly appendCommandLineSwitch: (switchName: string, value?: string) => Effect.Effect<void>;
@@ -172,6 +175,10 @@ export const make = ElectronApp.of({
       }
       return Electron.app.setAsDefaultProtocolClient(protocol, path, [...(args ?? [])]);
     }),
+  isDefaultProtocolClient: (protocol) =>
+    Effect.sync(() => Electron.app.isDefaultProtocolClient(protocol)),
+  getApplicationNameForProtocol: (url) =>
+    Effect.sync(() => Electron.app.getApplicationNameForProtocol(url)),
   setDesktopName: (desktopName) =>
     Effect.sync(() => {
       const linuxApp = Electron.app as Electron.App & {

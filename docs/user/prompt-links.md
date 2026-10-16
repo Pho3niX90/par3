@@ -54,3 +54,10 @@ before it replaces it.
 Par3 removes characters you cannot see, such as zero-width and hidden tag characters, because
 they can hide instructions for the agent. When a prompt had them, Par3 warns you that it may be
 malicious.
+
+## GitHub Copilot app links
+
+On Windows and macOS, the desktop app also opens GitHub's **Open in GitHub Copilot app** links,
+as long as the GitHub Copilot app is not installed to handle them. An issue opens a draft that
+asks the agent to work on it, in that repository. A pull request opens like a `pr` link. A
+Copilot session link uses its `repo`, `pr` and `prompt`, and ignores its mode and branch.

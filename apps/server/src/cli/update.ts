@@ -95,8 +95,8 @@ export function launcherOwnsVersionsDir(
 }
 
 /** The command the install scripts put on PATH, and the short alias that runs it. */
-export const LAUNCHER_NAME = "par3";
-export const LAUNCHER_ALIAS = "p3";
+const LAUNCHER_NAME = "par3";
+const LAUNCHER_ALIAS = "p3";
 
 /**
  * The `p3` alias beside a launcher. The install scripts point it at the

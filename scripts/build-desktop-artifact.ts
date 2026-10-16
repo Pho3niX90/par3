@@ -2766,6 +2766,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           name: "Par3",
           schemes: ["par3", "par3-dev", "t3code", "t3code-dev"],
         },
+        { name: "GitHub Copilot app link", schemes: ["ghapp", "github-app"] },
         {
           name: "Web site URL",
           schemes: ["http", "https"],
