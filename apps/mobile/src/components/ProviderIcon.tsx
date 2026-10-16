@@ -185,17 +185,9 @@ export function ProviderIcon(props: ProviderIconProps) {
     return <PackageGlyph icon={packageIcon} size={size} isDarkMode={isDarkMode} />;
   }
 
-  // codex (and unknown drivers)
   return <PackageGlyph icon={MODEL_VENDOR_ICONS.openai} size={size} isDarkMode={isDarkMode} />;
 }
 
-/**
- * `ProviderIcon` plus the web sidebar's account badge: an accent-color
- * initials bubble in the bottom-right corner, drawn when `showBadge` is set
- * (accent color present, or several instances share this driver). The glyph
- * dims to 60% opacity while the badge stays fully saturated, matching
- * `apps/web/src/components/chat/ProviderInstanceIcon.tsx`.
- */
 export function ProviderInstanceIcon(props: {
   readonly iconUrl?: string | null;
   readonly provider: string | null | undefined;

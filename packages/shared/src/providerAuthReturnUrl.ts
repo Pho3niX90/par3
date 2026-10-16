@@ -1,7 +1,6 @@
 import { DEFAULT_HOSTED_APP_URL } from "./connectAuth.ts";
 import { isLoopbackHost } from "./preview.ts";
 
-/** Only return to a local client or the hosted Par3 client, never an arbitrary OAuth-supplied URL. */
 export function providerAuthReturnUrl(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {

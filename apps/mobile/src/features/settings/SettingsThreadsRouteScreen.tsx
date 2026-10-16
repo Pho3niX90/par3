@@ -57,9 +57,6 @@ export function SettingsThreadsRouteScreen() {
 
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_SERVER_SETTINGS.sidebarAutoSettleAfterDays ?? 3;
 
-/**
- * Mobile edits auto-settle defaults across selected capable targets.
- */
 function AutoSettleSettingsRows() {
   const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();
   const selectedProject = projectGroups.find((group) => group.key === selectedProjectKey);
@@ -260,10 +257,6 @@ function AutoSettleSettingsRows() {
   );
 }
 
-/**
- * Device-local beta toggles, the counterpart of web's Working section (beta)
- * in Settings → General.
- */
 function BetaSettingsSection() {
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const preferences = useAtomValue(mobilePreferencesAtom);
@@ -289,10 +282,6 @@ function BetaSettingsSection() {
   );
 }
 
-/**
- * Device-local, like web's Settings → General → Plan mode: mobile has no
- * client-settings sync, so this is backed by mobile preferences.
- */
 function PlanModeSettingsSection() {
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const preferences = useAtomValue(mobilePreferencesAtom);

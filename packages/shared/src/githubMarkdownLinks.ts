@@ -3,7 +3,6 @@ import { linkMarkdownProse } from "./markdownProseLinks.ts";
 const reference =
   /(?<![\w/\\])(?:([\w.-]+\/[\w.-]+|[\w-]+)?#([1-9]\d*)|(?:([\w.-]+\/[\w.-]+|[\w-]+)@)?([a-f\d]{7,40})(?![\w])|@([a-z\d](?:[a-z\d-]*[a-z\d])?(?:\/[a-z\d][a-z\d-]*)?))(?![\w])/gi;
 
-/** Link GitHub references in prose without rewriting code, URLs, HTML, or existing links. */
 export function githubMarkdownLinks(markdown: string, pullRequestUrl: string | null): string {
   if (!pullRequestUrl || !/[#@]|\b[a-f\d]{7,40}\b/i.test(markdown)) return markdown;
   let url: URL;

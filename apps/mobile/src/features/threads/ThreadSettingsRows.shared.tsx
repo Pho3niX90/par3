@@ -140,7 +140,6 @@ export function ModelRowContent(
   );
 }
 
-/** Single option inside a submenu panel. */
 export function ChoiceRowContent(props: ChoiceRowProps & RowSelectionProps) {
   return (
     <Pressable
