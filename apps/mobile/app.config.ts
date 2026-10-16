@@ -239,7 +239,7 @@ const config: ExpoConfig = {
   // par3 first: code that needs one scheme reads the first. t3code:// keeps links from
   // upstream T3 Code servers and older Par3 builds opening this app.
   scheme: [variant.scheme, variant.legacyScheme],
-  version: "2.0.0",
+  version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.0.0",
   runtimeVersion: {
     // Development manifests resolve on every launch, so avoid fingerprint's
     // expensive native-project calculation there. Preview and production stay

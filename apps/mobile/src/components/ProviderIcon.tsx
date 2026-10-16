@@ -10,7 +10,7 @@ import {
   type ProviderIcon as ProviderIconData,
 } from "@t3tools/provider-core/client";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
-import { AppText as Text } from "./AppText";
+import { AppText as Text } from "./ui/AppText";
 import { getProviderClient } from "../lib/providerClients";
 
 type ProviderIconProps = {

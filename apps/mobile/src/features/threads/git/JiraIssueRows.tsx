@@ -10,7 +10,7 @@ import { findJiraIssueKeys, jiraIssueUrl, normalizeJiraBaseUrl } from "@t3tools/
 import { useMemo } from "react";
 import { Alert, Platform, View } from "react-native";
 
-import { AppText as Text } from "../../../components/AppText";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { tryOpenExternalUrl } from "../../../lib/openExternalUrl";
 import { jiraEnvironment, threadJiraMentions } from "../../../state/jira";
 import { useEnvironmentQuery } from "../../../state/query";

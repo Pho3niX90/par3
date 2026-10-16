@@ -3,7 +3,7 @@ import { normalizeJiraProjectKeys } from "@t3tools/shared/jira";
 import { useRef } from "react";
 import { View } from "react-native";
 
-import { AppText as Text, AppTextInput } from "../../../components/AppText";
+import { AppText as Text, AppTextInput } from "../../../components/ui/AppText";
 import { SettingsSection } from "./SettingsSection";
 
 const INPUT_CLASS = "min-h-10 rounded-xl px-3 py-2 text-base text-foreground";
