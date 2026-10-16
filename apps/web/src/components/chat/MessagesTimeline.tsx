@@ -2216,6 +2216,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const ctx = use(TimelineRowCtx);
   const { onImageExpand, onFileOpen } = ctx;
   const senderThreadId = row.message.senderThreadId;
+  const senderThread = useThreadShell(
+    senderThreadId ? scopeThreadRef(ctx.activeThreadEnvironmentId, senderThreadId) : null,
+  );
+  const senderTitle = senderThread?.title.trim();
   const resources = useMemo(
     () => selectMessageImageResources(row.message.attachments),
     [row.message.attachments],
@@ -2404,7 +2408,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               tone="muted"
               aria-label="Open sending thread"
             >
-              Sent by another agent
+              <span className="max-w-64 truncate">
+                {senderTitle ? `Sent from ${senderTitle}` : "Sent by another agent"}
+              </span>
             </InlineButton>
           ) : (
             "Sent by another agent"

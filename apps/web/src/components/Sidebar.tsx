@@ -7,8 +7,10 @@ import {
 } from "./ThreadStatusIndicators";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
+  canMentionThreadInComposer,
   dropThreadContext,
   endThreadContextDrag,
+  mentionThreadInComposer,
   moveThreadContextDrag as moveThreadContextDragGhost,
 } from "./chat/threadContextDrag";
 import { discardComposerDraft } from "../lib/discardComposerDraft";
@@ -4302,6 +4304,7 @@ export default function Sidebar() {
                 AuthOrchestrationOperateScope,
               ),
               branch: thread.branch ?? null,
+              canMentionInComposer: threadKey !== routeThreadKey && canMentionThreadInComposer(),
               projectFilter: threadProjectGroup
                 ? {
                     label: threadProjectGroup.displayName,
@@ -4449,6 +4452,9 @@ export default function Sidebar() {
             if (thread.branch) {
               copyBranchToClipboard(thread.branch, { branch: thread.branch });
             }
+            return;
+          case "mention-in-composer":
+            mentionThreadInComposer([threadRef]);
             return;
           case "copy-thread-id":
             copyThreadIdToClipboard(thread.id, { threadId: thread.id });
