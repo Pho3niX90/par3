@@ -44,6 +44,8 @@ function layerElectronApp(
     setAppUserModelId: () => Effect.void,
     getAppMetrics: Effect.succeed([]),
     setAsDefaultProtocolClient: () => Effect.succeed(true),
+    isDefaultProtocolClient: () => Effect.succeed(false),
+    getApplicationNameForProtocol: () => Effect.succeed(""),
     setDesktopName: () => Effect.void,
     setDockIcon: () => Effect.void,
     appendCommandLineSwitch: () => Effect.void,

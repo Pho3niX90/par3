@@ -204,6 +204,37 @@ describe("DesktopClerk", () => {
     });
   });
 
+  it.effect("claims Copilot app link schemes only when no other app handles them", () => {
+    storageMock.mockReturnValue(storageAdapter);
+    createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
+    const registeredSchemes: string[] = [];
+    const electronApp = {
+      setAsDefaultProtocolClient: (scheme: string) =>
+        Effect.sync(() => {
+          registeredSchemes.push(scheme);
+          return true;
+        }),
+      isDefaultProtocolClient: () => Effect.succeed(false),
+      getApplicationNameForProtocol: (url: string) =>
+        Effect.succeed(url === "github-app://" ? "GitHub Copilot" : ""),
+      on: () => Effect.void,
+    } as unknown as ElectronApp.ElectronApp["Service"];
+
+    return Effect.gen(function* () {
+      const clerk = yield* DesktopClerk.DesktopClerk;
+      yield* Effect.scoped(clerk.configure);
+      assert.deepEqual(registeredSchemes, ["par3", "ghapp"]);
+    }).pipe(
+      Effect.provide(layerDesktopClerk(false, [], "win32")),
+      Effect.provideService(ElectronApp.ElectronApp, electronApp),
+      Effect.provideService(
+        ElectronWindow.ElectronWindow,
+        {} as ElectronWindow.ElectronWindow["Service"],
+      ),
+      Effect.provideService(DesktopWebLinks.DesktopWebLinks, ignoreWebLinks),
+    );
+  });
+
   it.effect("registers the second-instance handler in the primary instance", () => {
     storageMock.mockReturnValue(storageAdapter);
     createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });

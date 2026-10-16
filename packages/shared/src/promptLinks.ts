@@ -187,6 +187,44 @@ export function buildNewThreadLink(input: {
 const APP_SCHEME = /^(?:par3|t3code)(?:-[a-z]+)?:$/;
 const THREAD_PATH = /^\/([^/]+)\/([^/]+)\/?$/;
 
+/** Schemes of GitHub Copilot app links, which desktop opens when no Copilot app claims them. */
+export const COPILOT_APP_LINK_SCHEMES = ["ghapp", "github-app"] as const;
+const COPILOT_APP_SCHEME = /^(?:ghapp|github-app):$/;
+const COPILOT_ITEM_PATH = /^\/([^/]+)\/([^/]+)\/(issues|pull)\/(\d+)\/?$/;
+const COPILOT_SESSION_PATH = /^\/new(?:\/([^/]+)\/([^/]+))?\/?$/;
+
+/**
+ * The `/new` path for a GitHub Copilot app link, such as the one behind GitHub's
+ * "Open in GitHub Copilot app" button, or null for shapes Par3 has no match for.
+ * Like every prompt link it only fills a draft: an issue becomes a prompt naming it, and a
+ * session's `mode` and `branch` are dropped because links never pick those.
+ * https://docs.github.com/en/copilot/how-tos/github-copilot-app/open-with-deep-links
+ */
+function copilotAppLinkPath(url: URL): string | null {
+  const params = new URLSearchParams();
+  const item = url.host === "github.com" ? COPILOT_ITEM_PATH.exec(url.pathname) : null;
+  if (item) {
+    const [, owner, name, kind, number] = item;
+    if (kind === "pull") {
+      params.set("pr", `${owner}/${name}/${number}`);
+    } else {
+      params.set("repo", `${owner}/${name}`);
+      params.set("prompt", `Work on https://github.com/${owner}/${name}/issues/${number}`);
+    }
+    return `/new?${params}`;
+  }
+  const session = url.host === "session" ? COPILOT_SESSION_PATH.exec(url.pathname) : null;
+  if (!session) return null;
+  const repo =
+    session[1] && session[2] ? `${session[1]}/${session[2]}` : url.searchParams.get("repo");
+  const pr = url.searchParams.get("pr");
+  const prompt = url.searchParams.get("prompt");
+  if (repo && pr) params.set("pr", `${repo}/${pr}`);
+  else if (repo) params.set("repo", repo);
+  if (prompt !== null) params.set("prompt", prompt);
+  return `/new?${params}`;
+}
+
 export function promptLinkAppPath(
   value: string,
   hostedAppUrl: string = DEFAULT_HOSTED_APP_URL,
@@ -200,6 +238,7 @@ export function promptLinkAppPath(
     const thread = url.host === "threads" ? THREAD_PATH.exec(url.pathname) : null;
     return thread ? `/${thread[1]}/${thread[2]}${url.search}` : null;
   }
+  if (COPILOT_APP_SCHEME.test(url.protocol)) return copilotAppLinkPath(url);
   if (!URL.canParse(hostedAppUrl) || url.origin !== new URL(hostedAppUrl).origin) return null;
   if (url.pathname === "/new") return `/new${url.search}`;
   const thread = url.searchParams.has("prompt") ? THREAD_PATH.exec(url.pathname) : null;

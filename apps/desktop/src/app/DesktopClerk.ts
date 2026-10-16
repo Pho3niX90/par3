@@ -12,7 +12,7 @@ import { codexAuthDeliveryUrl, readCodexAuthHandoff } from "@t3tools/shared/code
 import { receiveCodexAuthCallback, CodexAuthCallbackError } from "./CodexAuthCallback.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import { providerAuthReturnUrl } from "@t3tools/shared/providerAuthReturnUrl";
-import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
+import { COPILOT_APP_LINK_SCHEMES, promptLinkAppPath } from "@t3tools/shared/promptLinks";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
 import * as ElectronApp from "../electron/ElectronApp.ts";
@@ -154,6 +154,16 @@ export const make = Effect.gen(function* () {
           if (linkScheme !== rendererScheme) {
             yield* electronApp.setAsDefaultProtocolClient(linkScheme);
           }
+        }
+      }
+      // GitHub's "Open in GitHub Copilot app" links open as new-thread drafts, but only while
+      // no Copilot app claims them: Par3 never takes another app's scheme. Dev builds stay out
+      // so a deleted worktree does not leave a dead handler behind.
+      if (environment.platform !== "linux" && !environment.isDevelopment) {
+        for (const scheme of COPILOT_APP_LINK_SCHEMES) {
+          const owned = yield* electronApp.isDefaultProtocolClient(scheme);
+          const handler = yield* electronApp.getApplicationNameForProtocol(`${scheme}://`);
+          if (owned || handler === "") yield* electronApp.setAsDefaultProtocolClient(scheme);
         }
       }
 
