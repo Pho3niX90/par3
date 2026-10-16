@@ -905,7 +905,7 @@ jobs:
     name: Publish CLI to npm
     needs: [preflight, release]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' }}
-    runs-on: ubuntu-24.04 # blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04 # ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
