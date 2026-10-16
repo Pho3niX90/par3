@@ -18,6 +18,7 @@ export type ThreadActionMenuId =
   | "rename"
   | "regenerate-title"
   | "mark-unread"
+  | "mention-in-composer"
   | "copy"
   | "copy-path"
   | "copy-branch"
@@ -70,6 +71,11 @@ export interface ThreadActionMenuState {
     readonly label: string;
     readonly isActive: boolean;
   } | null;
+  /**
+   * True when an open composer belongs to another thread. False on the chat header,
+   * where the only composer is this thread's own.
+   */
+  readonly canMentionInComposer: boolean;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
@@ -94,6 +100,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "new-thread-on-branch",
     "project-settings",
     "mark-unread",
+    "mention-in-composer",
     "copy",
     "copy-path",
     "copy-branch",
@@ -191,11 +198,21 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
+    ...(state.canMentionInComposer
+      ? [
+          {
+            id: "mention-in-composer" as const,
+            label: "Mention in composer",
+            icon: "at-sign",
+            separatorBefore: true,
+          },
+        ]
+      : []),
     {
       id: "copy",
       label: "Copy",
       icon: "copy",
-      separatorBefore: true,
+      separatorBefore: !state.canMentionInComposer,
       children: [
         { id: "copy-path", label: "Path", icon: "folder" },
         ...(state.branch

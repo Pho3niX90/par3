@@ -137,6 +137,8 @@ export function useThreadActionMenu(input: {
         const items = buildThreadActionMenuItems({
           canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
           branch: thread.branch ?? null,
+          // The header belongs to the thread the composer is for.
+          canMentionInComposer: false,
           projectFilter: null,
           isPinned: thread.pinnedAt != null,
           isSettled: supports.settlement && thread.settledOverride === "settled",

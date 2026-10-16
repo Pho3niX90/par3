@@ -209,7 +209,7 @@ import {
 } from "../../state/assets";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { usePreparedConnection } from "../../state/session";
-import { useLiveThreadLinkLabels } from "../../state/entities";
+import { useLiveThreadLinkLabels, useThreadShell } from "../../state/entities";
 import { useJiraIssueLinks } from "./jiraMarkdownLinks";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { composerDocumentAttachmentRecord } from "../../lib/composerContext";
@@ -941,9 +941,16 @@ function AgentMessageAttribution(props: {
 }) {
   const navigation = useNavigation();
   const senderThreadId = props.senderThreadId;
+  const senderThread = useThreadShell(
+    senderThreadId ? scopeThreadRef(props.environmentId, senderThreadId) : null,
+  );
+  const senderTitle = senderThread?.title.trim();
   const label = (
-    <Text className="mb-1 pr-1 font-t3-medium text-2xs text-foreground-muted opacity-60">
-      Sent by another agent
+    <Text
+      className="mb-1 pr-1 font-t3-medium text-2xs text-foreground-muted opacity-60"
+      numberOfLines={1}
+    >
+      {senderTitle ? `Sent from ${senderTitle}` : "Sent by another agent"}
     </Text>
   );
   return senderThreadId ? (

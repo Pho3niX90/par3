@@ -280,10 +280,12 @@ the repository by text. Choose a result to insert it as a chip.
 
 Another thread can be context too. Type `@` followed by part of its title to pick one from
 the same server, or on web and desktop drag a thread out of the sidebar and drop it on the
-composer; a multi-selection drops together. The chip shows the thread's current title and
+composer, or choose **Mention in composer** from its sidebar menu; a multi-selection drops
+together. The chip shows the thread's current title and
 opens it when selected. Your prompt only carries a reference: the agent reads the thread's
 history on demand, so attaching a long thread costs nothing until the agent looks. Attaching a
-thread does not change it, and the agent cannot send messages to it unless you ask.
+thread does not change it. Ask and the agent can also message it, for example to tell a
+waiting thread to continue; see [Hand work between threads](./thread-sidebar.md#hand-work-between-threads).
 
 Dropping a thread from another environment attaches a saved transcript file. The source
 environment must be connected and up to date. The transcript includes the visible history and

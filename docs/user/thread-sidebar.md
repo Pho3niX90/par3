@@ -190,6 +190,18 @@ and copying a thread reference. A copied reference uses the thread's pull reques
 link when available, otherwise its thread ID. See [keybindings](./keybindings.md)
 for custom configuration.
 
+## Hand work between threads
+
+When one thread is blocked on something you sort out in another, the second thread can
+tell the first to carry on. In the thread doing the side task, mention the waiting thread:
+type `@` and part of its title, or choose **Mention in composer** from its menu in the
+sidebar. Then ask, for example, "when the disks have space, tell this thread to continue".
+
+The agent sends its message to that thread once it's done. If the waiting thread is idle,
+the message starts a new turn there; if it is busy, the message is steered or queued. The
+message shows **Sent from** and the sending thread's title, which you can select to go back.
+A thread can only send to threads with the same or narrower permission modes.
+
 ## Inspect agent work
 
 **Limited** means the provider stopped on a usage or rate limit. The conversation
