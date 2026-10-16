@@ -1,0 +1,166 @@
+# Provider overhead benchmark (issue #31): how much longer a Claude turn takes
+# through Par3 than through the `claude` CLI. Non-gating until about four
+# weeks of baselines exist.
+#
+#   gh workflow run provider-bench.yml --ref <branch> -f workloads=W1 -f n=1
+#
+# The stub job replays generated turns with no secrets, so B − A0 there is
+# Par3's plumbing alone. The live job calls the model and needs the
+# ANTHROPIC_API_KEY repository secret.
+name: Provider Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      arms:
+        description: "Live arms, comma-separated (A0, A1, B, T, C)"
+        type: string
+        default: "A0,A1,B,T,C"
+      workloads:
+        description: "Workloads, comma-separated (W1-W5). Empty runs all."
+        type: string
+        default: ""
+      n:
+        description: "Repetitions per workload. Empty uses each workload's default."
+        type: string
+        default: ""
+      model:
+        description: "Claude model id"
+        type: string
+        default: "claude-sonnet-4-6"
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-bench-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Pinned so week-to-week numbers compare like with like.
+  CLAUDE_CODE_VERSION: "2.1.300"
+
+jobs:
+  stub:
+    name: Stub (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: ${{ runner.os != 'Windows' }}
+          run-install: true
+
+      - name: Benchmark
+        shell: bash
+        run: >
+          node apps/server/scripts/bench-provider-overhead.ts
+          --stub synthetic --arms A0,A1,B
+          ${{ inputs.workloads && format('--workloads {0}', inputs.workloads) || '' }}
+          ${{ inputs.n && format('--n {0}', inputs.n) || '--n 5' }}
+          --out "${{ runner.temp }}/provider-bench"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          if test -f "${{ runner.temp }}/provider-bench/summary.md"; then
+            { echo "## Stub (${{ matrix.os }})"; cat "${{ runner.temp }}/provider-bench/summary.md"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: provider-bench-stub-${{ matrix.os }}
+          path: ${{ runner.temp }}/provider-bench/results.json
+          if-no-files-found: ignore
+
+  live:
+    name: Live (ubuntu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    continue-on-error: true
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Install Claude Code
+        run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      # Interactive `claude` (arm T) otherwise stops at first-run onboarding and
+      # asks before using an API key. This config dir exists only on the runner.
+      - name: Prepare Claude config
+        run: |
+          mkdir -p "$CLAUDE_CONFIG_DIR"
+          node -e '
+            const key = process.env.ANTHROPIC_API_KEY ?? "";
+            require("node:fs").writeFileSync(process.env.CLAUDE_CONFIG_DIR + "/.claude.json", JSON.stringify({
+              hasCompletedOnboarding: true,
+              customApiKeyResponses: { approved: [key.slice(-20)], rejected: [] },
+            }));
+          '
+
+      # Arm C serves the built client and drives it in the runner's Chrome.
+      - name: Build web client
+        run: vp run --filter @t3tools/web build
+
+      - name: Benchmark
+        run: >
+          node apps/server/scripts/bench-provider-overhead.ts
+          --arms "${{ inputs.arms || 'A0,A1,B,T,C' }}"
+          --model "${{ inputs.model || 'claude-sonnet-4-6' }}"
+          ${{ inputs.workloads && format('--workloads {0}', inputs.workloads) || '' }}
+          ${{ inputs.n && format('--n {0}', inputs.n) || '' }}
+          --headless
+          --out "${{ runner.temp }}/provider-bench"
+
+      - name: Summary
+        if: always()
+        run: |
+          if test -f "${{ runner.temp }}/provider-bench/summary.md"; then
+            { echo "## Live"; cat "${{ runner.temp }}/provider-bench/summary.md"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: provider-bench-live
+          path: |
+            ${{ runner.temp }}/provider-bench/results.json
+            ${{ runner.temp }}/provider-bench/recordings/
+          if-no-files-found: ignore

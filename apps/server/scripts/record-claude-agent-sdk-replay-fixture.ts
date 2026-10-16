@@ -570,6 +570,8 @@ try {
     ...("offerNextPromptImmediately" in recording
       ? { offerNextPromptImmediately: recording.offerNextPromptImmediately }
       : {}),
+    // Opt-in: committed fixtures stay untimed so replays run at full speed.
+    ...(process.argv.includes("--timing") ? { timing: true } : {}),
   });
   await assertWorkspacePathsAbsent("after");
   const transcriptWithEvidence =
