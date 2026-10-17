@@ -2237,7 +2237,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       settledAt: null,
       snoozedUntil: null,
       snoozedAt: null,
-      lastVisitedAt: null,
+      // Clients treat a null watermark as "nothing to mark unread" (legacy
+      // imports stay null). Starting at creation lets a thread that finishes
+      // before anyone opens it, e.g. one created over MCP or by a schedule,
+      // still show as completed and unseen.
+      lastVisitedAt: now,
       deletedAt: null,
     };
 

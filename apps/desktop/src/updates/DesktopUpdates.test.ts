@@ -526,6 +526,80 @@ describe("DesktopUpdates", () => {
     );
   });
 
+  it.effect("retries a network-failed download through the proxy from the environment", () => {
+    let downloads = 0;
+    const harness = makeHarness({
+      env: { HTTPS_PROXY: "http://proxy.company.example:3128", NO_PROXY: "localhost" },
+      downloadUpdate: Effect.suspend(() => {
+        downloads += 1;
+        return downloads === 1
+          ? Effect.fail(
+              new ElectronUpdater.ElectronUpdaterDownloadUpdateError({
+                channel: "latest",
+                cause: new Error("net::ERR_CONNECTION_TIMED_OUT"),
+              }),
+            )
+          : Effect.void;
+      }),
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        harness.emit("update-available", { version: "1.2.4" });
+        yield* flushCallbacks;
+
+        const result = yield* updates.download;
+        assert.isTrue(result.completed);
+        assert.equal(downloads, 2);
+        assert.deepStrictEqual(harness.proxyConfigs(), [
+          {
+            mode: "fixed_servers",
+            proxyRules: "http://proxy.company.example:3128",
+            proxyBypassRules: "localhost,*.localhost",
+          },
+        ]);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("says which proxies it tried when a download fails through both", () => {
+    const harness = makeHarness({
+      env: { https_proxy: "proxy.company.example:3128" },
+      downloadUpdate: Effect.fail(
+        new ElectronUpdater.ElectronUpdaterDownloadUpdateError({
+          channel: "latest",
+          cause: new Error("net::ERR_PROXY_CONNECTION_FAILED"),
+        }),
+      ),
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        harness.emit("update-available", { version: "1.2.4" });
+        yield* flushCallbacks;
+
+        const result = yield* updates.download;
+        assert.isFalse(result.completed);
+        assert.equal(harness.downloadCount(), 2);
+        assert.include(
+          result.state.message ?? "",
+          "Tried both the system proxy settings and HTTPS_PROXY (http://proxy.company.example:3128).",
+        );
+
+        // The next attempt starts from the proxy that was tried last and flips back.
+        yield* updates.download;
+        assert.deepStrictEqual(
+          harness.proxyConfigs().map((config) => config.mode),
+          ["fixed_servers", "system"],
+        );
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
   it.effect("recovers download state after an unexpected setup failure", () => {
     let disableDifferentialCalls = 0;
     const harness = makeHarness({

@@ -33,6 +33,7 @@ const workspaceFiles = [
   "packages/provider-pi/package.json",
   "packages/provider-acp/package.json",
   "packages/provider-acp-registry/package.json",
+  "packages/provider-copilot/package.json",
   "packages/provider-cursor/package.json",
   "packages/provider-grok/package.json",
   "packages/provider-muse/package.json",
@@ -282,7 +283,7 @@ try {
   );
   assertContains(
     nightlyReleaseMetadata,
-    "name=T3 Code Nightly 9.9.10-nightly.20260413.321 (abcdef123456)",
+    "name=Par3 Nightly 9.9.10-nightly.20260413.321 (abcdef123456)",
     "Expected nightly metadata to include the short commit SHA in the release name.",
   );
 

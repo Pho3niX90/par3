@@ -85,22 +85,24 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer term
           expect(code).not.toBe(0);
           expect(output).toContain("500");
           expect(output).not.toContain("100%");
-          expect(output).not.toContain("Installed T3 Code");
+          expect(output).not.toContain("Installed Par3");
           expect(await NodeFSP.readdir(versions)).toEqual([]);
         } else {
           expect(code).toBe(0);
           expect(sawPartialProgress).toBe(true);
           expect(output).toContain("100%");
           expect(output).toContain("0.1 / 0.1 MB");
-          expect(output).toContain("Installed T3 Code 1.2.3");
+          expect(output).toContain("Installed Par3 1.2.3");
           expect(
             await NodeFSP.readFile(NodePath.join(versions, version, ".install-complete"), "utf8"),
           ).toBe("1.2.3\n");
-          expect(
-            NodeChildProcess.execFileSync(NodePath.join(root, "bin/t3"), ["--version"], {
-              encoding: "utf8",
-            }).trim(),
-          ).toBe("t3 v1.2.3");
+          for (const command of ["bin/par3", "bin/p3"]) {
+            expect(
+              NodeChildProcess.execFileSync(NodePath.join(root, command), ["--version"], {
+                encoding: "utf8",
+              }).trim(),
+            ).toBe("t3 v1.2.3");
+          }
           expect(await NodeFSP.readdir(versions)).toEqual([version]);
         }
       } finally {

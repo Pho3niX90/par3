@@ -11,8 +11,25 @@ describe("diffPanelStore", () => {
     useDiffPanelStore.setState({
       byThreadKey: {},
       branchBaseRefByThreadKey: {},
+      repositoryByThreadKey: {},
     }),
   );
+
+  it("drops the picked base ref when another child repository is chosen", () => {
+    const store = useDiffPanelStore.getState();
+    store.selectRepository(THREAD_REF, "/work/apis");
+    store.selectBranchBaseRef(THREAD_REF, "origin/release");
+    store.selectRepository(THREAD_REF, "/work/config");
+    store.selectTurn(THREAD_REF, RunId.make("turn-1"));
+    store.selectGitScope(THREAD_REF, "branch");
+
+    const state = useDiffPanelStore.getState();
+    expect(Object.values(state.repositoryByThreadKey)).toEqual(["/work/config"]);
+    expect(selectThreadDiffPanelSelection(state.byThreadKey, THREAD_REF)).toEqual({
+      kind: "branch",
+      baseRef: null,
+    });
+  });
 
   it("defaults each thread to Changes without requiring git status", () => {
     expect(

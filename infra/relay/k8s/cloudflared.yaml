@@ -1,0 +1,45 @@
+# Connector for the par3-db Cloudflare tunnel. It carries db.paritylabs.co.za to
+# the relay Postgres (par3-pg-rw); a Cloudflare Access service token guards the
+# hostname, so only Hyperdrive and the relay deploy workflow get through. The
+# tunnel token lives in the par3-db-tunnel secret, created by hand.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared-db
+  namespace: par3
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudflared-db
+  template:
+    metadata:
+      labels:
+        app: cloudflared-db
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2025.9.1
+          args: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: par3-db-tunnel
+                  key: token
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532

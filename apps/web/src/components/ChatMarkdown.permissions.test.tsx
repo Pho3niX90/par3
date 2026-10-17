@@ -7,7 +7,7 @@ import {
   type EditorId,
   type ThreadLinkedPullRequest,
 } from "@t3tools/contracts";
-import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
+import { DEFAULT_CLIENT_SETTINGS, DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts/settings";
 import { AsyncResult } from "effect/reactivity";
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
@@ -79,8 +79,9 @@ vi.mock("../state/session", async () => {
 vi.mock("../state/server", async () => {
   const { Atom } = await import("effect/reactivity");
   const config = Atom.make(() => serverConfig);
+  const settings = Atom.make(() => DEFAULT_SERVER_SETTINGS);
   return {
-    serverEnvironment: { configValueAtom: () => config },
+    serverEnvironment: { configValueAtom: () => config, settingsValueAtom: () => settings },
     environmentServerConfigsAtom: Atom.make(
       () => new Map([[threadRef.environmentId, serverConfig]]),
     ),

@@ -88,14 +88,35 @@ export function endThreadContextDrag() {
   setGhost(null);
 }
 
+function dispatchThreadContext(
+  target: HTMLElement | null,
+  threads: ReadonlyArray<ScopedThreadRef>,
+): boolean {
+  if (!target || threads.length === 0) return false;
+  target.dispatchEvent(new CustomEvent(THREAD_CONTEXT_DROP_EVENT, { detail: threads }));
+  return true;
+}
+
+/** True when a composer accepted the drop. */
 export function dropThreadContext(
   point: { x: number; y: number },
   threads: ReadonlyArray<ScopedThreadRef>,
 ): boolean {
-  const target = findDropTarget(point);
-  if (!target || threads.length === 0) return false;
-  target.dispatchEvent(new CustomEvent(THREAD_CONTEXT_DROP_EVENT, { detail: threads }));
-  return true;
+  return dispatchThreadContext(findDropTarget(point), threads);
+}
+
+// A window shows one composer, so "Mention in composer" targets it without a pointer.
+function findMentionTarget(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[${DROP_TARGET_ATTRIBUTE}]`);
+}
+
+export function canMentionThreadInComposer(): boolean {
+  return findMentionTarget() !== null;
+}
+
+/** Adds threads to the open composer as if they were dropped on it. True when one took them. */
+export function mentionThreadInComposer(threads: ReadonlyArray<ScopedThreadRef>): boolean {
+  return dispatchThreadContext(findMentionTarget(), threads);
 }
 
 export function threadContextDropTargetProps() {

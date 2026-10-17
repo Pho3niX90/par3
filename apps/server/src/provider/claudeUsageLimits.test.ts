@@ -119,6 +119,129 @@ describe("claudeUsageResponseToLimits", () => {
   });
 });
 
+describe("claudeUsageResponseToLimits spending budgets", () => {
+  // Sanitized Claude Enterprise `get_usage` response from pingdotgg/t3code#10155:
+  // no rolling windows, a $500.00 monthly budget with $46.31 spent.
+  const enterpriseExtraUsage = {
+    is_enabled: true,
+    monthly_limit: 50_000,
+    used_credits: 4_631,
+    utilization: 9.261999999999999,
+    currency: "USD",
+    decimal_places: 2,
+    disabled_reason: null,
+    user_disabled: false,
+    spend_limit_reached: false,
+  };
+  const enterpriseSpend = {
+    used: { amount_minor: 4_631, currency: "USD", exponent: 2 },
+    limit: { amount_minor: 50_000, currency: "USD", exponent: 2 },
+    percent: 9,
+    severity: "normal",
+    enabled: true,
+    disabled_reason: null,
+  };
+  const monthlySpend = (usedPercent: number) => ({
+    id: "monthly_spend",
+    kind: "monthly",
+    label: "Monthly spend",
+    usedPercent,
+  });
+
+  it("maps an Enterprise spend budget with null rolling windows", () => {
+    const { limits } = claudeUsageResponseToLimits({
+      checkedAt,
+      response: {
+        rate_limits_available: true,
+        rate_limits: {
+          five_hour: null,
+          seven_day: null,
+          extra_usage: enterpriseExtraUsage,
+          ...({ spend: enterpriseSpend } as object),
+        },
+      },
+    });
+    expect(limits.windows).toEqual([monthlySpend(expect.closeTo(9.262, 6))]);
+  });
+
+  it("falls back to extra_usage when spend is absent, beside rolling windows", () => {
+    expect(
+      claudeUsageResponseToLimits({
+        checkedAt,
+        response: {
+          rate_limits_available: true,
+          rate_limits: {
+            five_hour: { utilization: 12, resets_at: null },
+            extra_usage: { ...enterpriseExtraUsage, used_credits: 12_500 },
+          },
+        },
+      }).limits.windows,
+    ).toEqual([
+      {
+        id: "five_hour",
+        kind: "session",
+        label: "Session",
+        usedPercent: 12,
+        windowDurationMins: 300,
+      },
+      monthlySpend(25),
+    ]);
+  });
+
+  it("uses extra_usage utilization when its amounts are missing", () => {
+    expect(
+      claudeUsageResponseToLimits({
+        checkedAt,
+        response: {
+          rate_limits_available: true,
+          rate_limits: {
+            extra_usage: {
+              is_enabled: true,
+              monthly_limit: 0,
+              used_credits: null,
+              utilization: 9.262,
+            },
+          },
+        },
+      }).limits.windows,
+    ).toEqual([monthlySpend(9.262)]);
+  });
+
+  it("draws no budget row when both budgets are disabled", () => {
+    expect(
+      claudeUsageResponseToLimits({
+        checkedAt,
+        response: {
+          rate_limits_available: true,
+          rate_limits: {
+            five_hour: null,
+            seven_day: null,
+            extra_usage: { ...enterpriseExtraUsage, is_enabled: false },
+            ...({ spend: { ...enterpriseSpend, enabled: false } } as object),
+          },
+        },
+      }).limits.windows,
+    ).toEqual([]);
+  });
+
+  it.each([
+    { name: "zero limit", limit: { amount_minor: 0, currency: "USD", exponent: 2 } },
+    { name: "currency mismatch", limit: { amount_minor: 50_000, currency: "EUR", exponent: 2 } },
+    { name: "exponent mismatch", limit: { amount_minor: 50_000, currency: "USD", exponent: 3 } },
+    { name: "missing limit", limit: null },
+  ])("skips a malformed spend budget ($name)", ({ limit }) => {
+    expect(
+      claudeUsageResponseToLimits({
+        checkedAt,
+        response: {
+          rate_limits_available: true,
+          rate_limits: { ...({ spend: { ...enterpriseSpend, limit } } as object) },
+        },
+      }).limits.windows,
+    ).toEqual([]);
+  });
+});
+
 describe("claudeRateLimitEventToUpdate", () => {
   it("scales the 0–1 utilization and epoch-second reset onto the probe's window id", () => {
     expect(

@@ -3191,7 +3191,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           notification: {
             source: { kind: "system" as const },
             outcome: "updated" as const,
-            summary: "T3 Code restarted and resumed this turn",
+            summary: "Par3 restarted and resumed this turn",
             detail: "Continue where you left off.",
           },
           attachments: [],
@@ -3212,7 +3212,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           continuationItems.flatMap((item) =>
             item.type === "notification" ? [[item.summary, item.detail]] : [],
           ),
-          ["T3 Code restarted and resumed this turn", "Continue where you left off."],
+          ["Par3 restarted and resumed this turn", "Continue where you left off."],
         );
         yield* orchestrator.dispatch({
           ...command,
@@ -4757,7 +4757,8 @@ it.layer(layerSharedApplicationDataPlaneTest)("visited projection", (it) => {
         worktreePath: null,
       });
       const created = yield* orchestrator.getThreadProjection(threadId);
-      assert.isNull(created.thread.lastVisitedAt);
+      // Unopened threads start seen at creation so a later completion reads as unseen.
+      assert.deepEqual(created.thread.lastVisitedAt, created.thread.createdAt);
       const createdUpdatedAt = created.thread.updatedAt;
 
       yield* TestClock.adjust("1 second");

@@ -27,15 +27,16 @@ const nightlyState: DesktopUpdateState = {
 };
 
 describe("sidebar update release notes popover", () => {
-  it("uses the popover only for visible nightly release notes", () => {
+  it("uses the popover whenever the update has visible release notes", () => {
     expect(shouldUseSidebarUpdateReleaseNotesPopover(true, nightlyState)).toBe(true);
     expect(shouldUseSidebarUpdateReleaseNotesPopover(false, nightlyState)).toBe(false);
+    expect(shouldUseSidebarUpdateReleaseNotesPopover(true, null)).toBe(false);
     expect(
       shouldUseSidebarUpdateReleaseNotesPopover(true, {
         ...nightlyState,
         channel: "latest",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldUseSidebarUpdateReleaseNotesPopover(true, {
         ...nightlyState,

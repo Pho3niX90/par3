@@ -112,8 +112,8 @@ import { useMobileProjectGroupingSettings } from "../../state/project-grouping";
 import {
   resolvePendingTaskInteractionMode,
   resolveProviderInteractionMode,
-} from "../../state/legacy-plan-mode";
-import { useLegacyPlanModeState } from "./use-legacy-plan-mode-enabled";
+} from "../../state/plan-mode";
+import { usePlanModeState } from "./use-plan-mode-enabled";
 import {
   filterNewTaskBranches,
   resolveNewTaskBranchWorktreePath,
@@ -256,8 +256,8 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const threads = useThreadShells();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const groupingSettings = useMobileProjectGroupingSettings();
-  const { enabled: legacyPlanModeEnabled, loaded: planModePreferenceLoaded } =
-    useLegacyPlanModeState();
+  const { enabled: planModePreferenceEnabled, loaded: planModePreferenceLoaded } =
+    usePlanModeState();
 
   const projectScopes = useMemo(
     () =>
@@ -595,7 +595,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     [selectedEnvironmentServerConfig, selectedModel?.instanceId],
   );
   const planModeEnabled =
-    legacyPlanModeEnabled && selectedProviderStatus?.showInteractionModeToggle !== false;
+    planModePreferenceEnabled && selectedProviderStatus?.showInteractionModeToggle !== false;
   const interactionMode = planModeEnabled
     ? (selectedProjectDraft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE)
     : DEFAULT_PROVIDER_INTERACTION_MODE;
@@ -1093,7 +1093,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         runtimeMode: draft.runtimeMode ?? defaultRuntimeMode,
         interactionMode: resolvePendingTaskInteractionMode({
           preferenceLoaded: planModePreferenceLoaded,
-          planModeEnabled: legacyPlanModeEnabled,
+          planModeEnabled: planModePreferenceEnabled,
           draftInteractionMode: draft.interactionMode,
           queuedInteractionMode: editingPendingTask?.interactionMode,
           provider: selectedEnvironmentServerConfig?.providers.find(
@@ -1134,7 +1134,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedModel,
       selectedProject,
       selectedProjectDraftKey,
-      legacyPlanModeEnabled,
+      planModePreferenceEnabled,
       planModePreferenceLoaded,
       startFromOrigin,
       workspaceMode,

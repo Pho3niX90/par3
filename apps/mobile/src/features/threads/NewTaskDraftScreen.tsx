@@ -1727,6 +1727,7 @@ export function NewTaskDraftScreen(props: {
                           <ProviderIcon
                             iconUrl={flow.selectedModelOption?.providerIconUrl}
                             provider={flow.selectedModelOption?.providerDriver}
+                            model={flow.selectedModelOption?.selection.model}
                             size={size}
                           />
                         )}
