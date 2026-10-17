@@ -108,7 +108,7 @@ describe("ssh tunnel scripts", () => {
     assert.include(script, "T3_NODE_SCRIPT_PATH=''");
     assert.include(
       script,
-      "T3_RELEASE_BASE_URL='https://github.com/pingdotgg/t3code/releases/download'",
+      "T3_RELEASE_BASE_URL='https://github.com/Pho3niX90/t3code/releases/download'",
     );
     assert.include(script, 'T3_RUNTIME_DIR="$HOME/.t3/runtime/versions/$T3_ARCHIVE_VERSION"');
     assert.include(script, 'T3_ARCHIVE="t3-$T3_ARCHIVE_VERSION-$T3_PLATFORM-$T3_ARCH.tar.gz"');
@@ -116,7 +116,7 @@ describe("ssh tunnel scripts", () => {
     assert.include(script, 'exec "$T3_RUNTIME_DIR/t3" "$@"');
     assert.notInclude(script, "npx");
     assert.notInclude(script, "npm exec");
-    assert.notInclude(script, "t3@latest");
+    assert.notInclude(script, "@paritylabs/par3@latest");
     assert.notInclude(script, 'exec t3 "$@"');
     assert.include(
       script,

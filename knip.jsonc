@@ -20,7 +20,7 @@
       // Knip loads its preprocessor through a CLI option; native verification and
       // worktree setup (from t3.json) run directly.
       "entry": ["knip-schemas.ts", "mobile-native-client.ts", "setup-worktree.ts"],
-      // The `t3` npm package's files: copied into the package, never imported.
+      // The `par3` npm package's files: copied into the package, never imported.
       "ignore": ["npm-launcher/**"],
     },
     "apps/server": {
@@ -28,6 +28,8 @@
       "entry": [
         "src/bin.ts!",
         "src/claude-history-worker.ts!",
+        "scripts/bench-provider-overhead.ts",
+        "scripts/bench/stubClaude.mjs",
         "scripts/cli.ts",
         "scripts/evaluate-thread-titles.ts",
         "scripts/measure-pr-preview.ts",
@@ -95,7 +97,8 @@
       "entry": ["src/*NativeComponent.ts!"],
     },
     "infra/relay": {
-      "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!"],
+      // drizzle.self-hosted.config.ts is run by deploy-relay.yml through drizzle-kit.
+      "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!", "drizzle.self-hosted.config.ts!"],
     },
     "packages/*": {
       // These workspace packages are private to this monorepo.

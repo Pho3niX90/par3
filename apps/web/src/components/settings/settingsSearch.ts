@@ -403,6 +403,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["command menu dollar $ slash /"],
   },
   {
+    id: "plan-mode",
+    title: "Plan mode",
+    to: "/settings/general",
+    searchTerms: ["build plan composer toggle /plan /default shift tab"],
+  },
+  {
     id: "composer-rich-text",
     title: "Rich text composer",
     to: "/settings/general",
@@ -526,7 +532,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "cli-command",
-    title: "t3 command",
+    title: "par3 command",
     to: "/settings/general",
     searchTerms: ["cli terminal shell path install command line"],
     desktopOnly: true,
@@ -561,12 +567,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "open-source-licenses",
     title: "Open source licenses",
     to: "/settings/general",
-  },
-  {
-    id: "legacy-plan-mode",
-    title: "Plan mode (legacy)",
-    to: "/settings/general",
-    searchTerms: ["build plan composer old"],
   },
   {
     id: "legacy-context-window-indicator",
@@ -752,6 +752,22 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["pr links github browser external click default pull request view panel"],
   },
   {
+    id: "jira-site",
+    title: "Jira site",
+    to: "/settings/integrations",
+    searchTerms: ["jira atlassian issue ticket story url api token email"],
+    environmentOnly: true,
+    scope: "environment",
+  },
+  {
+    id: "jira-project-keys",
+    title: "Jira project keys",
+    to: "/settings/integrations",
+    searchTerms: ["jira issue key detect branch story ticket"],
+    environmentOnly: true,
+    scope: "project-defaults",
+  },
+  {
     id: "browser-auto-show-floating-preview",
     title: "Auto-show floating preview",
     to: "/settings/integrations",
@@ -934,7 +950,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Hold webhooks while offline",
     to: "/settings/connections",
     targetId: "connections-environment",
-    searchTerms: ["webhook automations offline queue mailbox t3 connect"],
+    searchTerms: ["webhook automations offline queue mailbox par3 connect"],
     cloudOnly: true,
     managedTunnelOnly: true,
   },
@@ -959,7 +975,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "remote-environments",
     title: "Environments",
     to: "/settings/connections",
-    searchTerms: ["add pair backend host code ssh config agent tunnel saved t3 connect"],
+    searchTerms: ["add pair backend host code ssh config agent tunnel saved par3 connect"],
   },
   {
     id: "load-balancing",

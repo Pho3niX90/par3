@@ -57,21 +57,29 @@ export function buildPlanImplementationPrompt(planMarkdown: string): string {
   return `${PLAN_IMPLEMENTATION_PROMPT_PREFIX}${planMarkdown.trim()}`;
 }
 
-export function resolvePlanFollowUpSubmission(input: { draftText: string; planMarkdown: string }): {
+/** An empty draft implements the plan in build mode; typed text refines it, in plan mode when available. */
+export function resolvePlanFollowUpSubmission(input: {
+  draftText: string;
+  planMarkdown: string;
+  planModeAvailable: boolean;
+}): {
   text: string;
   interactionMode: "default" | "plan";
+  implementsPlan: boolean;
 } {
   const trimmedDraftText = input.draftText.trim();
   if (trimmedDraftText.length > 0) {
     return {
       text: trimmedDraftText,
-      interactionMode: "plan",
+      interactionMode: input.planModeAvailable ? "plan" : "default",
+      implementsPlan: false,
     };
   }
 
   return {
     text: buildPlanImplementationPrompt(input.planMarkdown),
     interactionMode: "default",
+    implementsPlan: true,
   };
 }
 

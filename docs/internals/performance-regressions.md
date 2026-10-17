@@ -118,3 +118,18 @@ continuous traffic during an outage.
 Focused coverage: `ProjectionSettlement.test.ts`, `ThreadSettlementService.test.ts`,
 `runtimeLayer.test.ts`, `AgentAwarenessRelay.test.ts`, `GitVcsDriverCore.test.ts`,
 `ThreadStatusIndicators.subscriptions.test.tsx`, and `desktopLocal.test.ts`.
+
+## Provider turn overhead
+
+`ProviderOverhead.integration.test.ts` replays synthetic Claude turns shaped like the provider
+benchmark's workloads through the real orchestrator, a SQLite file, and git checkpoints. It counts
+EventSink transactions, SQLite statements run under turn work, and checkpoint captures, and fails
+when a count rises above its committed budget. Counts are the gate because they are the same on
+every machine. Wall time fails only above three times its budget, so a slow CI host does not
+flake it. Statements inside EventSink writes run with tracing off, so the transaction count
+stands for them. The live benchmark (`bench:provider`, see
+[development](../operations/development.md#provider-benchmark)) compares Par3 against `claude`
+run with Par3's configuration (arm A1), not against bare `claude` (A0): A1 − A0 is the cost of
+the appended prompt, thinking, and tools Par3 asks for, while B − A1 is the server's own cost.
+Claude streams text one content block at a time by design, so time to first visible text moves in
+whole blocks; compare it between arms rather than reading it as token latency.

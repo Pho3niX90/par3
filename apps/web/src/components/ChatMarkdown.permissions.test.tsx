@@ -7,7 +7,7 @@ import {
   type EditorId,
   type ThreadLinkedPullRequest,
 } from "@t3tools/contracts";
-import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
+import { DEFAULT_CLIENT_SETTINGS, DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts/settings";
 import { AsyncResult } from "effect/reactivity";
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
@@ -27,7 +27,9 @@ const state = vi.hoisted(() => ({
   linkedPullRequest: null as ThreadLinkedPullRequest | null,
 }));
 
-vi.mock("@effect/atom-react", () => ({ useAtomValue: () => serverConfig }));
+vi.mock("@effect/atom-react", () => ({
+  useAtomValue: (atom: unknown) => (atom === "settings" ? DEFAULT_SERVER_SETTINGS : serverConfig),
+}));
 vi.mock("../hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 vi.mock("../hooks/useFileMetadata", () => ({ useFileMetadata: () => undefined }));
 vi.mock("../hooks/useSettings", () => ({
@@ -74,7 +76,7 @@ vi.mock("../state/session", async () => {
   };
 });
 vi.mock("../state/server", () => ({
-  serverEnvironment: { configValueAtom: () => "config" },
+  serverEnvironment: { configValueAtom: () => "config", settingsValueAtom: () => "settings" },
 }));
 vi.mock("../state/threads", () => ({
   threadEnvironment: { updateMetadata: "updateMetadata" },

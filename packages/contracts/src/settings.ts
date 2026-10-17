@@ -242,14 +242,14 @@ export const FontFamilyPreference = Schema.String.check(Schema.isMaxLength(200))
 export type FontFamilyPreference = typeof FontFamilyPreference.Type;
 
 /**
- * The environment's theme, set with `t3 theme set <id>`. Each client applies
+ * The environment's theme, set with `par3 theme set <id>`. Each client applies
  * it once per value — live when connected, on its next connect otherwise — so
  * setting it switches every client, while a theme a user picks in Settings
  * afterwards sticks until the next set. Empty means "no environment theme",
  * which is also how it is cleared.
  */
 export const DefaultThemePreference = Schema.String.check(Schema.isMaxLength(64));
-// Deliberately absent from ServerSettingsPatch: `t3 theme set` checks that an
+// Deliberately absent from ServerSettingsPatch: `par3 theme set` checks that an
 // id is syntactically valid and actually resolvable, and a generic RPC patch
 // would let a client write a theme no client can resolve, bypassing both.
 export type DefaultThemePreference = typeof DefaultThemePreference.Type;
@@ -401,8 +401,12 @@ export const ClientSettingsSchema = Schema.Struct({
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 
   pullRequestLinksOpenInApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-
-  planModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Plan mode: the composer's Build/Plan toggle, /plan and /default, and its
+  // keybinding. Off sends every turn in build mode. Deliberately a fresh key
+  // (was the opt-in legacy `planModeEnabled`), so everyone starts with it on.
+  composerPlanModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Legacy context window meter. The composer hides it by default; users who
+  // still want the old usage indicator can restore it from Settings.
   contextWindowMeterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   composerCollapseOnScroll: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   composerRichTextEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -759,6 +763,23 @@ export const GitHubHost = TrimmedNonEmptyString.pipe(
 export const SourceControlHostSettings = Schema.Record(Schema.String, Schema.Unknown);
 export type SourceControlHostSettings = typeof SourceControlHostSettings.Type;
 
+/**
+ * The Jira site the thread details panel links issue keys to. An empty `baseUrl` turns the
+ * integration off. Jira Cloud signs in with `email` plus an API token; Server and Data Center use
+ * a personal access token with `email` left empty. The token lives in the server's secret store.
+ */
+export const JiraSettings = Schema.Struct({
+  baseUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  email: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  apiToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("")), secretSetting),
+});
+export type JiraSettings = typeof JiraSettings.Type;
+
+/** Jira project keys such as `ABC`, uppercased on decode. */
+export const JiraProjectKeys = Schema.Array(
+  TrimmedNonEmptyString.pipe(Schema.decodeTo(Schema.String, SchemaTransformation.toUpperCase())),
+);
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -900,6 +921,7 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "sidebarAutoSettleKeepPullRequests",
   "continueThreadsAfterServerUpdate",
   "responseStreamingMode",
+  "jiraProjectKeys",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -943,6 +965,7 @@ export const ProjectSettingsOverrides = Schema.Struct({
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  jiraProjectKeys: Schema.optionalKey(JiraProjectKeys),
   providerInstances: Schema.optionalKey(
     Schema.Record(ProviderInstanceId, ProjectProviderInstanceOverride),
   ),
@@ -970,7 +993,7 @@ const NULLABLE_PROJECT_SETTINGS_OVERRIDES: ReadonlySet<ProjectScopedServerSettin
   "sidebarAutoSettleAfterDays",
 ]);
 
-/** Reclaimable bytes from which the offline `t3 doctor` repair is worth suggesting. */
+/** Reclaimable bytes from which the offline `par3 doctor` repair is worth suggesting. */
 export const DATABASE_COMPACTION_RECOMMENDED_BYTES = 1024 ** 3;
 
 /** Live SQLite file accounting for the environment's state database. */
@@ -978,7 +1001,7 @@ export const DatabaseStorageStatus = Schema.Struct({
   databaseBytes: Schema.Number,
   /** Free pages inside the file that an offline VACUUM (or incremental auto_vacuum) returns to disk. */
   reclaimableBytes: Schema.Number,
-  /** False on databases created before incremental auto_vacuum; `t3 doctor` converts them. */
+  /** False on databases created before incremental auto_vacuum; `par3 doctor` converts them. */
   incrementalVacuumEnabled: Schema.Boolean,
   /** Command to run on the host to reclaim the space offline. */
   compactCommand: Schema.String,
@@ -1126,7 +1149,7 @@ export const ServerSettings = Schema.Struct({
   defaultTheme: DefaultThemePreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /**
    * When the environment's theme was last set, so clients can tell a re-set of
-   * the same value from one they already applied: `t3 theme set` must act even
+   * the same value from one they already applied: `par3 theme set` must act even
    * when it names the theme it named before.
    */
   defaultThemeSetAt: Schema.String.check(Schema.isMaxLength(64)).pipe(
@@ -1196,6 +1219,13 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  jira: JiraSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  /**
+   * Which issue keys count as Jira issues. Empty matches any uppercase key, but only in branch
+   * names, where `UTF-8` and the like rarely appear.
+   */
+  jiraProjectKeys: JiraProjectKeys.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  /** Keyed by source control host kind, such as `gitcafe`; see `SourceControlHostSettings`. */
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1237,8 +1267,12 @@ const DEFAULT_DISABLED_PROVIDER_DRIVERS: ReadonlySet<ProviderDriverKind> = new S
   ),
 );
 
+/**
+ * Built-in drivers whose default instance runs before the user configures it. GitHub Copilot is
+ * on in this fork so it is probed at startup and can lead the provider order once found.
+ */
 const DEFAULT_ENABLED_DEFAULT_INSTANCES: ReadonlySet<ProviderInstanceId> = new Set(
-  ["codex", "claudeAgent"].map((instanceId) => ProviderInstanceId.make(instanceId)),
+  ["codex", "claudeAgent", "copilot"].map((instanceId) => ProviderInstanceId.make(instanceId)),
 );
 
 export const isUnconfiguredDefaultInstanceEnabled = (instanceId: ProviderInstanceId): boolean =>
@@ -1451,6 +1485,15 @@ export const ServerSettingsPatch = Schema.Struct({
       otlpLogsUrl: Schema.optionalKey(TrimmedString),
     }),
   ),
+  /** Send the redaction marker as `apiToken` to keep the saved token; empty removes it. */
+  jira: Schema.optionalKey(
+    Schema.Struct({
+      baseUrl: Schema.optionalKey(TrimmedString),
+      email: Schema.optionalKey(TrimmedString),
+      apiToken: Schema.optionalKey(TrimmedString),
+    }),
+  ),
+  jiraProjectKeys: Schema.optionalKey(JiraProjectKeys),
   /**
    * Merges per host: a patched field replaces the saved one, so a client sends a per-server-host
    * map whole, with the redaction marker for each saved secret it keeps. An empty or omitted
@@ -1560,7 +1603,7 @@ export const ClientSettingsPatch = Schema.Struct({
     Schema.Record(TrimmedNonEmptyString, PullRequestMergeMethod),
   ),
   pullRequestLinksOpenInApp: Schema.optionalKey(Schema.Boolean),
-  planModeEnabled: Schema.optionalKey(Schema.Boolean),
+  composerPlanModeEnabled: Schema.optionalKey(Schema.Boolean),
   contextWindowMeterEnabled: Schema.optionalKey(Schema.Boolean),
   composerCollapseOnScroll: Schema.optionalKey(Schema.Boolean),
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),

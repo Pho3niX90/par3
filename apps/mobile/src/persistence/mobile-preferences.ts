@@ -73,7 +73,12 @@ export interface Preferences {
   readonly microphones?: ReadonlyArray<MicrophoneEntry>;
   readonly projectGroupingEnabled?: boolean;
   readonly projectGroupingMode?: SidebarProjectGroupingMode;
-  readonly planModeEnabled?: boolean;
+  /**
+   * Device-local counterpart of web's `composerPlanModeEnabled`; unset means on.
+   * A fresh key (was the opt-in legacy `planModeEnabled`) so everyone starts on.
+   */
+  readonly composerPlanModeEnabled?: boolean;
+  /** Device-local counterpart of web's `sidebarWorkingShelfEnabled` beta. */
   readonly workingShelfEnabled?: boolean;
   readonly modelFavorites?: ReadonlyArray<{
     readonly provider: ProviderInstanceId;
@@ -145,7 +150,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     microphones?: ReadonlyArray<MicrophoneEntry>;
     projectGroupingEnabled?: boolean;
     projectGroupingMode?: SidebarProjectGroupingMode;
-    planModeEnabled?: boolean;
+    composerPlanModeEnabled?: boolean;
     workingShelfEnabled?: boolean;
     modelFavorites?: Preferences["modelFavorites"];
     threadListSettledShelfExpanded?: boolean;
@@ -246,8 +251,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   ) {
     preferences.projectGroupingMode = parsed.projectGroupingMode;
   }
-  if (typeof parsed.planModeEnabled === "boolean") {
-    preferences.planModeEnabled = parsed.planModeEnabled;
+  if (typeof parsed.composerPlanModeEnabled === "boolean") {
+    preferences.composerPlanModeEnabled = parsed.composerPlanModeEnabled;
   }
   if (typeof parsed.workingShelfEnabled === "boolean") {
     preferences.workingShelfEnabled = parsed.workingShelfEnabled;

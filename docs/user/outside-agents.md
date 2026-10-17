@@ -1,6 +1,6 @@
 # Outside agents
 
-Agents that T3 Code did not start can work with an environment through its MCP
+Agents that Par3 did not start can work with an environment through its MCP
 server. They can read projects and threads, start and message threads, and
 check which providers and models are available. This covers Claude Code or
 Codex in your own terminal, ChatGPT, and bots that support MCP. Each agent signs
@@ -37,7 +37,7 @@ The page names the agent and where its access goes:
   Anyone who runs that service gets the access.
 
 Only approve a sign-in you just started. To approve, enter a pairing code from
-**Settings → Connections** or from `t3 auth pairing create` on the host. A
+**Settings → Connections** or from `par3 auth pairing create` on the host. A
 browser already signed in to the environment with permission to manage access
 can approve without a code.
 
@@ -64,7 +64,7 @@ once you approve.
 ## Codex
 
 ```sh
-codex mcp add t3 --url https://<environment-address>/mcp
+codex mcp add par3 --url https://<environment-address>/mcp
 codex mcp login t3
 ```
 

@@ -2616,6 +2616,30 @@ async function recordClaudeInterruptRestartQuery(input: {
   }
 }
 
+/**
+ * An entry list that stamps each `emit_inbound` with the time since the
+ * previous entry, so a replay reproduces the recorded pacing. Recorders push
+ * frames as they arrive, which makes push time the arrival time.
+ */
+function timedReplayEntries(): Array<ProviderReplayEntry> {
+  const entries: Array<ProviderReplayEntry> = [];
+  const push = entries.push.bind(entries);
+  let previous = performance.now();
+  entries.push = (...items) => {
+    for (const item of items) {
+      const now = performance.now();
+      push(
+        item.type === "emit_inbound"
+          ? { ...item, afterMs: Math.max(0, Math.round(now - previous)) }
+          : item,
+      );
+      previous = now;
+    }
+    return entries.length;
+  };
+  return entries;
+}
+
 export async function recordClaudeAgentSdkReplayTranscript(input: {
   readonly scenario: string;
   readonly prompts: ReadonlyArray<string>;
@@ -2647,6 +2671,8 @@ export async function recordClaudeAgentSdkReplayTranscript(input: {
   readonly offerNextPromptImmediately?: boolean;
   readonly interruptAfter?: "prompt_offer" | "tool_use";
   readonly interruptAfterToolUses?: number;
+  /** Record each inbound frame's delay after the previous entry as `afterMs`. */
+  readonly timing?: boolean;
 }): Promise<ClaudeAgentSdkReplayTranscript> {
   if (input.prompts.length === 0) {
     throw new Error(
@@ -2654,7 +2680,7 @@ export async function recordClaudeAgentSdkReplayTranscript(input: {
     );
   }
 
-  const entries: Array<ProviderReplayEntry> = [];
+  const entries: Array<ProviderReplayEntry> = input.timing === true ? timedReplayEntries() : [];
   const sessionId = input.sessionId ?? (await Effect.runPromise(randomUuidV4));
   const queryMode = input.queryMode ?? "streaming";
   const recordingMetadata: Record<string, unknown> = {};

@@ -223,7 +223,7 @@ describe("resolveDraftPromotionNavigationTarget", () => {
 });
 
 describe("resolveEffectiveInteractionMode", () => {
-  it("forces build mode when legacy plan mode is disabled", () => {
+  it("forces build mode when plan mode is disabled", () => {
     expect(
       resolveEffectiveInteractionMode({
         planModeEnabled: false,
@@ -233,7 +233,7 @@ describe("resolveEffectiveInteractionMode", () => {
     ).toBe("default");
   });
 
-  it("uses the saved mode while legacy plan mode is enabled", () => {
+  it("uses the saved mode while plan mode is enabled", () => {
     expect(
       resolveEffectiveInteractionMode({
         planModeEnabled: true,
@@ -483,6 +483,7 @@ describe("shouldShowPlanFollowUpPrompt", () => {
     interactionMode: "plan" as const,
     latestTurnSettled: true,
     hasActionableProposedPlan: true,
+    planFromLatestRun: false,
     hasComposerAttachments: false,
   };
 
@@ -499,6 +500,20 @@ describe("shouldShowPlanFollowUpPrompt", () => {
     expect(shouldShowPlanFollowUpPrompt({ ...base, interactionMode: "default" })).toBe(false);
     expect(shouldShowPlanFollowUpPrompt({ ...base, latestTurnSettled: false })).toBe(false);
     expect(shouldShowPlanFollowUpPrompt({ ...base, hasActionableProposedPlan: false })).toBe(false);
+  });
+
+  it("offers a plan the latest run proposed outside plan mode", () => {
+    const outsidePlanMode = { ...base, interactionMode: "default" as const };
+    expect(shouldShowPlanFollowUpPrompt({ ...outsidePlanMode, planFromLatestRun: true })).toBe(
+      true,
+    );
+    expect(
+      shouldShowPlanFollowUpPrompt({
+        ...outsidePlanMode,
+        planFromLatestRun: true,
+        hasActionableProposedPlan: false,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -1662,7 +1677,7 @@ describe("resolveComposerInteractionMode", () => {
     ).toEqual({ enabled: false, interactionMode: "default" });
   });
 
-  it("keeps legacy plan behavior for providers that omit the capability", () => {
+  it("keeps plan behavior for providers that omit the capability", () => {
     expect(
       resolveComposerInteractionMode({
         planModeEnabled: true,

@@ -5,9 +5,11 @@ import * as Planetscale from "alchemy/Planetscale";
 import * as Alchemy from "alchemy";
 import * as RemovalPolicy from "alchemy/RemovalPolicy";
 import type { EffectPgDatabase } from "drizzle-orm/effect-postgres";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import { relayDatabaseMode } from "./dbConfig.ts";
 
@@ -73,10 +75,32 @@ export const PlanetscaleDatabase = Effect.gen(function* () {
   return { branch, database, runtimeRole };
 });
 
+/**
+ * A self-hosted Postgres behind a Cloudflare Access protected tunnel, used instead of
+ * PlanetScale when RELAY_DB_HOST is set. Its migrations are applied by the deploy
+ * workflow, not by Alchemy.
+ */
+export const RelaySelfHostedDatabase = Effect.gen(function* () {
+  const host = yield* Config.String("RELAY_DB_HOST").pipe(Config.option);
+  if (Option.isNone(host)) return Option.none();
+  return Option.some({
+    scheme: "postgres" as const,
+    host: host.value,
+    database: yield* Config.String("RELAY_DB_NAME"),
+    user: yield* Config.String("RELAY_DB_USER"),
+    password: yield* Config.Redacted("RELAY_DB_PASSWORD"),
+    accessClientId: yield* Config.Redacted("RELAY_DB_ACCESS_CLIENT_ID"),
+    accessClientSecret: yield* Config.Redacted("RELAY_DB_ACCESS_CLIENT_SECRET"),
+  });
+});
+
 export const RelayHyperdrive = Effect.gen(function* () {
-  const { runtimeRole } = yield* PlanetscaleDatabase;
+  const selfHosted = yield* RelaySelfHostedDatabase;
+  const origin = Option.isSome(selfHosted)
+    ? selfHosted.value
+    : (yield* PlanetscaleDatabase).runtimeRole.origin;
   return yield* Cloudflare.Hyperdrive.Connection("RelayHyperdrive", {
-    origin: runtimeRole.origin,
+    origin,
     caching: {
       disabled: true,
     },

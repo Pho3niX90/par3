@@ -7,7 +7,8 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
-import type { ScopedThreadRef, RunId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { ScopedThreadRef, RunId, VcsThreadRepository } from "@t3tools/contracts";
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -175,6 +176,7 @@ interface CollapsedDiffFilesState {
 }
 
 const EMPTY_COLLAPSED_DIFF_FILE_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_REPOSITORIES: ReadonlyArray<VcsThreadRepository> = [];
 
 function DiffFileCollapseToggle({
   filePath,
@@ -290,10 +292,7 @@ export default function DiffPanel({
         }
       : null,
   );
-  const activeCwd = activeThread?.worktreePath ?? activeProject?.workspaceRoot;
-  const activeRepositoryRoot = activeThread?.worktreePath
-    ? undefined
-    : activeProject?.repositoryIdentity?.rootPath;
+  const threadCwd = activeThread?.worktreePath ?? activeProject?.workspaceRoot;
   const serverConfig = useAtomValue(
     serverEnvironment.configValueAtom(activeThread?.environmentId ?? null),
   );
@@ -304,17 +303,50 @@ export default function DiffPanel({
   );
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
   const gitStatusQuery = useEnvironmentQuery(
-    activeThread !== null && activeThread !== undefined && activeCwd != null
+    activeThread !== null && activeThread !== undefined && threadCwd != null
       ? vcsEnvironment.status({
           environmentId: activeThread.environmentId,
-          input: { cwd: activeCwd },
+          input: { cwd: threadCwd },
         })
       : null,
   );
   const diffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
   );
-  const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
+  // A folder that holds several repositories shows one of the child repositories the thread
+  // edited. Turn diffs come from checkpoints of the thread's own folder, so they stay off there.
+  const threadCwdIsRepo = gitStatusQuery.data?.isRepo ?? true;
+  const childRepositoriesQuery = useEnvironmentQuery(
+    activeThread && gitStatusQuery.data?.isRepo === false
+      ? vcsEnvironment.threadRepositories({
+          environmentId: activeThread.environmentId,
+          input: { threadId: activeThread.id },
+        })
+      : null,
+  );
+  const childRepositories = threadCwdIsRepo
+    ? EMPTY_REPOSITORIES
+    : (childRepositoriesQuery.data?.repositories ?? EMPTY_REPOSITORIES);
+  const pickedRepositoryCwd = useDiffPanelStore((state) =>
+    routeThreadRef ? state.repositoryByThreadKey[scopedThreadKey(routeThreadRef)] : undefined,
+  );
+  const childRepository =
+    childRepositories.find((repository) => repository.cwd === pickedRepositoryCwd) ??
+    childRepositories[0] ??
+    null;
+  // Pin the shown repository, so a refreshed list that sorts another one first does not switch the
+  // diff, and a fallback after the picked one drops out starts from that repository's own base.
+  useEffect(() => {
+    if (!routeThreadRef || !childRepository || childRepository.cwd === pickedRepositoryCwd) return;
+    useDiffPanelStore.getState().selectRepository(routeThreadRef, childRepository.cwd);
+  }, [childRepository, pickedRepositoryCwd, routeThreadRef]);
+  const activeCwd = threadCwdIsRepo ? threadCwd : childRepository?.cwd;
+  const activeRepositoryRoot = childRepository
+    ? childRepository.cwd
+    : activeThread?.worktreePath
+      ? undefined
+      : activeProject?.repositoryIdentity?.rootPath;
+  const isGitRepo = threadCwdIsRepo || childRepository !== null;
   const { turnDiffSummaries, inferredCheckpointTurnCountByRunId } =
     useTurnDiffSummaries(activeThreadProjection);
   const orderedTurnDiffSummaries = [...turnDiffSummaries].toSorted((left, right) => {
@@ -336,7 +368,8 @@ export default function DiffPanel({
     );
   }, [diffSelection, orderedTurnDiffSummaries, routeThreadRef]);
 
-  const selectedRunId = diffSelection.kind === "turn" ? diffSelection.turnId : null;
+  const selectedRunId =
+    threadCwdIsRepo && diffSelection.kind === "turn" ? diffSelection.turnId : null;
   const selectedGitScope = diffSelection.kind === "unstaged" ? "unstaged" : "branch";
   const selectedBaseRef = diffSelection.kind === "branch" ? diffSelection.baseRef : null;
   const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
@@ -385,7 +418,7 @@ export default function DiffPanel({
       ignoreWhitespace: diffIgnoreWhitespace,
       cacheScope: selectedTurn ? `turn:${selectedTurn.runId}` : null,
     },
-    { enabled: isGitRepo && selectedTurn !== undefined },
+    { enabled: threadCwdIsRepo && selectedTurn !== undefined },
   );
   const branchDiffPreview = useEnvironmentQuery(
     canReadFiles && selectedRunId === null && activeThread && activeCwd
@@ -620,11 +653,14 @@ export default function DiffPanel({
   }, [lazySource, selectedFilePath, selectedFileRevealRequestId, filePatchScope, revealDiffFile]);
 
   const openDiffFile = (filePath: string) => {
+    // The file panel reads paths below the thread's folder, and a child repository's diff
+    // names files below that repository.
+    const childRepositoryPrefix = childRepository?.relativePath.replaceAll("\\", "/");
     openDiffFilePrimaryAction({
       threadRef: routeThreadRef,
-      filePath,
-      activeCwd,
-      repositoryRoot: activeRepositoryRoot,
+      filePath: childRepositoryPrefix ? `${childRepositoryPrefix}/${filePath}` : filePath,
+      activeCwd: childRepositoryPrefix ? threadCwd : activeCwd,
+      repositoryRoot: childRepositoryPrefix ? undefined : activeRepositoryRoot,
       openInEditor: (targetPath) => {
         void (async () => {
           const result = await openInPreferredEditor(targetPath);
@@ -733,39 +769,75 @@ export default function DiffPanel({
               <DropdownMenuRadioItem value="unstaged" closeOnClick>
                 <span>Uncommitted</span>
               </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="latest" closeOnClick>
-                <span>Latest turn</span>
-              </DropdownMenuRadioItem>
+              {threadCwdIsRepo ? (
+                <DropdownMenuRadioItem value="latest" closeOnClick>
+                  <span>Latest turn</span>
+                </DropdownMenuRadioItem>
+              ) : null}
             </DropdownMenuRadioGroup>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Turn</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup value={selectedTurnValue} onValueChange={selectScopeValue}>
-                  {orderedTurnDiffSummaries.map((summary) => {
-                    const turnCount =
-                      summary.checkpointTurnCount ??
-                      inferredCheckpointTurnCountByRunId[summary.runId] ??
-                      "?";
-                    return (
-                      <DropdownMenuRadioItem
-                        key={summary.runId}
-                        value={`turn:${summary.runId}`}
-                        closeOnClick
-                      >
-                        <span className="flex items-center gap-2">
-                          <span>Turn {turnCount}</span>
-                          <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                            {formatShortTimestamp(summary.completedAt, settings.timestampFormat)}
+            {threadCwdIsRepo ? (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Turn</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={selectedTurnValue}
+                    onValueChange={selectScopeValue}
+                  >
+                    {orderedTurnDiffSummaries.map((summary) => {
+                      const turnCount =
+                        summary.checkpointTurnCount ??
+                        inferredCheckpointTurnCountByRunId[summary.runId] ??
+                        "?";
+                      return (
+                        <DropdownMenuRadioItem
+                          key={summary.runId}
+                          value={`turn:${summary.runId}`}
+                          closeOnClick
+                        >
+                          <span className="flex items-center gap-2">
+                            <span>Turn {turnCount}</span>
+                            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                              {formatShortTimestamp(summary.completedAt, settings.timestampFormat)}
+                            </span>
                           </span>
-                        </span>
-                      </DropdownMenuRadioItem>
-                    );
-                  })}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+                        </DropdownMenuRadioItem>
+                      );
+                    })}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
+        {childRepository && routeThreadRef ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button size="xs" variant="ghost" />}
+              className="min-w-0 max-w-48"
+              aria-label={`Repository: ${childRepository.relativePath}`}
+              disabled={childRepositories.length < 2}
+            >
+              <span className="truncate">{childRepository.relativePath}</span>
+              {childRepositories.length > 1 ? (
+                <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+              ) : null}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup
+                value={childRepository.cwd}
+                onValueChange={(cwd) =>
+                  useDiffPanelStore.getState().selectRepository(routeThreadRef, cwd)
+                }
+              >
+                {childRepositories.map((repository) => (
+                  <DropdownMenuRadioItem key={repository.cwd} value={repository.cwd} closeOnClick>
+                    <span>{repository.relativePath}</span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         {selectedRunId === null && selectedGitScope === "branch" && selectedGitSource?.baseRef && (
           <div
             className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-xs text-muted-foreground"
@@ -1025,9 +1097,18 @@ export default function DiffPanel({
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Select a thread to inspect turn diffs.
         </div>
+      ) : !threadCwdIsRepo &&
+        childRepository === null &&
+        !childRepositoriesQuery.isSuccess &&
+        !childRepositoriesQuery.error ? (
+        <DiffPanelLoadingState label="Finding the thread's repositories..." />
       ) : !isGitRepo ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-          Turn diffs are unavailable because this project is not a git repository.
+          {childRepositoriesQuery.error
+            ? `This project is not a git repository, and its repositories could not be listed: ${childRepositoriesQuery.error}`
+            : childRepositoriesQuery.isSuccess
+              ? "This project is not a git repository, and the thread has not edited files in a repository inside it."
+              : "Turn diffs are unavailable because this project is not a git repository."}
         </div>
       ) : selectedRunId !== null && orderedTurnDiffSummaries.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">

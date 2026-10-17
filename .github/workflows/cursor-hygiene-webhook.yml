@@ -16,6 +16,8 @@ permissions:
 jobs:
   forward:
     name: POST to Cursor
+    # Upstream only: forwards upstream's activity to Cursor.
+    if: github.repository_owner == 'pingdotgg'
     runs-on: ubuntu-24.04
     steps:
       - name: POST to Cursor

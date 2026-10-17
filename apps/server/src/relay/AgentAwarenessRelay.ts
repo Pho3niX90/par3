@@ -728,7 +728,7 @@ export const make = Effect.gen(function* () {
   });
 
   // Many environments never link, so while unlinked the retry backs off from 5
-  // s to 60 s. A linked environment keeps the 5 s retry, because `t3 connect
+  // s to 60 s. A linked environment keeps the 5 s retry, because `par3 connect
   // publish` can turn publishing on from another process.
   const publishActiveThreadsOnceWhenConfigured = (logEnabledWhenReady: boolean) =>
     Effect.gen(function* () {

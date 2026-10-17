@@ -253,14 +253,22 @@ export function SubagentElapsed({ agent }: { agent: Parameters<typeof AgentElaps
   return <AgentElapsed agent={agent} />;
 }
 
+const SUBAGENT_DRIVER_BADGE_CLASS =
+  "top-[-0.25rem] right-[-0.25rem] bottom-auto h-3 min-w-3 px-0.5 text-5xs";
+
+/** Round provider tile with the agents panel's status dot; rings let a header stack overlap. */
 export function SubagentAvatar({
   driver,
   provider,
+  model,
   status,
   className,
 }: {
   driver?: ProviderDriverKind | undefined;
   provider?: ServerProvider | undefined;
+  /** The subagent's model, so multi-vendor drivers such as Copilot draw the vendor's glyph. */
+  model?: string | null | undefined;
+  /** Omitted inside an overlapped stack, where a covered dot would only add noise. */
   status?: OrchestrationV2TurnItem["status"] | undefined;
   className?: string;
 }) {
@@ -276,9 +284,13 @@ export function SubagentAvatar({
         <ProviderInstanceIcon
           driverKind={driver}
           displayName={provider?.displayName ?? driver}
+          model={model ?? undefined}
           acpRegistryIconUrl={provider?.iconUrl}
           className="z-auto"
           iconClassName="size-3.5"
+          indicatorBackground="var(--muted)"
+          // The status dot owns the bottom-right corner.
+          badgeClassName={SUBAGENT_DRIVER_BADGE_CLASS}
         />
       ) : (
         <BotIcon className="size-3.5 text-muted-foreground" />
@@ -406,6 +418,7 @@ function SubagentTimelineLink(props: {
       <SubagentAvatar
         driver={props.driver}
         provider={props.provider}
+        model={agent?.model ?? agent?.modelSelection?.model}
         status={status ?? undefined}
       />
       <span className="min-w-0 flex-1">

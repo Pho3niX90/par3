@@ -72,12 +72,14 @@ import {
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
+  PencilRulerIcon,
   RotateCcwIcon,
   SettingsIcon,
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
 } from "lucide-react";
+import { requestPlanModeToggle } from "./chat/planModeActionBus";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
 import {
   useDeferredValue,
@@ -1663,6 +1665,31 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
+  // A draft's provider is picked in its composer, which ignores the toggle when it cannot plan.
+  const activeThreadProviderCanPlan =
+    activeThread === null ||
+    activeThreadServerConfig?.providers.find(
+      (provider) => provider.instanceId === activeThread.modelSelection.instanceId,
+    )?.showInteractionModeToggle !== false;
+  if (
+    paletteRouteTarget !== null &&
+    clientSettings.composerPlanModeEnabled &&
+    activeThreadProviderCanPlan
+  ) {
+    actionItems.push({
+      kind: "action",
+      value: "action:toggle-plan-mode",
+      title: "Toggle Build/Plan mode",
+      searchTerms: ["plan", "build", "mode", "default", "composer"],
+      icon: <PencilRulerIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "composer.togglePlanMode",
+      run: async () => {
+        requestPlanModeToggle();
+      },
+    });
+  }
+
+  // Read once per open: the palette is a snapshot of the composer, not a live view of it.
   const promptLinkTarget = paletteRouteTarget
     ? paletteRouteTarget.kind === "server"
       ? paletteRouteTarget.threadRef

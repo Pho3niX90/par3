@@ -254,6 +254,8 @@ import {
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
+import * as JiraIssues from "./jira/JiraIssues.ts";
+import * as ThreadRepositories from "./vcs/ThreadRepositories.ts";
 
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
 const isProviderUploadFeedbackError = Schema.is(ProviderUploadFeedbackError);
@@ -1222,6 +1224,8 @@ const layerWsRpc = (
             );
       const usage = yield* UsageService.UsageService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
+      const jiraIssues = yield* JiraIssues.JiraIssues;
+      const threadRepositories = yield* ThreadRepositories.ThreadRepositories;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
@@ -1493,7 +1497,7 @@ const layerWsRpc = (
               if (racedImport !== null) return { threadId, imported: false } as const;
               return yield* new AcpRegistryOperationError({
                 reason: "session_import_failed",
-                message: "Could not create a T3 thread for the ACP session.",
+                message: "Could not create a Par3 thread for the ACP session.",
                 cause: launched.failure,
               });
             }
@@ -1534,7 +1538,7 @@ const layerWsRpc = (
             if (importedThread !== null) {
               return yield* new AcpRegistryOperationError({
                 reason: "session_delete_failed",
-                message: "Delete the imported T3 thread before deleting its native ACP session.",
+                message: "Delete the imported Par3 thread before deleting its native ACP session.",
               });
             }
             yield* manager.deleteSession({
@@ -2464,6 +2468,7 @@ const layerWsRpc = (
           ),
         [WS_METHODS.pullRequestsDetail]: (input) =>
           withPullRequestViewer(input, pullRequests.detail(input)),
+        [WS_METHODS.jiraIssue]: (input) => jiraIssues.issue(input),
         [WS_METHODS.pullRequestsPreview]: (input) =>
           withPullRequestViewer(input, pullRequests.preview(input)),
         [WS_METHODS.pullRequestsChecks]: (input) =>
@@ -2774,6 +2779,7 @@ const layerWsRpc = (
             .cancel(input.threadId)
             .pipe(Effect.map((cancelled) => ({ cancelled }))),
         [WS_METHODS.vcsRefreshStatus]: (input) => vcsStatusBroadcaster.refreshStatus(input.cwd),
+        [WS_METHODS.vcsThreadRepositories]: (input) => threadRepositories.list(input),
         [WS_METHODS.vcsPull]: (input) =>
           gitWorkflow.pullCurrentBranch(input.cwd).pipe(
             Effect.matchCauseEffect({

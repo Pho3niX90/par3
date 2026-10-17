@@ -51,6 +51,7 @@ import {
 } from "../../onboarding/projectImport.logic";
 import {
   getOnboardingProviderState,
+  onboardingProviderOffersOptionalSignIn,
   resolveOnboardingProviderInstallCommand,
   resolveOnboardingProviderLoginCommand,
   selectOnboardingProvidersByDriver,
@@ -84,7 +85,7 @@ import { TerminalViewport } from "../ThreadTerminalDrawer";
 import { CloudEnvironmentConnectRows } from "../cloud/CloudEnvironmentConnectList";
 import { presentSavedCloudEnvironmentConnection } from "../cloud/cloudEnvironmentConnectionPresentation";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
-import { T3Wordmark } from "../T3Wordmark";
+import { Par3Wordmark } from "../T3Wordmark";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { CommandBlock } from "../CommandBlock";
@@ -226,13 +227,10 @@ export function WelcomeWizard({
         initialFocus={() => document.getElementById("onboarding-pairing-url") ?? true}
       >
         <WizardHeader
-          title="Set up T3 Code"
+          title="Set up Par3"
           identity={
-            <div className="flex items-baseline gap-1.5" role="img" aria-label="T3 Code">
-              <T3Wordmark className="h-4 w-auto shrink-0" aria-hidden />
-              <span className="text-2xl font-medium tracking-tight text-muted-foreground">
-                Code
-              </span>
+            <div className="flex items-center" role="img" aria-label="Par3">
+              <Par3Wordmark className="h-8 w-auto shrink-0" aria-hidden />
             </div>
           }
         >
@@ -422,8 +420,8 @@ function ConnectionStep({
       ) : null}
       <div className="mt-6 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
         <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
-          T3 Code collects anonymous usage data to help us improve it. To read more about how your
-          data is used and how to opt out, see our{" "}
+          Par3 collects anonymous usage data to help us improve it. To read more about how your data
+          is used and how to opt out, see our{" "}
           <a
             className="underline underline-offset-2 hover:text-foreground"
             href={PRIVACY_POLICY_URL}
@@ -518,9 +516,9 @@ function ConnectAccountOption({
             <p className="text-sm text-muted-foreground">
               Run this on each computer you want to connect.
             </p>
-            <CommandBlock command="npx t3 connect" className="mt-3" />
+            <CommandBlock command="npx @paritylabs/par3 connect" className="mt-3" />
             <p className="mt-3 text-xs text-muted-foreground">
-              Keep T3 Code running. Select the computers you want to set up above.
+              Keep Par3 running. Select the computers you want to set up above.
             </p>
           </div>
         </CollapsiblePanel>
@@ -627,10 +625,10 @@ function PairingForm({
             <p className="pt-3 text-sm text-muted-foreground">
               Run this on the computer with your code.
             </p>
-            <CommandBlock command="npx t3 pair" className="mt-2" />
+            <CommandBlock command="npx @paritylabs/par3 pair" className="mt-2" />
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              Start T3 Code first, or run <code className="font-mono">npx t3 serve</code>. Add{" "}
-              <code className="font-mono">--tailscale</code> to use your tailnet.
+              Start Par3 first, or run <code className="font-mono">npx @paritylabs/par3 serve</code>
+              . Add <code className="font-mono">--tailscale</code> to use your tailnet.
             </p>
           </CollapsiblePanel>
         </Collapsible>
@@ -639,7 +637,7 @@ function PairingForm({
   );
 }
 
-const PRIMARY_AGENT_DRIVERS = ["codex", "claudeAgent"] as const;
+const PRIMARY_AGENT_DRIVERS = ["codex", "claudeAgent", "copilot"] as const;
 type OnboardingAgentDriver = (typeof PRIMARY_AGENT_DRIVERS)[number];
 
 interface AgentTerminalSession {
@@ -953,6 +951,7 @@ function AgentCard({
     provider?.displayName || (driver === "claudeAgent" ? "Claude Code" : (meta?.label ?? driver));
   const summary = getProviderSummary(provider);
   const providerState = getOnboardingProviderState(provider);
+  const offersOptionalSignIn = onboardingProviderOffersOptionalSignIn(provider);
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-4 py-4">
@@ -964,15 +963,32 @@ function AgentCard({
       <div className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-foreground">{displayName}</span>
         <p className="mt-0.5 text-xs leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
-          {providerState === "ready" ? "Ready to code." : summary.headline}
+          {providerState === "ready"
+            ? offersOptionalSignIn
+              ? "Installed. Sign in if you haven't already."
+              : "Ready to code."
+            : summary.headline}
           {providerState !== "ready" && summary.detail ? ` · ${summary.detail}` : ""}
         </p>
       </div>
       <div className="shrink-0">
         {providerState === "ready" ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success-foreground">
-            <CheckIcon className="size-3.5" />
-            Ready
+          <span className="inline-flex items-center gap-2">
+            {offersOptionalSignIn ? (
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={onOpenTerminal}
+                disabled={terminalOpen || !terminalAvailable}
+              >
+                <TerminalIcon className="size-3.5" />
+                Sign in
+              </Button>
+            ) : null}
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success-foreground">
+              <CheckIcon className="size-3.5" />
+              Ready
+            </span>
           </span>
         ) : providerState === "checking" ? (
           <span className="text-xs text-muted-foreground">Checking...</span>

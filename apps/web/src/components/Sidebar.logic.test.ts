@@ -80,16 +80,16 @@ describe("resolveSidebarRowAccessibility", () => {
     {
       title: "Can you audit the UI?",
       statusLabel: "Working",
-      projectDisplayName: "T3 Code",
+      projectDisplayName: "Par3",
       isActive: true,
-      expected: { label: "Can you audit the UI?, Working, T3 Code", current: "page" },
+      expected: { label: "Can you audit the UI?, Working, Par3", current: "page" },
     },
     {
       title: "The audit is done",
       statusLabel: null,
-      projectDisplayName: "T3 Code",
+      projectDisplayName: "Par3",
       isActive: false,
-      expected: { label: "The audit is done, T3 Code", current: undefined },
+      expected: { label: "The audit is done, Par3", current: undefined },
     },
     {
       title: "Untitled task",
@@ -509,7 +509,6 @@ describe("hasUnseenCompletion", () => {
         hasActionableProposedPlan: false,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
-        interactionMode: "default",
         latestRun: makeLatestRun(),
         lastVisitedAt: "2026-03-09T10:04:00.000Z",
         runtime: null,
@@ -523,7 +522,6 @@ describe("hasUnseenCompletion", () => {
         hasActionableProposedPlan: false,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
-        interactionMode: "default",
         latestRun: makeLatestRun(),
         lastVisitedAt: undefined,
         runtime: null,
@@ -1222,10 +1220,10 @@ describe("formatWorkingDurationLabel", () => {
 
 describe("resolveThreadStatusPill", () => {
   const baseThread = {
+    interactionMode: DEFAULT_INTERACTION_MODE,
     hasActionableProposedPlan: false,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
-    interactionMode: "plan" as const,
     latestRun: null,
     lastVisitedAt: undefined,
     runtime: {
@@ -1355,7 +1353,6 @@ describe("resolveThreadStatusPill", () => {
       resolveThreadStatusPill({
         thread: {
           ...baseThread,
-          interactionMode: "default",
           latestRun: makeLatestRun(),
           lastVisitedAt: "2026-03-09T10:04:00.000Z",
           runtime: {
@@ -2126,9 +2123,9 @@ describe("Working shelf (beta)", () => {
   const backgroundTask = { taskId: "bg-1", description: "Watch build", kind: "monitor" as const };
   const idle = {
     hasActionableProposedPlan: false,
+    interactionMode: DEFAULT_INTERACTION_MODE,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
-    interactionMode: "default" as const,
     latestRun: makeLatestRun(),
     runtime: null,
   };
@@ -2156,7 +2153,6 @@ describe("Working shelf (beta)", () => {
     expect(
       isSidebarThreadWorking({
         ...waiting,
-        interactionMode: "plan",
         hasActionableProposedPlan: true,
       }),
     ).toBe(false);

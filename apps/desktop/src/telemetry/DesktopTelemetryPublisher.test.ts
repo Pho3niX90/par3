@@ -36,7 +36,7 @@ function layerElectronApp(
 ) {
   return Layer.succeed(ElectronApp.ElectronApp, {
     metadata: Effect.die("unexpected metadata read"),
-    name: Effect.succeed("T3 Code"),
+    name: Effect.succeed("Par3"),
     systemLocale: Effect.succeed("en-US"),
     whenReady: Effect.void,
     quit: Effect.void,
@@ -51,6 +51,8 @@ function layerElectronApp(
       return metrics;
     }),
     setAsDefaultProtocolClient: () => Effect.succeed(true),
+    isDefaultProtocolClient: () => Effect.succeed(false),
+    getApplicationNameForProtocol: () => Effect.succeed(""),
     setDesktopName: () => Effect.void,
     setDockIcon: () => Effect.void,
     appendCommandLineSwitch: () => Effect.void,

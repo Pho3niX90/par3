@@ -238,7 +238,7 @@ export function ConnectAgentSurface() {
               value={pairingCode}
             />
             <p className="text-xs text-muted-foreground">
-              Create one in Settings → Connections, or run <code>t3 auth pairing create</code> on
+              Create one in Settings → Connections, or run <code>par3 auth pairing create</code> on
               this machine.
             </p>
           </div>

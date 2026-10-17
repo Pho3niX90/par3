@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { ModelVendorIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";
 import type { ModelOption } from "../../lib/modelOptions";
 
@@ -63,6 +64,10 @@ export function ModelRowContent(
         {props.leadingSelection}
         <View className="min-w-0 flex-1">
           <View className="flex-row items-center gap-2">
+            <ModelVendorIcon
+              provider={props.option.providerDriver}
+              model={props.option.selection.model}
+            />
             <Text
               className="min-w-0 shrink text-base font-t3-medium text-foreground"
               numberOfLines={props.labelNumberOfLines}
