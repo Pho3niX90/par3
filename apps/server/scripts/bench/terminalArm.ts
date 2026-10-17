@@ -162,20 +162,31 @@ export async function runTerminalArm(
   const exited = new Promise<void>((done) => terminal.onExit(() => done()));
 
   const plain = () => NodeUtil.stripVTControlCharacters(recent);
+  // The menu ignores an Enter sent in the same write as the arrow key.
+  const answer = async (moveDown: boolean) => {
+    if (moveDown) {
+      terminal.write("\x1b[B");
+      await new Promise((done) => setTimeout(done, 300));
+    }
+    terminal.write("\r");
+    await new Promise((done) => setTimeout(done, 1_000));
+    recent = "";
+  };
   const waitForIdle = async () => {
     const deadline = performance.now() + 60_000;
     while (performance.now() < deadline) {
       await new Promise((done) => setTimeout(done, 100));
-      const screen = plain();
-      // Start-up prompts are answered with their default ("Yes"), as a user would.
-      if (/trust (the files in )?this folder/i.test(screen)) {
-        recent = "";
-        terminal.write("\r");
+      // The TUI positions words with cursor moves, so stripped text loses its
+      // spaces; match with whitespace removed.
+      const screen = plain().replace(/\s+/g, "");
+      // Start-up prompts are answered "Yes", as a user would.
+      if (/trust(thefilesin)?thisfolder/i.test(screen)) {
+        // Newer CLIs list "No, exit" first and highlight it.
+        await answer(/No,exit/i.test(screen));
         continue;
       }
-      if (/Bypass Permissions mode/i.test(screen) && /Yes, I accept/i.test(screen)) {
-        recent = "";
-        terminal.write("\x1b[B\r");
+      if (/BypassPermissionsmode/i.test(screen) && /Yes,Iaccept/i.test(screen)) {
+        await answer(true);
         continue;
       }
       if (performance.now() - lastOutputAt > IDLE_MS) return;

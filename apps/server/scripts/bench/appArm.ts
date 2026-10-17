@@ -12,7 +12,7 @@ import * as NodePath from "node:path";
 import type { Page } from "playwright-core";
 
 import { repositoryRoot } from "../lib/liveServer.ts";
-import type { ArmRunInput, TurnSample } from "./benchTypes.ts";
+import { optionalError, runError, type ArmRunInput, type TurnSample } from "./benchTypes.ts";
 import { readNativeResults, startBenchServer } from "./serverArm.ts";
 import { apiTimesFromTranscript, findTranscriptIn } from "./terminalArm.ts";
 
@@ -80,7 +80,12 @@ export async function runAppArm(
     input.workload.prompt,
     ...(input.workload.warmPrompt ? [input.workload.warmPrompt] : []),
   ];
-  const turns: Array<{ wallMs: number; firstTextMs?: number; lastTextMs?: number }> = [];
+  const turns: Array<{
+    wallMs: number;
+    status: string;
+    firstTextMs?: number;
+    lastTextMs?: number;
+  }> = [];
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   try {
     const pairing = await fetch(`${bench.origin}/api/auth/pairing-token`, {
@@ -121,6 +126,7 @@ export async function runAppArm(
       const texts = record.texts.filter((at) => at >= sentAt && at <= done.at);
       turns.push({
         wallMs: done.at - sentAt,
+        status: done.status,
         ...(texts.length === 0
           ? {}
           : { firstTextMs: texts[0]! - sentAt, lastTextMs: texts.at(-1)! - sentAt }),
@@ -138,9 +144,8 @@ export async function runAppArm(
   }
 
   // API time from the CLI's own transcript, the same source as the terminal arm.
-  const sessionId = readNativeResults(bench.home, undefined).find(
-    (result) => result.sessionId,
-  )?.sessionId;
+  const results = readNativeResults(bench.home, undefined);
+  const sessionId = results.find((result) => result.sessionId)?.sessionId;
   const transcript =
     sessionId === undefined ? undefined : findTranscriptIn(input.config.claudeConfigDir, sessionId);
   const apiTimes = transcript === undefined ? [] : apiTimesFromTranscript(transcript);
@@ -156,6 +161,7 @@ export async function runAppArm(
       ...(apiMs === undefined ? {} : { apiMs, nonApiMs: turn.wallMs - apiMs }),
       ...(turn.firstTextMs === undefined ? {} : { firstTextMs: turn.firstTextMs }),
       ...(turn.lastTextMs === undefined ? {} : { lastTextMs: turn.lastTextMs }),
+      ...optionalError(runError(turn.status, results[index]?.error)),
     };
   });
 }

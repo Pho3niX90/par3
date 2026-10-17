@@ -82,6 +82,66 @@ function readModelScoped(rateLimits: object): ReadonlyArray<ModelScopedWindow> {
   );
 }
 
+/**
+ * Accounts with a spending budget (Claude Enterprise) report it under `spend`,
+ * which the pinned SDK typings do not know yet, and again under the older
+ * `extra_usage`. Both describe the same budget, so at most one row is drawn.
+ * The budget has no reset date in the payload, so the row carries none.
+ */
+interface SpendMoney {
+  readonly amount_minor: number;
+  readonly currency: string;
+  readonly exponent: number;
+}
+
+function isSpendMoney(value: unknown): value is SpendMoney {
+  if (typeof value !== "object" || value === null) return false;
+  const money = value as SpendMoney;
+  return (
+    typeof money.amount_minor === "number" &&
+    typeof money.currency === "string" &&
+    typeof money.exponent === "number"
+  );
+}
+
+function percentOfLimit(used: number | null | undefined, limit: number | null | undefined) {
+  if (typeof used !== "number" || typeof limit !== "number") return undefined;
+  if (!Number.isFinite(used) || !Number.isFinite(limit) || used < 0 || limit <= 0) {
+    return undefined;
+  }
+  return clampPercent((used / limit) * 100);
+}
+
+function readSpendPercent(rateLimits: NonNullable<SDKControlGetUsageResponse["rate_limits"]>) {
+  const spend = (rateLimits as { readonly spend?: unknown }).spend;
+  if (typeof spend === "object" && spend !== null) {
+    const { enabled, used, limit } = spend as {
+      readonly enabled?: unknown;
+      readonly used?: unknown;
+      readonly limit?: unknown;
+    };
+    // Minor units only compare when both sides share a currency and exponent.
+    if (
+      enabled === true &&
+      isSpendMoney(used) &&
+      isSpendMoney(limit) &&
+      used.currency === limit.currency &&
+      used.exponent === limit.exponent
+    ) {
+      const percent = percentOfLimit(used.amount_minor, limit.amount_minor);
+      if (percent !== undefined) return percent;
+    }
+  }
+  const extra = rateLimits.extra_usage;
+  if (!extra?.is_enabled) return undefined;
+  const percent = percentOfLimit(extra.used_credits, extra.monthly_limit);
+  if (percent !== undefined) return percent;
+  const { utilization } = extra;
+  return typeof utilization === "number" && Number.isFinite(utilization) && utilization >= 0
+    ? clampPercent(utilization)
+    : undefined;
+}
+
 function isoFromEpochSeconds(value: number | undefined): string | undefined {
   if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
   const dt = DateTime.make(value * 1000);
@@ -161,6 +221,15 @@ export function claudeUsageResponseToLimits(input: {
       scopedWindow(entry.display_name, entry.utilization, isoFromString(entry.resets_at)),
     );
     overageIncluded ??= entry.display_name;
+  }
+  const spendPercent = readSpendPercent(response.rate_limits);
+  if (spendPercent !== undefined) {
+    windows.push({
+      id: "monthly_spend",
+      kind: "monthly",
+      label: "Monthly spend",
+      usedPercent: spendPercent,
+    });
   }
   return {
     limits: makeUsageLimits({ checkedAt, windows }),

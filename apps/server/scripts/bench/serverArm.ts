@@ -23,7 +23,13 @@ import {
 } from "@t3tools/contracts";
 
 import * as LiveServer from "../lib/liveServer.ts";
-import { totalInputTokens, type ArmRunInput, type TurnSample } from "./benchTypes.ts";
+import {
+  optionalError,
+  runError,
+  totalInputTokens,
+  type ArmRunInput,
+  type TurnSample,
+} from "./benchTypes.ts";
 
 const TURN_TIMEOUT = "10 minutes";
 const TERMINAL_RUN_STATUSES = new Set([
@@ -70,6 +76,8 @@ export interface NativeResult {
   readonly atEpochMs: number;
   readonly apiMs: number | undefined;
   readonly inputTokens: number | undefined;
+  /** The result text when Claude reported an error, such as a usage limit. */
+  readonly error: string | undefined;
 }
 
 /** `result` lines from the provider's native event log, in order. */
@@ -98,6 +106,7 @@ export function readNativeResults(home: string, threadId: string | undefined): N
         atEpochMs: Date.parse(match[1]!),
         apiMs: typeof payload.duration_api_ms === "number" ? payload.duration_api_ms : undefined,
         inputTokens: totalInputTokens(payload.usage),
+        error: payload.is_error === true ? String(payload.result ?? payload.subtype) : undefined,
       });
     }
   }
@@ -389,7 +398,13 @@ export async function runServerArm(
   return turns.map((turn, index): TurnSample => {
     const wallMs = (turn.terminalAt ?? Number.NaN) - turn.startedAt;
     const result = results[index];
-    const apiMs = result?.apiMs;
+    // The CLI sums `duration_api_ms` over a session; take this turn's share.
+    // A new session (a smaller total) starts from zero.
+    const previousApiMs = index === 0 ? 0 : (results[index - 1]?.apiMs ?? 0);
+    const apiMs =
+      result?.apiMs === undefined
+        ? undefined
+        : result.apiMs - (result.apiMs >= previousApiMs ? previousApiMs : 0);
     const turnSpans = spansForTurn(spans, {
       fromEpochMs: turn.startedAtEpochMs,
       toEpochMs: turn.terminalAtEpochMs ?? Number.POSITIVE_INFINITY,
@@ -411,7 +426,7 @@ export async function runServerArm(
       ...(result === undefined || turn.terminalAtEpochMs === undefined
         ? {}
         : { completionLagMs: turn.terminalAtEpochMs - result.atEpochMs }),
-      ...(turn.terminalStatus === "completed" ? {} : { error: `run ${turn.terminalStatus}` }),
+      ...optionalError(runError(turn.terminalStatus, result?.error)),
     };
   });
 }
