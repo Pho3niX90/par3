@@ -62,10 +62,10 @@ describe("connection routes", () => {
     expect(connectionRouteKind(direct("lo", "http://127.0.0.1:3773/"))).toBe("loopback");
     expect(connectionRouteKind(direct("ts6", "http://[fd7a:115c:a1e0::1]:3773/"))).toBe("tailnet");
     expect(connectionRouteLabel(TAILNET)).toBe("Tailscale");
-    expect(connectionRouteLabel(RELAY)).toBe("T3 Connect");
+    expect(connectionRouteLabel(RELAY)).toBe("Parity Connect");
   });
 
-  it("places a new route after faster kinds and ahead of T3 Connect", () => {
+  it("places a new route after faster kinds and ahead of Parity Connect", () => {
     expect(insertRoute([RELAY], LAN)).toEqual([LAN, RELAY]);
     expect(insertRoute([LAN, RELAY], TAILNET)).toEqual([LAN, TAILNET, RELAY]);
     expect(insertRoute([TAILNET], LAN)).toEqual([LAN, TAILNET]);
@@ -88,7 +88,7 @@ describe("learned routes", () => {
     routes?.map((route) => connectionRouteId(route.target)) ?? null;
   const profileOf = (route: ConnectionRoute) => Option.getOrThrow(route.profile);
 
-  it("learns a LAN address over T3 Connect, ahead of it, using the T3 Connect credential", () => {
+  it("learns a LAN address over Parity Connect, ahead of it, using the Parity Connect credential", () => {
     const routes = mergeLearnedRoutes({
       entry: relayOnly,
       activeRoute: RELAY,
@@ -164,7 +164,7 @@ describe("learned routes", () => {
       reported: [tailscale, mesh],
       allowInsecure: true,
     })!;
-    expect(first.map(connectionRouteLabel)).toEqual(["Tailscale", "VPN", "T3 Connect"]);
+    expect(first.map(connectionRouteLabel)).toEqual(["Tailscale", "VPN", "Parity Connect"]);
 
     const corrected = mergeLearnedRoutes({
       entry: entryWithRoutes(relayOnly, first),
@@ -173,7 +173,7 @@ describe("learned routes", () => {
       allowInsecure: true,
     })!;
     expect(ids(corrected)).toEqual(ids(first));
-    expect(corrected.map(connectionRouteLabel)).toEqual(["VPN", "VPN", "T3 Connect"]);
+    expect(corrected.map(connectionRouteLabel)).toEqual(["VPN", "VPN", "Parity Connect"]);
     expect(
       mergeLearnedRoutes({
         entry: entryWithRoutes(relayOnly, corrected),
@@ -196,7 +196,7 @@ describe("learned routes", () => {
       allowInsecure: true,
     })!;
     expect(ids(confirmed)).toEqual(["paired", "other", "relay"]);
-    expect(confirmed.map(connectionRouteLabel)).toEqual(["Tailscale", "VPN", "T3 Connect"]);
+    expect(confirmed.map(connectionRouteLabel)).toEqual(["Tailscale", "VPN", "Parity Connect"]);
   });
 
   it("leaves user routes alone and does not learn an address already saved", () => {
@@ -275,7 +275,7 @@ describe("learned routes", () => {
     expect(ids(routesAfterRemoving(overLan, "relay"))).toHaveLength(2);
   });
 
-  it("counts an environment reached only through T3 Connect as removed with it", () => {
+  it("counts an environment reached only through Parity Connect as removed with it", () => {
     const learned = mergeLearnedRoutes({
       entry: relayOnly,
       activeRoute: RELAY,
@@ -303,7 +303,7 @@ describe("learned routes", () => {
     expect(gitHubRoutingConnectionKey(withLearned)).toBe(gitHubRoutingConnectionKey(relayOnly));
   });
 
-  it("keeps the T3 Connect credential when learning over a learned T3 Connect route", () => {
+  it("keeps the Parity Connect credential when learning over a learned Parity Connect route", () => {
     const first = mergeLearnedRoutes({
       entry: relayOnly,
       activeRoute: RELAY,
