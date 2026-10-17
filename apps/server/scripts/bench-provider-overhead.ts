@@ -46,7 +46,7 @@ const { values } = NodeUtil.parseArgs({
     arms: { type: "string", default: "A0,A1,B" },
     workloads: { type: "string" },
     n: { type: "string" },
-    model: { type: "string", default: "claude-sonnet-4-6" },
+    model: { type: "string", default: "claude-sonnet-5-5" },
     effort: { type: "string" },
     "claude-bin": { type: "string" },
     "runtime-mode": { type: "string", default: "full-access" },

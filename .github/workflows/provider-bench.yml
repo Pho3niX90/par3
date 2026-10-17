@@ -24,10 +24,6 @@ on:
         description: "Repetitions per workload. Empty uses each workload's default."
         type: string
         default: ""
-      model:
-        description: "Claude model id"
-        type: string
-        default: "claude-sonnet-4-6"
   schedule:
     - cron: "17 4 * * 1"
 
@@ -39,8 +35,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Pinned so week-to-week numbers compare like with like.
+  # Pinned so week-to-week numbers compare like with like. Sonnet keeps turns
+  # cheap; the overhead being measured does not depend on the model.
   CLAUDE_CODE_VERSION: "2.1.300"
+  BENCH_MODEL: "claude-sonnet-5-5"
 
 jobs:
   stub:
@@ -142,7 +140,7 @@ jobs:
         run: >
           node apps/server/scripts/bench-provider-overhead.ts
           --arms "${{ inputs.arms || 'A0,A1,B,T,C' }}"
-          --model "${{ inputs.model || 'claude-sonnet-4-6' }}"
+          --model "$BENCH_MODEL"
           ${{ inputs.workloads && format('--workloads {0}', inputs.workloads) || '' }}
           ${{ inputs.n && format('--n {0}', inputs.n) || '' }}
           --headless
