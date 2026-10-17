@@ -10,7 +10,7 @@ export default defineConfig({
     "/legal": "https://paritylabs.co.za/terms",
     "/privacy-policy": "https://paritylabs.co.za/privacy",
     "/terms-of-service": "https://paritylabs.co.za/terms",
-    "/security-policy": "https://github.com/Pho3niX90/t3code/security",
+    "/security-policy": "https://github.com/Pho3niX90/par3/security",
     "/app": "https://app.paritylabs.co.za",
   },
 });

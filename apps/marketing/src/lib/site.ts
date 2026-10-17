@@ -1,4 +1,4 @@
-export const GITHUB_REPOSITORY_URL = "https://github.com/Pho3niX90/t3code";
+export const GITHUB_REPOSITORY_URL = "https://github.com/Pho3niX90/par3";
 
 export const RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
 

@@ -1,4 +1,4 @@
-const REPO = "Pho3niX90/t3code";
+const REPO = "Pho3niX90/par3";
 
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 export const NIGHTLY_RELEASES_URL = `${RELEASES_URL}?q=nightly&expanded=true`;

@@ -43,11 +43,11 @@ To try it once without installing, run `npx @paritylabs/par3@latest` instead.
 
 ### Desktop app
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/Pho3niX90/t3code/releases).
+Install the latest version of the desktop app from [GitHub Releases](https://github.com/Pho3niX90/par3/releases).
 
 #### Debian, Ubuntu (`.deb`)
 
-Download the `.deb` from [GitHub Releases](https://github.com/Pho3niX90/t3code/releases), then:
+Download the `.deb` from [GitHub Releases](https://github.com/Pho3niX90/par3/releases), then:
 
 ```bash
 sudo apt install ./Par3-*.deb
