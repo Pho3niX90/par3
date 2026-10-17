@@ -218,9 +218,7 @@ describe("desktop update UI helpers", () => {
   });
 
   it("builds the release history URL", () => {
-    expect(getDesktopUpdateReleaseHistoryUrl()).toBe(
-      "https://github.com/Pho3niX90/par3/releases",
-    );
+    expect(getDesktopUpdateReleaseHistoryUrl()).toBe("https://github.com/Pho3niX90/par3/releases");
   });
 
   it("toasts only for actionable updater errors", () => {
