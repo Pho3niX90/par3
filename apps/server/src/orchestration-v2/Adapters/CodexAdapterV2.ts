@@ -1,6 +1,7 @@
 import { revertCodexThread } from "../../provider/CodexThreadRevert.ts";
 import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
+import { approvalPrompt } from "./approvalPrompt.ts";
 import {
   mcpToolPresentation,
   type McpToolPresentation,
@@ -158,20 +159,59 @@ export function codexFileChangeApprovalPrompt(input: {
   readonly grantRoot?: string | null;
   readonly fileChanges?: CodexSchema.ServerRequest__ApplyPatchApprovalParams["fileChanges"];
 }): string | undefined {
-  const reason = input.reason?.trim();
-  if (reason) return reason;
   const entries = Object.entries(input.fileChanges ?? {}).toSorted(([left], [right]) =>
     left.localeCompare(right),
   );
-  if (entries.length > 0) {
-    const described = entries.slice(0, 20).map(([path, change]) => {
-      const movePath = change.type === "update" ? change.move_path : undefined;
-      return movePath ? `${change.type} ${path} -> ${movePath}` : `${change.type} ${path}`;
-    });
-    const remaining = entries.length - described.length;
-    return remaining > 0 ? `${described.join("\n")}\n+${remaining} more` : described.join("\n");
-  }
-  return input.grantRoot?.trim() || undefined;
+  const described = entries.slice(0, 20).map(([path, change]) => {
+    const movePath = change.type === "update" ? change.move_path : undefined;
+    return movePath ? `${change.type} ${path} -> ${movePath}` : `${change.type} ${path}`;
+  });
+  const remaining = entries.length - described.length;
+  const files =
+    described.length === 0
+      ? undefined
+      : remaining > 0
+        ? `${described.join("\n")}\n+${remaining} more`
+        : described.join("\n");
+  return approvalPrompt(input.reason, files ?? input.grantRoot);
+}
+
+export function codexCommandApprovalPrompt(input: {
+  readonly reason?: string | null;
+  readonly command?: string | ReadonlyArray<string> | null;
+  readonly networkApprovalContext?: {
+    readonly host: string;
+    readonly protocol: string;
+  } | null;
+}): string | undefined {
+  const command = typeof input.command === "string" ? input.command : input.command?.join(" ");
+  const network = input.networkApprovalContext;
+  return approvalPrompt(
+    input.reason,
+    command || (network ? `${network.protocol} ${network.host}` : undefined),
+  );
+}
+
+export function codexPermissionsApprovalPrompt(input: {
+  readonly reason?: string | null;
+  readonly permissions: CodexSchema.PermissionsRequestApprovalParams["permissions"];
+}): string | undefined {
+  const fileSystem = input.permissions.fileSystem;
+  const lines = [
+    ...(fileSystem?.write ?? []).map((path) => `write ${path}`),
+    ...(fileSystem?.read ?? []).map((path) => `read ${path}`),
+    ...(fileSystem?.entries ?? []).map(({ access, path }) => {
+      const target =
+        path.type === "path"
+          ? path.path
+          : path.type === "glob_pattern"
+            ? path.pattern
+            : JSON.stringify(path.value);
+      return `${access} ${target}`;
+    }),
+    ...(input.permissions.network?.enabled ? ["network access"] : []),
+  ];
+  return approvalPrompt(input.reason, lines.length === 0 ? undefined : lines.join("\n"));
 }
 
 // Reasoning effort changes future generation, not the existing context's tokenizer
@@ -5051,9 +5091,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeItemId: payload.itemId,
               nativeRequestId,
               requestKind: "command",
-              ...((payload.reason ?? payload.command) === undefined
-                ? {}
-                : { prompt: payload.reason ?? payload.command }),
+              prompt: codexCommandApprovalPrompt(payload) ?? null,
             });
             const decision = yield* Deferred.make<ProviderApprovalDecision, never>();
             yield* Ref.update(pendingRuntimeRequests, (current) => {
@@ -5186,7 +5224,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeItemId: payload.itemId,
               nativeRequestId: payload.itemId,
               requestKind,
-              ...(payload.reason === undefined ? {} : { prompt: payload.reason }),
+              prompt: codexPermissionsApprovalPrompt(payload) ?? null,
             });
             const decision = yield* Deferred.make<ProviderApprovalDecision, never>();
             yield* Ref.update(pendingRuntimeRequests, (current) => {
@@ -5334,7 +5372,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               nativeItemId: payload.callId,
               nativeRequestId,
               requestKind: "command",
-              prompt: payload.reason ?? payload.command.join(" "),
+              prompt: codexCommandApprovalPrompt(payload) ?? null,
             });
             const decision = yield* Deferred.make<ProviderApprovalDecision, never>();
             yield* Ref.update(pendingRuntimeRequests, (current) => {

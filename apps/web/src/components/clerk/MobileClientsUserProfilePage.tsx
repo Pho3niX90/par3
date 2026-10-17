@@ -94,8 +94,8 @@ function EmptyMobileClients() {
       <EmptyHeader>
         <EmptyTitle>No mobile clients</EmptyTitle>
         <EmptyDescription>
-          Install T3 Code on your phone and sign in to T3 Connect to get push notifications and Live
-          Activities.
+          Install Par3 on your phone and sign in to Parity Connect to get push notifications and
+          Live Activities.
         </EmptyDescription>
       </EmptyHeader>
     </Empty>

@@ -12,6 +12,8 @@ import { useVisibleSecondClock } from "./use-visible-second-clock";
 
 export function ProviderSubagentBar(props: {
   readonly provider: { readonly driver: string; readonly iconUrl?: string | undefined } | null;
+  /** The subagent's model slug, so multi-vendor drivers such as Copilot draw the vendor's glyph. */
+  readonly model: string | undefined;
   readonly modelLabel: string;
   readonly effortLabel: string | null;
   readonly status: ProviderSubagentStatus | null;
@@ -36,6 +38,7 @@ export function ProviderSubagentBar(props: {
             <ProviderIcon
               iconUrl={props.provider.iconUrl}
               provider={props.provider.driver}
+              model={props.model}
               size={16}
             />
           ) : null}

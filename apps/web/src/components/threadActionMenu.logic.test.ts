@@ -9,6 +9,7 @@ import {
 const baseState: ThreadActionMenuState = {
   canOperate: true,
   branch: null,
+  canMentionInComposer: false,
   projectFilter: null,
   isPinned: false,
   isSettled: false,
@@ -40,6 +41,16 @@ function allIds(state: ThreadActionMenuState): string[] {
 }
 
 describe("buildThreadActionMenuItems", () => {
+  it("offers a mention only when another thread's composer is open, even read-only", () => {
+    expect(ids(baseState)).not.toContain("mention-in-composer");
+    const readOnly = buildThreadActionMenuItems({
+      ...baseState,
+      canMentionInComposer: true,
+      canOperate: false,
+    }).find((item) => item.id === "mention-in-composer");
+    expect(readOnly?.disabled).toBeFalsy();
+  });
+
   it.each([false, true])(
     "disables both lifecycle directions without permission (reversed: %s)",
     (reversed) => {

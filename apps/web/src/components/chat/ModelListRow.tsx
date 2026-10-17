@@ -14,6 +14,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { modelPickerModelKey } from "./modelPickerKeys";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { ModelVendorIcon } from "./ModelVendorIcon";
 
 // Rows take the model's fields rather than the picker's item object, and one shared toggle
 // handler, because the picker rebuilds its items on every search keystroke; that keeps memo
@@ -64,6 +65,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
     >
       <div className="min-w-0 flex-1 text-left">
         <div className="flex min-w-0 items-center gap-2">
+          <ModelVendorIcon driverKind={props.driverKind} model={props.slug} />
           <div className="min-w-0 truncate text-xs font-medium leading-snug">
             {props.useTriggerLabel
               ? getTriggerDisplayModelLabel(model)

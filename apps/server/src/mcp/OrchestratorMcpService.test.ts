@@ -1060,6 +1060,124 @@ describe("OrchestratorMcpService provider resolution", () => {
     }),
   );
 
+  it.effect("delegation refuses hidden models but keeps an unchanged inherited one", () =>
+    Effect.gen(function* () {
+      const task = {
+        id: taskId,
+        threadId: parentThreadId,
+        runId: parentRunId,
+        parentNodeId,
+        origin: "app_owned",
+        createdBy: "agent",
+        driver: ProviderDriverKind.make("antigravity"),
+        providerInstanceId: antigravityInstanceId,
+        providerThreadId: null,
+        childThreadId,
+        nativeTaskRef: null,
+        prompt: "Summarize the diff.",
+        title: null,
+        model: "ant-model",
+        status: "running",
+        result: null,
+        startedAt: null,
+        completedAt: null,
+      };
+      const codex = providerSnapshot({
+        instanceId: codexInstanceId,
+        driver: ProviderDriverKind.make("codex"),
+        model: "gpt-5.4",
+      });
+      const antigravity = providerSnapshot({
+        instanceId: antigravityInstanceId,
+        driver: ProviderDriverKind.make("antigravity"),
+        model: "ant-hidden",
+      });
+      const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
+      const layerDependencies = Layer.mergeAll(
+        NodeServices.layer,
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          hasReceipt: () => Effect.succeed(false),
+          assertProviderInstanceEnabled: () => Effect.void,
+          isProviderInstanceEnabledForProject: () => Effect.succeed(true),
+          getThreadRecords: (threadId) =>
+            Effect.succeed(
+              threadId === parentThreadId ? parentProjection([task]) : childProjection,
+            ),
+          dispatch: (command) =>
+            Ref.update(dispatched, (commands) => [...commands, command]).pipe(
+              Effect.as({
+                sequence: 1,
+                storedEvents: [
+                  {
+                    sequence: 1,
+                    commandId: null,
+                    event: { type: "subagent.updated", payload: task },
+                  },
+                ],
+              } as never),
+            ),
+        }),
+        ServerSettings.layerTest({
+          providerModelPreferences: {
+            [codexInstanceId]: { hiddenModels: ["gpt-5.4", "gpt-5.4-mini"], modelOrder: [] },
+            [antigravityInstanceId]: { hiddenModels: ["ant-hidden"], modelOrder: [] },
+          },
+        }),
+        providerRegistryLayer([
+          {
+            ...codex,
+            models: [
+              ...codex.models,
+              { slug: "gpt-5.4-mini", name: "Mini", isCustom: false, capabilities: null },
+            ],
+          },
+          {
+            ...antigravity,
+            models: [
+              ...antigravity.models,
+              { slug: "ant-model", name: "Ant", isCustom: false, capabilities: null },
+            ],
+          },
+        ]),
+        adapterRegistryLayer([codexInstanceId, antigravityInstanceId]),
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      );
+
+      yield* Effect.gen(function* () {
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        const error = yield* service
+          .delegateTask(scope, {
+            task: "Summarize the diff.",
+            target: { providerInstanceId: codexInstanceId, model: "gpt-5.4-mini" },
+            mode: "async",
+            clientRequestId: "delegate-hidden-explicit",
+          })
+          .pipe(Effect.flip);
+        assert.equal(error.code, "model_unavailable");
+        assert.include(error.message, "orchestrator_capabilities");
+        assert.deepEqual(yield* Ref.get(dispatched), []);
+
+        yield* service.delegateTask(scope, {
+          task: "Summarize the diff.",
+          target: { providerInstanceId: antigravityInstanceId },
+          mode: "async",
+          clientRequestId: "delegate-hidden-fallback",
+        });
+        yield* service.delegateTask(scope, {
+          task: "Summarize the diff.",
+          mode: "async",
+          clientRequestId: "delegate-hidden-inherited",
+        });
+        const models = (yield* Ref.get(dispatched)).map(
+          (command) => (command as { modelSelection: { model: string } }).modelSelection.model,
+        );
+        assert.deepEqual(models, ["ant-model", "gpt-5.4"]);
+      }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
+    }),
+  );
+
   it.effect(
     "delegates to an Antigravity instance whose adapter resolves through the registry",
     () =>

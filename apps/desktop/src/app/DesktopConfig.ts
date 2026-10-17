@@ -11,6 +11,12 @@ const trimNonEmptyOption = (value: string): Option.Option<string> => {
 const trimmedString = (name: string) =>
   Config.String(name).pipe(Config.option, Config.map(Option.flatMap(trimNonEmptyOption)));
 
+/** Proxy variables come in both cases; lowercase wins, as in curl. */
+const proxyVariable = (lowercaseName: string) =>
+  Config.all([trimmedString(lowercaseName), trimmedString(lowercaseName.toUpperCase())]).pipe(
+    Config.map(([lowercase, uppercase]) => Option.orElse(lowercase, () => uppercase)),
+  );
+
 const optionalBoolean = (name: string) =>
   Config.Boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
 
@@ -55,6 +61,12 @@ export const DesktopConfig = Config.all({
   otlpProtocol: Config.schema(OtlpProtocol, "T3CODE_OTLP_PROTOCOL").pipe(
     Config.withDefault("http/json"),
   ),
+  proxyEnv: Config.all({
+    httpsProxy: proxyVariable("https_proxy"),
+    httpProxy: proxyVariable("http_proxy"),
+    allProxy: proxyVariable("all_proxy"),
+    noProxy: proxyVariable("no_proxy"),
+  }),
   appImagePath: trimmedString("APPIMAGE"),
   disableAutoUpdate: optionalBoolean("T3CODE_DISABLE_AUTO_UPDATE"),
   mockUpdates: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES"),

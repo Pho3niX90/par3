@@ -9,21 +9,18 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { Socket } from "effect/socket";
-import { RpcClient, RpcSerialization } from "effect/rpc";
+import { RpcClient } from "effect/rpc";
 import {
-  ORCHESTRATION_PROTOCOL_VERSION,
-  ORCHESTRATION_PROTOCOL_HEADER,
   CommandId,
-  ProjectId,
   ProviderInstanceId,
   ThreadId,
   WsRpcGroup,
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
+
+import * as LiveServer from "./lib/liveServer.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
@@ -189,55 +186,16 @@ await new Promise<void>((done) => gate.once("listening", done));
 const gateAddress = gate.address();
 NodeAssert.ok(gateAddress && typeof gateAddress !== "string");
 
-const reservation = NodeHttp.createServer();
-reservation.listen(0, "127.0.0.1");
-await new Promise<void>((done) => reservation.once("listening", done));
-const address = reservation.address();
-NodeAssert.ok(address && typeof address !== "string");
-await new Promise<void>((done) => reservation.close(() => done()));
-const port = address.port;
+const port = await LiveServer.reservePort();
 const origin = `http://127.0.0.1:${port}`;
 const bootstrap = NodeCrypto.randomUUID();
 function startServer() {
-  const server = NodeChildProcess.spawn(
-    process.execPath,
-    ["apps/server/src/bin.ts", "start", "--bootstrap-fd", "3", "--log-level", "debug"],
-    {
-      cwd: root,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe", "pipe"],
-    },
-  );
-  const bootstrapPipe = server.stdio[3];
-  NodeAssert.ok(bootstrapPipe && "write" in bootstrapPipe);
-  bootstrapPipe.end(
-    JSON.stringify({
-      mode: "desktop",
-      noBrowser: true,
-      port,
-      t3Home: home,
-      host: "127.0.0.1",
-      desktopBootstrapToken: bootstrap,
-      tailscaleServeEnabled: false,
-      tailscaleServePort: 443,
-    }),
-  );
-  const ready = Promise.withResolvers<void>();
-  let output = "";
-  for (const pipe of [server.stdout, server.stderr])
-    pipe?.on("data", (data: Buffer) => {
-      const text = data.toString().replaceAll(bootstrap, "[REDACTED]");
-      NodeFS.appendFileSync(NodePath.join(evidence, "server.log"), text);
-      output = (output + text).slice(-8192);
-      if (output.includes("startup phase: complete")) ready.resolve();
-    });
-  server.once("error", ready.reject);
-  server.once("exit", (code) => ready.reject(new Error(`Server exited ${code}`)));
-  const startupDeadline = setTimeout(
-    () => ready.reject(new Error("Server startup timed out")),
-    60_000,
-  );
-  return { server, ready: ready.promise.finally(() => clearTimeout(startupDeadline)) };
+  return LiveServer.startServer({
+    port,
+    home,
+    bootstrap,
+    logPath: NodePath.join(evidence, "server.log"),
+  });
 }
 let { server, ready } = startServer();
 const abort = new AbortController();
@@ -247,52 +205,14 @@ process.on("SIGTERM", onSignal);
 let verdict: object = { status: "failed", reason: "verification did not finish" };
 try {
   await ready;
-  const tokenResponse = await fetch(`${origin}/oauth/token`, {
-    method: "POST",
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-      subject_token: bootstrap,
-      subject_token_type: "urn:t3:params:oauth:token-type:environment-bootstrap",
-      requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
-    }),
-  });
-  NodeAssert.ok(tokenResponse.ok, `Authentication failed: ${tokenResponse.status}`);
-  const token = Schema.decodeUnknownSync(Schema.Struct({ access_token: Schema.String }))(
-    await tokenResponse.json(),
+  const headers = LiveServer.authHeaders(
+    await LiveServer.exchangeBootstrapToken(origin, bootstrap),
   );
-  const headers = {
-    Authorization: `Bearer ${token.access_token}`,
-    "Content-Type": "application/json",
-    [ORCHESTRATION_PROTOCOL_HEADER]: String(ORCHESTRATION_PROTOCOL_VERSION),
-  };
-  const projectId = ProjectId.make(NodeCrypto.randomUUID());
-  const created = await fetch(`${origin}/api/projects/mutate`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      type: "project.create",
-      commandId: NodeCrypto.randomUUID(),
-      projectId,
-      title: "Background verification",
-      workspaceRoot: project,
-    }),
+  const projectId = await LiveServer.createProject(origin, headers, {
+    title: "Background verification",
+    workspaceRoot: project,
   });
-  NodeAssert.ok(created.ok, `Project creation failed: ${created.status} ${await created.text()}`);
-  const ticketResponse = await fetch(`${origin}/api/auth/websocket-ticket`, {
-    method: "POST",
-    headers,
-  });
-  NodeAssert.ok(ticketResponse.ok, `WebSocket authentication failed: ${ticketResponse.status}`);
-  const ticket = Schema.decodeUnknownSync(Schema.Struct({ ticket: Schema.String }))(
-    await ticketResponse.json(),
-  );
-  const layerSocket = Socket.layerWebSocket(
-    `${origin.replace("http:", "ws:")}/ws?orchestrationProtocol=${ORCHESTRATION_PROTOCOL_VERSION}&wsTicket=${encodeURIComponent(ticket.ticket)}`,
-  ).pipe(Layer.provide(Socket.layerWebSocketConstructorGlobal));
-  const layerProtocol = RpcClient.layerProtocolSocket().pipe(
-    Layer.provide(layerSocket),
-    Layer.provide(RpcSerialization.layerJson),
-  );
+  const layerProtocol = await LiveServer.websocketProtocolLayer(origin, headers);
   const threadId = ThreadId.make(NodeCrypto.randomUUID());
   const gateUrl = `http://127.0.0.1:${gateAddress.port}${gatePath}`;
   const launch =
@@ -477,7 +397,7 @@ try {
   }).pipe(Effect.scoped, Effect.provide(layerProtocol), Effect.timeout(timeoutMs));
   const finished = await Effect.runPromise(program, { signal: abort.signal });
   verdict = finished;
-  await stopServer(server);
+  await LiveServer.stopServer(server);
   ({ server, ready } = startServer());
   await ready;
   const restored = await fetch(`${origin}/api/orchestration/threads/${threadId}`, { headers });
@@ -536,24 +456,7 @@ try {
   parentResponse?.destroy();
   gate.closeAllConnections();
   gate.close();
-  await stopServer(server);
+  await LiveServer.stopServer(server);
   process.off("SIGINT", onSignal);
   process.off("SIGTERM", onSignal);
-}
-
-async function stopServer(server: ReturnType<typeof NodeChildProcess.spawn>) {
-  if (server.exitCode === null && server.signalCode === null) {
-    const stopped = new Promise<void>((done) => server.once("exit", () => done()));
-    server.kill("SIGTERM");
-    const deadline = setTimeout(() => server.kill("SIGKILL"), 10_000);
-    await stopped;
-    clearTimeout(deadline);
-  }
-  if (server.pid) {
-    try {
-      process.kill(-server.pid, "SIGKILL");
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
-    }
-  }
 }

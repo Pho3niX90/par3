@@ -1,0 +1,86 @@
+# The Par3 marketing site at par3.paritylabs.co.za. The image tag is set by the
+# fork-web-deploy workflow; apply by hand only for the first deploy or after
+# editing this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marketing
+  namespace: par3
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: par3-marketing
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: par3-marketing
+    spec:
+      containers:
+        - name: marketing
+          image: ghcr.io/pho3nix90/par3-marketing:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marketing
+  namespace: par3
+spec:
+  selector:
+    app: par3-marketing
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: marketing
+  namespace: par3
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: par3.paritylabs.co.za
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: marketing
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - par3.paritylabs.co.za
+      secretName: par3-marketing-tls

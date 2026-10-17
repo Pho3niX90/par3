@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// The `t3` npm package. Downloads this version's CLI archive from the GitHub
+// The `@paritylabs/par3` npm package. Downloads this version's CLI archive from the GitHub
 // Release into <T3 home>/runtime/versions/<version> (the folder the install
-// scripts and `t3 update` use), verifies it against the release's SHA256SUMS,
+// scripts and `par3 update` use), verifies it against the release's SHA256SUMS,
 // then runs it. `dist/bin.mjs` re-enters here for background services
 // installed before 0.0.41, which start the npm package with Node and talk to
 // it over an IPC channel.
@@ -56,7 +56,7 @@ async function download(url, file) {
         shown = step;
         const percent = total ? ` ${step}%` : "";
         process.stderr.write(
-          `\r\x1b[2Kt3: downloading T3 Code ${version}${percent} (${(received / 1048576).toFixed(1)} MB)`,
+          `\r\x1b[2Kpar3: downloading Par3 ${version}${percent} (${(received / 1048576).toFixed(1)} MB)`,
         );
       }
     }
@@ -70,7 +70,7 @@ async function download(url, file) {
 async function install(dir, key) {
   const archive = `t3-${version}-${key}.${process.platform === "win32" ? "zip" : "tar.gz"}`;
   const base = (
-    process.env.T3CODE_RELEASE_BASE_URL || "https://github.com/pingdotgg/t3code/releases/download"
+    process.env.T3CODE_RELEASE_BASE_URL || "https://github.com/Pho3niX90/par3/releases/download"
   ).replace(/\/+$/, "");
   const sums = await (await get(`${base}/v${version}/SHA256SUMS`)).text();
   const expected = /^([0-9a-f]{64})\s+\*?(.+)$/im;
@@ -114,7 +114,7 @@ const isComplete = (dir) => {
 
 /**
  * Moves a finished staging folder to `dir`. Rename never replaces an existing
- * folder, so a complete install another launcher (or `t3 update`) published
+ * folder, so a complete install another launcher (or `par3 update`) published
  * first is kept, never deleted from under a running process. Only a folder
  * without the completion marker, left by an interrupted older installer, is
  * cleared before trying again.
@@ -134,8 +134,8 @@ async function main() {
   const key = `${process.platform}-${process.arch}`;
   if (!SUPPORTED.includes(key)) {
     throw new Error(
-      `no T3 Code CLI build is available for ${key} (supported: ${SUPPORTED.join(", ")}).\n` +
-        "The desktop app is at https://github.com/pingdotgg/t3code/releases",
+      `no Par3 CLI build is available for ${key} (supported: ${SUPPORTED.join(", ")}).\n` +
+        "The desktop app is at https://github.com/Pho3niX90/par3/releases",
     );
   }
   const dir = path.join(t3Home(), "runtime", "versions", version);
@@ -169,7 +169,7 @@ async function main() {
 }
 
 function fail(error) {
-  process.stderr.write(`t3: ${error.message}\n`);
+  process.stderr.write(`par3: ${error.message}\n`);
   process.exit(1);
 }
 

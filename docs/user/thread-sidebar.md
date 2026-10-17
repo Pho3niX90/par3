@@ -10,7 +10,7 @@ and mode selections, unless the destination project has its own model default.
 Its branch and workspace mode come from your configured defaults. To continue in
 an existing worktree, use **New thread in this worktree** from the branch toolbar.
 
-When you change a new thread's project, T3 Code stays in the current environment
+When you change a new thread's project, Par3 stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
 ### Start without a project
@@ -99,7 +99,7 @@ position, so using **Un-settle** returns it to the top. Pinning and snoozing pre
 position until you move it again. Thread activity does not change the order. The settled shelf
 continues to use settlement time.
 
-If dragging is unavailable for one environment, update the T3 Code server running in that
+If dragging is unavailable for one environment, update the Par3 server running in that
 environment. Pinned and active reordering require server support. Threads from older servers keep
 their default order until the server is updated.
 
@@ -107,7 +107,7 @@ To generate a fresh title from the conversation, open a thread's menu and choose
 **Regenerate title**. The action is unavailable while title generation is in progress
 or when the connected environment needs a server update.
 
-Agents connected through T3 Code can use the same server-owned metadata workflow to
+Agents connected through Par3 can use the same server-owned metadata workflow to
 rename a thread, regenerate its title, or link and unlink a pull request. These changes
 appear on web, desktop, and mobile without requiring the originating browser to remain
 open.
@@ -189,6 +189,18 @@ Use **Settings → Keybindings** to find or customize shortcuts for searching fi
 and copying a thread reference. A copied reference uses the thread's pull request
 link when available, otherwise its thread ID. See [keybindings](./keybindings.md)
 for custom configuration.
+
+## Hand work between threads
+
+When one thread is blocked on something you sort out in another, the second thread can
+tell the first to carry on. In the thread doing the side task, mention the waiting thread:
+type `@` and part of its title, or choose **Mention in composer** from its menu in the
+sidebar. Then ask, for example, "when the disks have space, tell this thread to continue".
+
+The agent sends its message to that thread once it's done. If the waiting thread is idle,
+the message starts a new turn there; if it is busy, the message is steered or queued. The
+message shows **Sent from** and the sending thread's title, which you can select to go back.
+A thread can only send to threads with the same or narrower permission modes.
 
 ## Inspect agent work
 
