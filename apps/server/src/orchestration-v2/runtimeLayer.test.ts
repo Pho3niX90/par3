@@ -4757,7 +4757,8 @@ it.layer(layerSharedApplicationDataPlaneTest)("visited projection", (it) => {
         worktreePath: null,
       });
       const created = yield* orchestrator.getThreadProjection(threadId);
-      assert.isNull(created.thread.lastVisitedAt);
+      // Unopened threads start seen at creation so a later completion reads as unseen.
+      assert.deepEqual(created.thread.lastVisitedAt, created.thread.createdAt);
       const createdUpdatedAt = created.thread.updatedAt;
 
       yield* TestClock.adjust("1 second");
