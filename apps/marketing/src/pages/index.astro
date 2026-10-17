@@ -39,7 +39,8 @@ const screenshot = await getImage({
 
       <p class="hero-sub" data-rise style="--d:300ms">
         Par3 is the control plane for coding agents, built for teams. Review and approve the plan
-        before Claude Code, Codex, Cursor or OpenCode touches your code. Bring your own subscriptions.
+        before Claude Code, Codex, GitHub Copilot, Cursor or OpenCode touches your code. Bring your
+        own subscriptions.
       </p>
 
       <div class="hero-actions" data-rise style="--d:400ms">
@@ -114,9 +115,9 @@ const screenshot = await getImage({
       <div class="section-head">
         <h2>Bring your own sub</h2>
         <p>
-          Par3 doesn't resell tokens. Plug in Claude Code, Codex, Antigravity,
-          OpenCode, Cursor, or Grok with the credentials you already have. We
-          orchestrate them, you keep your plan.
+          Par3 doesn't resell tokens. Plug in Claude Code, Codex, GitHub Copilot,
+          Cursor, OpenCode, Grok, Antigravity or Pi with the credentials you
+          already have. We orchestrate them, you keep your plan.
         </p>
       </div>
 
@@ -133,6 +134,13 @@ const screenshot = await getImage({
           <div class="harness-meta">
             <div class="harness-name">Codex CLI</div>
             <div class="harness-tag">codex login</div>
+          </div>
+        </div>
+        <div class="harness">
+          <div class="harness-mark"><img src="/harnesses/copilot-dark.svg" alt="" /></div>
+          <div class="harness-meta">
+            <div class="harness-name">GitHub Copilot</div>
+            <div class="harness-tag">copilot login</div>
           </div>
         </div>
         <div class="harness">
@@ -163,12 +171,20 @@ const screenshot = await getImage({
             <div class="harness-tag">Google sign-in</div>
           </div>
         </div>
+        <div class="harness">
+          <div class="harness-mark"><img src="/harnesses/pi-dark.svg" alt="" /></div>
+          <div class="harness-meta">
+            <div class="harness-name">Pi</div>
+            <div class="harness-tag">pi /login</div>
+          </div>
+        </div>
       </div>
 
       <div class="harness-footer">
         <div class="harness-footer-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> No keys resold. No quota caps.</div>
         <div class="harness-footer-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Switch models mid-thread.</div>
-        <div class="harness-footer-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> More harnesses shipping weekly.</div>
+        <div class="harness-footer-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Copilot works with GitHub Enterprise.</div>
+        <div class="harness-footer-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Add any agent from the ACP Registry.</div>
       </div>
     </div>
   </section>
@@ -224,15 +240,58 @@ const screenshot = await getImage({
           <h2>One button to commit, push, and make a PR.</h2>
           <p>
             Every agent thread writes to its own branch. When it's good, one
-            button opens the PR on GitHub with a generated title, body and
-            changelog. No terminal dance required.
+            button opens the PR with a generated title, body and changelog.
+            Then review, comment and merge it without leaving Par3.
           </p>
           <ul class="checklist" style="margin-top:24px">
             <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Auto-generated PR titles &amp; bodies</li>
             <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Inline diff review before you push</li>
-            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Draft PRs, stack PRs, amend PRs</li>
-            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Works with your existing GitHub auth</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Guided reviews and GitHub stacks</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Agents watch their PRs for checks and reviews</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> GitHub, GitHub Enterprise, GitLab, Bitbucket, Azure DevOps and Forgejo</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> Jira issues shown next to the branch</li>
           </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features ─────────────────────────────────────────────── -->
+  <section id="features" class="sec-features">
+    <div class="container">
+      <div class="section-head">
+        <h2>Agents that keep working when you step away</h2>
+        <p>
+          Run Par3 on the machine with your code, then steer it from anywhere.
+          Agents hand work to each other, wake up on a schedule, and answer to
+          the tools your team already uses.
+        </p>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature tile">
+          <div class="feature-name">Work from anywhere</div>
+          <p>Reach your machine from another desktop, a browser or your phone over Parity Connect, Tailscale, your LAN or SSH. No port forwarding.</p>
+        </div>
+        <div class="feature tile">
+          <div class="feature-name">A real mobile app</div>
+          <p>Follow threads, reply to your agents and review pull requests natively on iOS and Android.</p>
+        </div>
+        <div class="feature tile">
+          <div class="feature-name">Agents delegate to agents</div>
+          <p>A thread can hand a task to another provider or model, in its own worktree, and pick up the result when it lands.</p>
+        </div>
+        <div class="feature tile">
+          <div class="feature-name">Schedules and webhooks</div>
+          <p>Run a prompt every morning, or whenever GitHub or another service calls a webhook. Each run lands in a thread you can review.</p>
+        </div>
+        <div class="feature tile">
+          <div class="feature-name">Drive it from other agents</div>
+          <p>Claude Code, Codex, ChatGPT and other MCP clients sign in with OAuth to start threads, read results and manage work.</p>
+        </div>
+        <div class="feature tile">
+          <div class="feature-name">Access you can see</div>
+          <p>Choose the permissions each device or outside agent gets when you pair it, and revoke its access at any time.</p>
         </div>
       </div>
     </div>
@@ -712,7 +771,7 @@ const screenshot = await getImage({
 
   .harness-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -726,7 +785,8 @@ const screenshot = await getImage({
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent);
     transition: background 0.2s ease;
   }
-  .harness:last-child { border-right: 0; }
+  .harness:nth-child(4n) { border-right: 0; }
+  .harness:nth-child(-n + 4) { border-bottom: 1px solid var(--border); }
   .harness:hover { background: rgba(255, 255, 255, 0.025); }
 
   .harness-mark {
@@ -757,6 +817,25 @@ const screenshot = await getImage({
     color: var(--fg-muted);
   }
   .harness-footer-item svg { color: var(--ok); }
+
+  /* ── Features ──────────────────────────────────────────── */
+  .sec-features { background: #09090b; }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .feature { padding: 24px; }
+  .feature-name {
+    font-size: 16px; font-weight: 500;
+    letter-spacing: -0.01em; margin-bottom: 8px;
+  }
+  .feature p {
+    color: var(--fg-muted);
+    font-size: 14px; line-height: 1.55;
+  }
 
   /* ── Endorsements ─────────────────────────────────────── */
   .sec-endorsements {
@@ -1187,6 +1266,8 @@ const screenshot = await getImage({
     .harness { border-right: 0; border-bottom: 1px solid var(--border); }
     .harness:nth-child(odd) { border-right: 1px solid var(--border); }
     .harness:nth-child(even) { border-right: 0; }
+    .harness:nth-last-child(-n + 2) { border-bottom: 0; }
+    .feature-grid { grid-template-columns: 1fr 1fr; }
     .git-inner { grid-template-columns: 1fr; gap: 40px; }
     .open-grid { grid-template-columns: 1fr; }
   }
@@ -1196,6 +1277,7 @@ const screenshot = await getImage({
     .sec-cta { padding: 96px 0; }
     .container { padding-left: 20px; padding-right: 20px; }
     .hero-preview { display: none; }
+    .feature-grid { grid-template-columns: 1fr; }
     .endorsements-head {
       margin-bottom: 40px;
     }
