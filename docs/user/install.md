@@ -62,7 +62,7 @@ update it with `git pull` and a rebuild.
 
 ## Desktop app
 
-Download a release from [GitHub Releases](https://github.com/Pho3niX90/t3code/releases),
+Download a release from [GitHub Releases](https://github.com/Pho3niX90/par3/releases),
 or use a package manager:
 
 | Platform           | Install                            |
@@ -119,7 +119,7 @@ on web and desktop. The store apps work with both stable and Nightly servers. Te
 
 - **iPhone and iPad:** join the [TestFlight beta](https://testflight.apple.com/join/XgaxaRtd).
 - **Android:** download and install the APK from the
-  [Android beta release](https://github.com/Pho3niX90/t3code/releases/tag/android-nightly).
+  [Android beta release](https://github.com/Pho3niX90/par3/releases/tag/android-nightly).
 
 If the app crashes during launch, open Settings → Diagnostics on the next launch
 that succeeds. It lists startup crashes from the last 7 days with the error and

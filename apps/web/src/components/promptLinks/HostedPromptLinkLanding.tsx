@@ -21,7 +21,7 @@ import { StandalonePage, StandalonePageHeader } from "../ui/standalone-page";
 
 const OPENER_STORAGE_KEY = "t3code:prompt-link-opener";
 const Opener = Schema.NullOr(Schema.Literals(["app", "browser"]));
-const DOWNLOAD_URL = "https://github.com/Pho3niX90/t3code/releases/latest";
+const DOWNLOAD_URL = "https://github.com/Pho3niX90/par3/releases/latest";
 
 interface LinkSummary {
   readonly prompt: LinkedPrompt | null;
