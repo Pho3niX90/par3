@@ -168,6 +168,13 @@ it.effect("keeps a fork awake when its source thread is snoozed", () =>
   }),
 );
 
+it.effect("starts a fork seen at creation so its first completion reads as unseen", () =>
+  Effect.gen(function* () {
+    const result = yield* planFork(makeSourceRun("completed"));
+    assert.deepEqual(result.targetThread.lastVisitedAt, forkCreatedAt);
+  }),
+);
+
 it.effect("forks from a usage-limited failed run", () =>
   Effect.gen(function* () {
     const result = yield* planFork(makeSourceRun("failed"));
