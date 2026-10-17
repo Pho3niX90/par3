@@ -275,6 +275,14 @@ function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): Orchestrato
   };
 }
 
+// Custom models are user-added, so the Provider settings hide toggle never applies to them.
+function isModelVisible(
+  hiddenModels: ReadonlyArray<string> | undefined,
+  model: { readonly slug: string; readonly isCustom: boolean },
+): boolean {
+  return model.isCustom || !(hiddenModels?.includes(model.slug) ?? false);
+}
+
 function providerConstraints(
   provider: ServerProvider | undefined,
   supportsOrchestrationV2: boolean,
@@ -1033,7 +1041,7 @@ const make = Effect.gen(function* () {
         : Effect.fail(
             failure(
               "target_required",
-              "Pass projectId: this MCP client is not running inside a T3 thread.",
+              "Pass projectId: this MCP client is not running inside a Par3 thread.",
             ),
           );
 
@@ -1149,6 +1157,11 @@ const make = Effect.gen(function* () {
       })
       .pipe(Effect.mapError(threadManagementFailure));
 
+  const loadModelPreferences = serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.providerModelPreferences ?? {}),
+    Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
+  );
+
   const resolveTargetRechecking = (input: Parameters<typeof resolveTarget>[0]) => {
     const instanceId =
       input.target?.providerInstanceId ??
@@ -1256,17 +1269,38 @@ const make = Effect.gen(function* () {
         );
       }
 
+      // Hidden models are filtered only for explicit requests and the fallback pick: a child
+      // inheriting the parent's own model keeps it even if it was hidden after the parent started.
+      // A receipt replay starts nothing new, so like project enablement it skips this filter.
+      const hiddenModels =
+        input.skipProjectEnablementFilter === true
+          ? undefined
+          : (yield* loadModelPreferences)[instanceId]?.hiddenModels;
       const inheritedSelection = input.parent.thread.modelSelection;
       const requestedModel = input.target?.model;
+      if (
+        requestedModel !== undefined &&
+        !isModelVisible(hiddenModels, {
+          slug: requestedModel,
+          isCustom:
+            provider.models.find((candidate) => candidate.slug === requestedModel)?.isCustom ??
+            false,
+        })
+      ) {
+        return yield* failure(
+          "model_unavailable",
+          `Model ${requestedModel} is hidden in Provider settings for provider ${instanceId}. Pick a model listed by orchestrator_capabilities.`,
+        );
+      }
       const model =
         requestedModel ??
         (instanceId === inheritedSelection.instanceId
           ? inheritedSelection.model
-          : provider?.models[0]?.slug);
+          : provider.models.find((candidate) => isModelVisible(hiddenModels, candidate))?.slug);
       if (model === undefined) {
         return yield* failure(
           "model_unavailable",
-          `Provider ${instanceId} has no model available for inheritance.`,
+          `Provider ${instanceId} has no visible model to use. Pass a model listed by orchestrator_capabilities.`,
         );
       }
       if (
@@ -1624,7 +1658,7 @@ const make = Effect.gen(function* () {
           return yield* failure(
             "invalid_request",
             parent === undefined
-              ? "bindToCurrentThread needs an agent running inside a T3 thread."
+              ? "bindToCurrentThread needs an agent running inside a Par3 thread."
               : "bindToCurrentThread binds to this thread, which belongs to a different project.",
           );
         }
@@ -1697,7 +1731,7 @@ const make = Effect.gen(function* () {
           return yield* failure(
             "invalid_request",
             parent === undefined
-              ? "bindToCurrentThread needs an agent running inside a T3 thread."
+              ? "bindToCurrentThread needs an agent running inside a Par3 thread."
               : "bindToCurrentThread binds to this thread, which belongs to a different project.",
           );
         }
@@ -1882,10 +1916,7 @@ const make = Effect.gen(function* () {
         const { parent, limits } = yield* loadCaller(scope);
         const providers = yield* loadProviders;
         const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
-        const modelPreferences = yield* serverSettings.getSettings.pipe(
-          Effect.map((settings) => settings.providerModelPreferences ?? {}),
-          Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
-        );
+        const modelPreferences = yield* loadModelPreferences;
         return {
           parentThreadId: parent?.thread.id ?? null,
           inheritedProviderInstanceId: parent?.thread.modelSelection.instanceId ?? null,
@@ -1903,10 +1934,8 @@ const make = Effect.gen(function* () {
               displayName: provider?.displayName ?? null,
               models:
                 provider?.models
-                  .filter(
-                    (model) =>
-                      model.isCustom ||
-                      !modelPreferences[provider.instanceId]?.hiddenModels.includes(model.slug),
+                  .filter((model) =>
+                    isModelVisible(modelPreferences[provider.instanceId]?.hiddenModels, model),
                   )
                   .map((model) => ({
                     id: model.slug,

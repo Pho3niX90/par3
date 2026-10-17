@@ -110,6 +110,7 @@ import {
   SettingsSection,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { JiraSettings } from "./JiraSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
@@ -636,7 +637,7 @@ function BrowserRecordingFrameRateSetting({ disabled }: { readonly disabled: boo
 
 const LINK_TARGET_LABELS: Readonly<Record<BrowserLinkTarget, string>> = {
   system: "Your default browser",
-  app: "T3 Code",
+  app: "Par3",
 };
 
 function BrowserLinkTargetSetting({ disabled }: { readonly disabled: boolean }) {
@@ -1499,6 +1500,7 @@ export function IntegrationsSettingsPanel() {
         )}
         <PullRequestLinksOpenInAppSetting />
       </SettingsSection>
+      <JiraSettings />
       <DeviceIntegrationSettings />
     </SettingsPageContainer>
   );

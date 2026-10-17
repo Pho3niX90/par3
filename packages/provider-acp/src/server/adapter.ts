@@ -222,6 +222,10 @@ export interface AcpAdapterV2Flavor {
     ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
   >;
   readonly resolveModelId?: (selection: ModelSelection) => string | undefined;
+  readonly getModelContextWindow?: (
+    selection: ModelSelection,
+    session: AcpSessionRuntime.AcpSessionRuntimeStartResult,
+  ) => number | undefined;
   readonly applyModelSelection?: (input: {
     readonly runtime: AcpSessionRuntime.AcpSessionRuntime["Service"];
     readonly startResult: AcpSessionRuntime.AcpSessionRuntimeStartResult;
@@ -546,7 +550,7 @@ function acpMcpContext(
   }
   // Agents that advertise optional http support still routinely fail to wire
   // injected http servers through to their backend (codex-acp 1.2.0 and pi-acp
-  // both drop them), so every ACP session gets the `t3 acp-mcp-bridge` stdio
+  // both drop them), so every ACP session gets the `par3 acp-mcp-bridge` stdio
   // server, which forwards JSON-RPC to T3's authenticated MCP endpoint.
   return {
     servers: [
@@ -6808,6 +6812,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           providerSessionId: input.providerSessionId,
           providerSession,
           events: Stream.fromEffectRepeat(Queue.take(events)),
+          ...(flavor.getModelContextWindow === undefined
+            ? {}
+            : {
+                getModelContextWindow: (selection) => {
+                  const session = Ref.getUnsafe(activeSessionSetup);
+                  return session === null
+                    ? undefined
+                    : flavor.getModelContextWindow?.(selection, session);
+                },
+              }),
           ...(postSettleContinuationEnabled
             ? {
                 hasPendingBackgroundWork: Effect.gen(function* () {

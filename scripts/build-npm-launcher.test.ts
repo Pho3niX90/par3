@@ -114,9 +114,9 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         const manifest = yield* decodeManifest(
           yield* fs.readFileString(path.join(output.packageDir, "package.json")),
         );
-        assert.equal(manifest.name, "t3");
+        assert.equal(manifest.name, "@paritylabs/par3");
         assert.equal(manifest.version, VERSION);
-        assert.deepStrictEqual(manifest.bin, { t3: "./bin/t3.mjs" });
+        assert.deepStrictEqual(manifest.bin, { par3: "./bin/t3.mjs", p3: "./bin/t3.mjs" });
         // Nothing for npm to resolve, so nothing that can lag behind the launcher.
         assert.isUndefined(manifest.dependencies);
         assert.isUndefined(manifest.optionalDependencies);
@@ -145,7 +145,7 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         });
         assert.equal(first.stdout.trim(), `stub serve a b launcher=${launcher}`, first.stderr);
         assert.equal(first.exitCode, 7);
-        // The same layout the install scripts and `t3 update` use.
+        // The same layout the install scripts and `par3 update` use.
         const versionDir = path.join(home, "runtime/versions", VERSION);
         assert.equal(
           (yield* fs.readFileString(path.join(versionDir, ".install-complete"))).trim(),

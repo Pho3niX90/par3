@@ -47,8 +47,8 @@ export function SettingsThreadsRouteScreen() {
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         >
           <AutoSettleSettingsRows />
+          <PlanModeSettingsSection />
           <BetaSettingsSection />
-          <LegacySettingsSection />
         </ScrollView>
       </SettingsScreen>
     </>
@@ -282,25 +282,24 @@ function BetaSettingsSection() {
   );
 }
 
-function LegacySettingsSection() {
+function PlanModeSettingsSection() {
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const preferences = useAtomValue(mobilePreferencesAtom);
   const planModeEnabled =
-    AsyncResult.isSuccess(preferences) && preferences.value.planModeEnabled === true;
+    AsyncResult.isSuccess(preferences) && preferences.value.composerPlanModeEnabled !== false;
 
   return (
     <View className="gap-3">
-      <SettingsSection title="Legacy">
+      <SettingsSection title="Composer">
         <SettingsSwitchRow
           icon="hammer"
           label="Plan Mode"
           value={planModeEnabled}
-          onValueChange={(value) => savePreferences({ planModeEnabled: value })}
+          onValueChange={(value) => savePreferences({ composerPlanModeEnabled: value })}
         />
       </SettingsSection>
       <Text className="px-2 text-sm text-foreground-muted">
-        Opt into retired interfaces kept for compatibility. Plan Mode restores the Build/Plan
-        control; otherwise every task runs in Build mode.
+        Show the Build/Plan control, /plan and /default. Off sends every task in Build mode.
       </Text>
     </View>
   );

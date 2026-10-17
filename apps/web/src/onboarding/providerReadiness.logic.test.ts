@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   getOnboardingProviderState,
+  onboardingProviderOffersOptionalSignIn,
   resolveOnboardingProviderInstallCommand,
   resolveOnboardingProviderLoginCommand,
   selectOnboardingProvidersByDriver,
@@ -340,5 +341,66 @@ describe("resolveOnboardingProviderInstallCommand", () => {
     expect(resolveOnboardingProviderInstallCommand("claudeAgent", platform)).toBe(
       "curl -fsSL https://claude.ai/install.sh | bash",
     );
+  });
+});
+
+describe("GitHub Copilot onboarding", () => {
+  const copilot: ServerProvider = {
+    ...readyCodex,
+    instanceId: ProviderInstanceId.make("copilot"),
+    driver: ProviderDriverKind.make("copilot"),
+  };
+  const settingsFor = (config: Record<string, unknown>) => ({
+    ...DEFAULT_SERVER_SETTINGS,
+    providerInstances: {
+      [copilot.instanceId]: { driver: copilot.driver, config },
+    },
+  });
+
+  it("installs the CLI through npm on every platform", () => {
+    for (const platform of ["windows", "darwin", "linux", "unknown"] as const) {
+      expect(resolveOnboardingProviderInstallCommand("copilot", platform)).toBe(
+        "npm install -g @github/copilot",
+      );
+    }
+  });
+
+  it("logs in to GitHub.com with the default binary", () => {
+    expect(resolveOnboardingProviderLoginCommand(copilot, settingsFor({}), "linux")).toBe(
+      "copilot login",
+    );
+  });
+
+  it("logs in to the configured enterprise host with the configured binary", () => {
+    expect(
+      resolveOnboardingProviderLoginCommand(
+        copilot,
+        settingsFor({
+          binaryPath: "/opt/copilot/bin/copilot",
+          enterpriseUrl: " https://company.ghe.com ",
+        }),
+        "linux",
+      ),
+    ).toBe("/opt/copilot/bin/copilot login --host https://company.ghe.com");
+  });
+
+  it("drops an enterprise host that would need shell quoting", () => {
+    expect(
+      resolveOnboardingProviderLoginCommand(
+        copilot,
+        settingsFor({ enterpriseUrl: "company.ghe.com; rm -rf ~" }),
+        "linux",
+      ),
+    ).toBe("copilot login");
+  });
+
+  it("offers sign-in beside a working CLI because its login cannot be read", () => {
+    expect(onboardingProviderOffersOptionalSignIn(copilot)).toBe(true);
+    expect(onboardingProviderOffersOptionalSignIn({ ...copilot, installed: false })).toBe(false);
+    expect(
+      onboardingProviderOffersOptionalSignIn({ ...copilot, auth: { status: "authenticated" } }),
+    ).toBe(false);
+    expect(onboardingProviderOffersOptionalSignIn(readyCodex)).toBe(false);
+    expect(onboardingProviderOffersOptionalSignIn(undefined)).toBe(false);
   });
 });

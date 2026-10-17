@@ -519,6 +519,51 @@ it.layer(
       }),
     );
 
+    it.effect("does not report ChatGPT usage limits for a custom model provider", () =>
+      Effect.gen(function* () {
+        // A custom `model_provider` has no account, but Codex still answers
+        // the usage read from the ChatGPT login saved in its home.
+        const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+          Effect.succeed(
+            makeCodexProbeSnapshot({
+              account: { account: null, requiresOpenaiAuth: false },
+              rateLimits: {
+                snapshot: {
+                  limitId: "codex",
+                  primary: {
+                    usedPercent: 14,
+                    windowDurationMins: 10_080,
+                    resetsAt: 1_791_049_011,
+                  },
+                },
+                resetCredits: { availableCount: 1 },
+              },
+            }),
+          ),
+        );
+
+        assert.deepStrictEqual(status.usageLimits?.windows, []);
+        assert.strictEqual(status.usageLimits?.unavailable?.reason, "unsupported");
+      }),
+    );
+
+    it.effect("reports a custom model provider's rejected usage read as unsupported", () =>
+      Effect.gen(function* () {
+        const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+          Effect.succeed(
+            makeCodexProbeSnapshot({
+              account: { account: null, requiresOpenaiAuth: false },
+              rateLimits: { failure: "Codex could not read usage (JSON-RPC -32600)." },
+            }),
+          ),
+        );
+
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.usageLimits?.unavailable?.reason, "unsupported");
+        assert.strictEqual(status.usageLimits?.unavailable?.message, undefined);
+      }),
+    );
+
     it.effect("returns an api key label for codex api key auth", () =>
       Effect.gen(function* () {
         const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
@@ -2799,7 +2844,7 @@ it.layer(
           decodeServerSettings(
             deepMerge(encodedDefaultServerSettings, {
               providerInstances: {
-                ...disabledDefaultSlots("claudeAgent", "cursor", "grok", "opencode"),
+                ...disabledDefaultSlots("claudeAgent", "copilot", "cursor", "grok", "opencode"),
                 [ProviderInstanceId.make("codex")]: {
                   driver: ProviderDriverKind.make("codex"),
                   enabled: true,
@@ -2892,7 +2937,7 @@ it.layer(
           );
           yield* serverSettings.updateSettings({
             providerInstances: {
-              ...disabledDefaultSlots("claudeAgent", "cursor", "grok", "opencode"),
+              ...disabledDefaultSlots("claudeAgent", "copilot", "cursor", "grok", "opencode"),
               [ProviderInstanceId.make("codex")]: {
                 driver: ProviderDriverKind.make("codex"),
                 enabled: true,
@@ -3064,6 +3109,7 @@ it.layer(
               "antigravity",
               "claudeAgent",
               "codex",
+              "copilot",
               "cursor",
               "grok",
               "muse",
@@ -3072,7 +3118,7 @@ it.layer(
             ]);
             assert.strictEqual(cursorProvider?.enabled, false);
             assert.strictEqual(cursorProvider?.status, "disabled");
-            assert.strictEqual(cursorProvider?.message, "Cursor is disabled in T3 Code settings.");
+            assert.strictEqual(cursorProvider?.message, "Cursor is disabled in Par3 settings.");
             const museProvider = providers.find((provider) => provider.driver === "muse");
             assert.strictEqual(museProvider?.enabled, false);
             assert.strictEqual(museProvider?.status, "disabled");
@@ -3089,7 +3135,7 @@ it.layer(
         assert.strictEqual(status.enabled, false);
         assert.strictEqual(status.status, "disabled");
         assert.strictEqual(status.installed, false);
-        assert.strictEqual(status.message, "Codex is disabled in T3 Code settings.");
+        assert.strictEqual(status.message, "Codex is disabled in Par3 settings.");
       }),
     );
   });

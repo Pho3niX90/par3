@@ -53,7 +53,7 @@ const clientSettings: ClientSettings = {
   glassOpacity: 80,
   onboardingCompletedAt: null,
   panelAnimationDurationMs: 0,
-  planModeEnabled: false,
+  composerPlanModeEnabled: true,
   proactivePanelsEnabled: true,
   showSkillsInSlashMenu: false,
   persistComposerContextStrip: true,

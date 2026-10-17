@@ -211,7 +211,8 @@ import {
 } from "../../state/assets";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { usePreparedConnection } from "../../state/session";
-import { useLiveThreadLinkLabels } from "../../state/entities";
+import { useLiveThreadLinkLabels, useThreadShell } from "../../state/entities";
+import { useJiraIssueLinks } from "./jiraMarkdownLinks";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { composerDocumentAttachmentRecord } from "../../lib/composerContext";
 import * as Option from "effect/Option";
@@ -803,7 +804,9 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly renderImage: MarkdownImageRenderer;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill> | undefined;
 }) {
-  const liveMarkdown = useLiveThreadLinkLabels(props.markdown, props.environmentId);
+  const liveMarkdown = useJiraIssueLinks(
+    useLiveThreadLinkLabels(props.markdown, props.environmentId),
+  );
   const segments = useMemo(() => splitCodexArtifactTemplateMarkdown(liveMarkdown), [liveMarkdown]);
 
   return segments.map((segment) => {
@@ -940,9 +943,16 @@ function AgentMessageAttribution(props: {
 }) {
   const navigation = useNavigation();
   const senderThreadId = props.senderThreadId;
+  const senderThread = useThreadShell(
+    senderThreadId ? scopeThreadRef(props.environmentId, senderThreadId) : null,
+  );
+  const senderTitle = senderThread?.title.trim();
   const label = (
-    <Text className="mb-1 pr-1 font-t3-medium text-2xs text-foreground-muted opacity-60">
-      Sent by another agent
+    <Text
+      className="mb-1 pr-1 font-t3-medium text-2xs text-foreground-muted opacity-60"
+      numberOfLines={1}
+    >
+      {senderTitle ? `Sent from ${senderTitle}` : "Sent by another agent"}
     </Text>
   );
   return senderThreadId ? (
@@ -1179,7 +1189,7 @@ function renderFeedEntry(
             </Text>
           ) : presentation.attribution === "t3code" ? (
             <Text className="mb-1 pr-1 font-t3-medium text-2xs text-foreground-muted opacity-60">
-              Sent by T3 Code
+              Sent by Par3
             </Text>
           ) : presentation.attribution === "agent" ? (
             <AgentMessageAttribution
@@ -1467,7 +1477,7 @@ function UserMessageContent(props: UserMessageContentProps) {
   const [selected, setSelected] = useState<{ contextId: string; label: string } | null>(null);
   const navigation = useNavigation();
   const { selectedThread } = useThreadSelection();
-  const liveText = useLiveThreadLinkLabels(props.text, props.environmentId);
+  const liveText = useJiraIssueLinks(useLiveThreadLinkLabels(props.text, props.environmentId));
   const text = replaceComposerContextReferences(liveText, (ref) => {
     const available = props.context?.records.some((record) => record.contextId === ref.contextId);
     return `[${ref.label}${available ? "" : " (unavailable)"}](t3-context://v1/${ref.kind}/${ref.contextId})`;

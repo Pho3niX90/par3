@@ -524,7 +524,7 @@ export class Launcher {
   async #recover(): Promise<void> {
     // A fresh launcher means servers are running again: any stop marker from
     // a previous explicit stop is stale and must not make a future update
-    // handoff release its tunnel. A restart deferred by `t3 update` is done
+    // handoff release its tunnel. A restart deferred by `par3 update` is done
     // no matter who restarted the service, but only once this launcher is
     // the version the marker waits for: a launcher that came up between the
     // CLI writing the marker and writing the new state still runs the old
@@ -571,7 +571,7 @@ export class Launcher {
   async #startChild(version: string, role: ChildRole, update?: ServiceUpdateRecord): Promise<void> {
     if (this.#stopping) return;
     if (!(await runtimeExists(this.#baseDir, version))) {
-      throw new Error(`Selected t3@${version} runtime is missing or incomplete.`);
+      throw new Error(`Selected par3@${version} runtime is missing or incomplete.`);
     }
     if (this.#stopping) return;
     const paths = runtimePaths(this.#baseDir, version);
@@ -797,7 +797,7 @@ export class Launcher {
     // Signal listeners alone do not keep Node alive.
     this.#timer = setInterval(() => {}, 2_147_483_647);
     process.stderr.write(
-      "[service-launcher] Another T3 Code server owns this T3 home. Stop it, then restart this service.\n",
+      "[service-launcher] Another Par3 server owns this T3 home. Stop it, then restart this service.\n",
     );
   }
 
@@ -828,7 +828,7 @@ export class Launcher {
 export async function main(): Promise<void> {
   const baseDir = process.env.T3CODE_HOME?.trim();
   if (baseDir === undefined || baseDir === "") {
-    throw new Error("T3CODE_HOME is required by the T3 Code service launcher.");
+    throw new Error("T3CODE_HOME is required by the Par3 service launcher.");
   }
   const statePath = NodePath.join(baseDir, "runtime", SERVICE_STATE_FILE);
   const state = await readServiceState(statePath);

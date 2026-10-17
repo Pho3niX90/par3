@@ -85,15 +85,17 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const baseDir = yield* fs.makeTempDirectoryScoped();
       const prefix = `${baseDir}/node`;
-      const entry = `${prefix}/lib/node_modules/t3/dist/bin.mjs`;
-      yield* fs.makeDirectory(`${prefix}/lib/node_modules/t3/dist`, { recursive: true });
+      const entry = `${prefix}/lib/node_modules/@paritylabs/par3/dist/bin.mjs`;
+      yield* fs.makeDirectory(`${prefix}/lib/node_modules/@paritylabs/par3/dist`, {
+        recursive: true,
+      });
       yield* fs.makeDirectory(`${prefix}/bin`, { recursive: true });
       yield* fs.writeFileString(entry, "");
       yield* fs.writeFileString(
-        `${prefix}/lib/node_modules/t3/package.json`,
-        '{"name":"t3","version":"0.0.45","bin":{"t3":"./dist/bin.mjs"}}',
+        `${prefix}/lib/node_modules/@paritylabs/par3/package.json`,
+        '{"name":"@paritylabs/par3","version":"0.0.45","bin":{"par3":"./dist/bin.mjs"}}',
       );
-      yield* fs.symlink(entry, `${prefix}/bin/t3`);
+      yield* fs.symlink(entry, `${prefix}/bin/par3`);
       const config = yield* makeServerConfig(baseDir);
       yield* fs.makeDirectory(config.stateDir, { recursive: true });
       for (const mode of ["web", "desktop"] as const) {

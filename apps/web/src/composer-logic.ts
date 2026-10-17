@@ -36,6 +36,25 @@ function composerRequiresModifier(
   );
 }
 
+/** The keybinding command a key pressed inside the composer resolves to. */
+export function composerShortcutCommandForKey(input: {
+  event: ShortcutEventLike;
+  keybindings: ResolvedKeybindingsConfig;
+  platform?: string;
+  isDraftThread: boolean;
+  isRunning?: boolean;
+}) {
+  return resolveShortcutCommand(input.event, input.keybindings, {
+    ...(input.platform === undefined ? {} : { platform: input.platform }),
+    context: {
+      composerFocus: true,
+      draftThreadRoute: input.isDraftThread,
+      turnRunning: input.isRunning === true,
+    },
+  });
+}
+
+/** Pass `command` when the caller already resolved it, so a keystroke resolves once. */
 export function composerSubmissionIntentForKey(input: {
   event: ShortcutEventLike & { isComposing?: boolean; keyCode?: number; repeat?: boolean };
   keybindings: ResolvedKeybindingsConfig;
@@ -45,18 +64,13 @@ export function composerSubmissionIntentForKey(input: {
   isRunning?: boolean;
   sendShortcut?: ClientSettings["sendShortcut"];
   prompt?: string;
+  command?: ReturnType<typeof composerShortcutCommandForKey>;
 }): ComposerSubmissionIntent | null {
   const { event } = input;
   if (input.isMobileViewport || event.isComposing || event.keyCode === 229 || event.repeat)
     return null;
-  const command = resolveShortcutCommand(event, input.keybindings, {
-    ...(input.platform === undefined ? {} : { platform: input.platform }),
-    context: {
-      composerFocus: true,
-      draftThreadRoute: input.isDraftThread,
-      turnRunning: input.isRunning === true,
-    },
-  });
+  const command =
+    input.command === undefined ? composerShortcutCommandForKey(input) : input.command;
   if (command === "composer.sendAlternate" && input.isRunning) return "alternate";
   if (command === "composer.sendBackground" && input.isDraftThread) return "background";
   if (command === "composer.sendAndNewThread" && !input.isDraftThread) return "background";

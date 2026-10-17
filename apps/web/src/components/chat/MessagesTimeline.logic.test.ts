@@ -803,7 +803,7 @@ describe("deriveMessagesTimelineRows", () => {
       toolSource: { key: "mcp:node_repl", name: "node repl", kind: "integration" as const },
       input: {
         title: "Restrict the breakpoint to Git actions",
-        code: "await sky.type_text({app:'T3 Code (Nightly)',text:'debug(ga.run)'});",
+        code: "await sky.type_text({app:'Par3 (Nightly)',text:'debug(ga.run)'});",
       },
     };
     const entries = deriveTimelineEntriesFromVisibleTurnItems({
@@ -3601,14 +3601,14 @@ describe("computeStableMessagesTimelineRows", () => {
 describe("resolveTimelineToolPresentation", () => {
   it("pretty prints Claude and Cursor T3 MCP tool names", () => {
     expect(resolveTimelineToolPresentation("mcp__t3-code__t3_thread_read")).toEqual({
-      displayName: "Read a T3 thread",
+      displayName: "Read a Par3 thread",
       logo: "t3-code",
     });
   });
 
   it("pretty prints Codex T3 MCP tool names", () => {
     expect(resolveTimelineToolPresentation("t3-code.create_threads")).toEqual({
-      displayName: "Create T3 threads",
+      displayName: "Create Par3 threads",
       logo: "t3-code",
     });
   });

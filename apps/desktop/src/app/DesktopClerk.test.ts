@@ -204,12 +204,49 @@ describe("DesktopClerk", () => {
     });
   });
 
+  it.effect("claims Copilot app link schemes only when no other app handles them", () => {
+    storageMock.mockReturnValue(storageAdapter);
+    createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
+    const registeredSchemes: string[] = [];
+    const electronApp = {
+      setAsDefaultProtocolClient: (scheme: string) =>
+        Effect.sync(() => {
+          registeredSchemes.push(scheme);
+          return true;
+        }),
+      isDefaultProtocolClient: () => Effect.succeed(false),
+      getApplicationNameForProtocol: (url: string) =>
+        Effect.succeed(url === "github-app://" ? "GitHub Copilot" : ""),
+      on: () => Effect.void,
+    } as unknown as ElectronApp.ElectronApp["Service"];
+
+    return Effect.gen(function* () {
+      const clerk = yield* DesktopClerk.DesktopClerk;
+      yield* Effect.scoped(clerk.configure);
+      assert.deepEqual(registeredSchemes, ["par3", "ghapp"]);
+    }).pipe(
+      Effect.provide(layerDesktopClerk(false, [], "win32")),
+      Effect.provideService(ElectronApp.ElectronApp, electronApp),
+      Effect.provideService(
+        ElectronWindow.ElectronWindow,
+        {} as ElectronWindow.ElectronWindow["Service"],
+      ),
+      Effect.provideService(DesktopWebLinks.DesktopWebLinks, ignoreWebLinks),
+    );
+  });
+
   it.effect("registers the second-instance handler in the primary instance", () => {
     storageMock.mockReturnValue(storageAdapter);
     createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
     const quit = vi.fn();
     const registeredEvents: string[] = [];
+    const registeredSchemes: string[] = [];
     const electronApp = {
+      setAsDefaultProtocolClient: (scheme: string) =>
+        Effect.sync(() => {
+          registeredSchemes.push(scheme);
+          return true;
+        }),
       quit: Effect.sync(quit),
       on: (eventName: string) =>
         Effect.sync(() => {
@@ -225,6 +262,8 @@ describe("DesktopClerk", () => {
       assert.isTrue(Exit.isSuccess(exit));
       assert.equal(quit.mock.calls.length, 0);
       assert.deepEqual(registeredEvents, ["open-url", "open-file", "second-instance"]);
+      // The bridge registers t3code-dev itself; par3 links are registered alongside it.
+      assert.deepEqual(registeredSchemes, ["par3-dev"]);
     }).pipe(
       Effect.provide(layerDesktopClerk()),
       Effect.provideService(ElectronApp.ElectronApp, electronApp),
@@ -239,6 +278,7 @@ describe("DesktopClerk", () => {
     const quit = vi.fn();
     const registeredEvents: string[] = [];
     const electronApp = {
+      setAsDefaultProtocolClient: () => Effect.succeed(true),
       quit: Effect.sync(quit),
       on: (eventName: string) =>
         Effect.sync(() => {
@@ -273,6 +313,7 @@ it.effect(
     const loadURL = vi.fn(async (_url: string) => undefined);
     const window = { loadURL };
     const electronApp = {
+      setAsDefaultProtocolClient: () => Effect.succeed(true),
       on: (name: string, listener: (...args: unknown[]) => void) =>
         Effect.sync(() => {
           listeners.set(name, listener);
@@ -335,7 +376,7 @@ it.effect.each(["startup", "open-url"] as const)(
       }).toString();
       const request = {
         authorizationUrl: authorize.toString(),
-        returnUrl: "https://app.t3.codes/welcome#agents:remote-one",
+        returnUrl: "https://app.paritylabs.co.za/welcome#agents:remote-one",
         environmentId: EnvironmentId.make("remote-one"),
         instanceId: ProviderInstanceId.make("work"),
         flowId: "flow-one",
@@ -361,6 +402,7 @@ it.effect.each(["startup", "open-url"] as const)(
       });
       const listeners = new Map<string, (...args: unknown[]) => void>();
       const electronApp = {
+        setAsDefaultProtocolClient: () => Effect.succeed(true),
         whenReady: Effect.void,
         on: (name: string, listener: (...args: unknown[]) => void) =>
           Effect.sync(() => {
@@ -399,6 +441,7 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
     createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
     const listeners = new Map<string, (...args: unknown[]) => void>();
     const electronApp = {
+      setAsDefaultProtocolClient: () => Effect.succeed(true),
       whenReady: Effect.void,
       on: (name: string, listener: (...args: unknown[]) => void) =>
         Effect.sync(() => {

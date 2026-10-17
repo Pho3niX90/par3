@@ -45,7 +45,7 @@ const fakeAppImage = (canMount = true) => {
   const root = tempRoot();
   const image = NodePath.join(root, "image");
   writeExecutable(NodePath.join(image, "t3code"), REPORTER);
-  const appImage = NodePath.join(root, "T3 Code.AppImage");
+  const appImage = NodePath.join(root, "Par3.AppImage");
   writeExecutable(
     appImage,
     [
@@ -109,7 +109,7 @@ describe("renderCliShim", () => {
 
   it("runs an installed app's server directly", () => {
     const root = tempRoot();
-    const executable = NodePath.join(root, "opt", "T3 Code", "t3code");
+    const executable = NodePath.join(root, "opt", "Par3", "t3code");
     writeExecutable(executable, REPORTER);
     const shim = writeShim(root, {
       kind: "direct",
@@ -128,7 +128,7 @@ describe("renderCliShim", () => {
     const root = tempRoot();
     const shim = writeShim(root, {
       kind: "direct",
-      executable: NodePath.join(root, "Gone.app/Contents/MacOS/T3 Code"),
+      executable: NodePath.join(root, "Gone.app/Contents/MacOS/Par3"),
       entry: "/bin.mjs",
     });
     const result = run(shim, ["--version"]);
@@ -137,7 +137,7 @@ describe("renderCliShim", () => {
   });
 
   it("writes a Windows launcher that keeps cmd from reinterpreting paths", () => {
-    const executable = "C:\\Apps\\R&whoami&X 100%\\!CHANNEL!\\T3 Code.exe";
+    const executable = "C:\\Apps\\R&whoami&X 100%\\!CHANNEL!\\Par3.exe";
     const script = renderCliShim({
       target: { kind: "windows", executable, entry: "C:\\Apps\\server.asar\\bin.mjs" },
       shimPath: "C:\\Users\\José\\.t3\\bin\\t3.cmd",
@@ -146,9 +146,7 @@ describe("renderCliShim", () => {
     const lines = script.split("\r\n");
     expect(lines).toContain("setlocal EnableExtensions DisableDelayedExpansion");
     expect(lines).toContain("chcp 65001 >nul");
-    expect(lines).toContain(
-      'if exist "C:\\Apps\\R&whoami&X 100%%\\!CHANNEL!\\T3 Code.exe" goto run',
-    );
+    expect(lines).toContain('if exist "C:\\Apps\\R&whoami&X 100%%\\!CHANNEL!\\Par3.exe" goto run');
     const bare = lines.filter(
       (line) => line.includes("whoami") && !/"[^"]*whoami[^"]*"/.test(line),
     );
@@ -158,7 +156,7 @@ describe("renderCliShim", () => {
 
   it("switches the Windows console to UTF-8 only when a path needs it", () => {
     const ascii = renderCliShim({
-      target: { kind: "windows", executable: "C:\\T3\\T3 Code.exe", entry: "C:\\T3\\bin.mjs" },
+      target: { kind: "windows", executable: "C:\\T3\\Par3.exe", entry: "C:\\T3\\bin.mjs" },
       shimPath: "C:\\Users\\me\\.t3\\bin\\t3.cmd",
       t3Home: "C:\\Users\\me\\.t3",
     });

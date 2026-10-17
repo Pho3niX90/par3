@@ -107,20 +107,43 @@ describe("link round trips", () => {
   });
 
   it("maps app scheme and hosted links to in-app paths, and nothing else", () => {
+    expect(promptLinkAppPath("par3://new?prompt=hi")).toBe("/new?prompt=hi");
+    expect(promptLinkAppPath("par3-dev://threads/env-1/thread-1")).toBe("/env-1/thread-1");
     expect(promptLinkAppPath("t3code://new?prompt=hi")).toBe("/new?prompt=hi");
     expect(promptLinkAppPath("t3code-dev://threads/env-1/thread-1")).toBe("/env-1/thread-1");
-    expect(promptLinkAppPath("https://app.t3.codes/env-1/thread-1?prompt=go")).toBe(
+    expect(promptLinkAppPath("https://app.paritylabs.co.za/env-1/thread-1?prompt=go")).toBe(
       "/env-1/thread-1?prompt=go",
     );
-    expect(promptLinkAppPath("https://app.t3.codes/settings/general")).toBeNull();
+    expect(promptLinkAppPath("https://app.paritylabs.co.za/settings/general")).toBeNull();
     expect(promptLinkAppPath("https://evil.test/new?prompt=hi")).toBeNull();
     expect(promptLinkAppPath("t3code://app/index.html")).toBeNull();
   });
 
+  it("maps GitHub Copilot app links to new-thread drafts", () => {
+    expect(promptLinkAppPath("ghapp://github.com/acme/api/pull/12")).toBe(
+      "/new?pr=acme%2Fapi%2F12",
+    );
+    const issue = promptLinkAppPath("github-app://github.com/acme/api/issues/7");
+    const parsed = parseNewThreadLink(new URL(issue!, "https://app.invalid").search);
+    expect(parsed.ok && parsed.value.kind === "new" && parsed.value).toMatchObject({
+      repository: { owner: "acme", name: "api" },
+      prompt: { text: "Work on https://github.com/acme/api/issues/7" },
+    });
+    expect(
+      promptLinkAppPath("ghapp://session/new?repo=acme%2Fapi&mode=autopilot&prompt=Fix%20tests"),
+    ).toBe("/new?repo=acme%2Fapi&prompt=Fix+tests");
+    expect(promptLinkAppPath("ghapp://session/new/acme/api?pr=3&branch=main")).toBe(
+      "/new?pr=acme%2Fapi%2F3",
+    );
+    expect(promptLinkAppPath("ghapp://github.com/acme/api")).toBeNull();
+    expect(promptLinkAppPath("ghapp://automations/new?prompt=hi")).toBeNull();
+    expect(promptLinkAppPath("ghapp://evil.test/acme/api/pull/1")).toBeNull();
+  });
+
   it("hands an in-app path to the installed app", () => {
-    expect(promptLinkDeepLink("/new?prompt=hi")).toBe("t3code://new?prompt=hi");
+    expect(promptLinkDeepLink("/new?prompt=hi")).toBe("par3://new?prompt=hi");
     expect(promptLinkDeepLink("/env-1/thread-1?prompt=hi")).toBe(
-      "t3code://threads/env-1/thread-1?prompt=hi",
+      "par3://threads/env-1/thread-1?prompt=hi",
     );
   });
 });

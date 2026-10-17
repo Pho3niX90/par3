@@ -1,23 +1,26 @@
-# T3 Code
+# Par3
 
-T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
+Par3 is an "agent harness control surface" for teams. It lets you control the coding agents on your machines from a desktop app, a web app and a mobile app.
 
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, T3 Code can control them.
+Works with your subscriptions on Claude Code, Codex, Cursor, GitHub Copilot, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, Par3 can control them.
 
-## "Wait, what are you selling me?"
+## Why Par3 exists
 
-Nothing. We built T3 Code because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
+Par3 is a fork of [T3 Code](https://github.com/pingdotgg/t3code), an excellent open-source project by T3 Tools. T3 Code is led directly by Theo, and its product decisions are his to make. That is a fair way to run a project, but some of those decisions don't fit how enterprise teams work.
 
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
+The clearest example is plan mode. T3 Code removed it, while most engineers we work with, especially in enterprise, want to see and approve a plan before an agent touches their code. Par3 keeps plan mode as a first-class setting and makes product decisions around what enterprise teams need: reviewable plans, explicit permissions, and clear visibility into what agents do.
+
+We still merge T3 Code's improvements regularly and are grateful for the work behind it. T3 Code is MIT licensed, and so is Par3.
 
 ## Installation
 
 > [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
+> Par3 currently supports Codex, Claude, Cursor, GitHub Copilot, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
 >
 > - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
 > - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
 > - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
+> - GitHub Copilot: install [GitHub Copilot CLI](https://github.com/github/copilot-cli) and run `copilot login`
 > - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
 > - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 > - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
@@ -25,64 +28,30 @@ We wanted something performant, remote-ready, and truly open. If we ever go the 
 ### Command line
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://par3.paritylabs.co.za/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://t3.codes/install.ps1 | iex
+irm https://par3.paritylabs.co.za/install.ps1 | iex
 ```
 
-Then run `t3` to start the server and open the local web app. `t3 service install` keeps it running in the background, `t3 update` moves to a newer release, and `t3 --help` has the full reference.
+Then run `par3` to start the server and open the local web app. `par3 service install` keeps it running in the background, `par3 update` moves to a newer release, and `par3 --help` has the full reference.
 
-To try it once without installing, run `npx t3@latest` instead.
+To try it once without installing, run `npx @paritylabs/par3@latest` instead.
 
 ### Desktop app
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
-
-#### Windows (`winget`)
-
-```bash
-winget install T3Tools.T3Code
-```
-
-#### Windows (`scoop`)
-
-```bash
-scoop install extras/t3code
-```
-
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
+Install the latest version of the desktop app from [GitHub Releases](https://github.com/Pho3niX90/par3/releases).
 
 #### Debian, Ubuntu (`.deb`)
 
-Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
+Download the `.deb` from [GitHub Releases](https://github.com/Pho3niX90/par3/releases), then:
 
 ```bash
-sudo apt install ./T3-Code-*.deb
+sudo apt install ./Par3-*.deb
 ```
-
-#### Arch Linux (AUR)
-
-Stable:
-
-```bash
-yay -S t3code-bin
-```
-
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
 
 ## Some notes
 
@@ -104,7 +73,7 @@ Full docs live in [docs/](./docs). There's no docs site yet.
 - [Keeping app and server in sync](./docs/user/updating.md)
 - [Source control integrations](./docs/user/source-control.md)
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- [Run T3 Code as a background service](./docs/user/background-service.md)
+- [Run Par3 as a background service](./docs/user/background-service.md)
 
 Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
 
@@ -112,7 +81,7 @@ Building from source? Start at [docs/internals/overview.md](./docs/internals/ove
 
 ### Install `vp`
 
-T3 Code uses Vite+ so you'll need to install the global `vp` command-line tool.
+Par3 uses Vite+ so you'll need to install the global `vp` command-line tool.
 
 #### macOS / Linux
 

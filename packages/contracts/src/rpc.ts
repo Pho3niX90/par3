@@ -141,6 +141,9 @@ import {
   VcsStatusSubscriptionInput,
   VcsStatusResult,
   VcsStatusStreamEvent,
+  VcsThreadRepositoriesError,
+  VcsThreadRepositoriesInput,
+  VcsThreadRepositoriesResult,
 } from "./git.ts";
 import {
   ReviewDiffFileContentsInput,
@@ -325,6 +328,7 @@ import {
   ProviderConsumeResetCreditResult,
 } from "./providerUsageLimits.ts";
 import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
+import { JiraError, JiraIssue, JiraIssueInput } from "./jira.ts";
 import {
   StorageCleanupReport,
   DatabaseStorageStatus,
@@ -419,6 +423,7 @@ export const WS_METHODS = {
 
   vcsPull: "vcs.pull",
   vcsRefreshStatus: "vcs.refreshStatus",
+  vcsThreadRepositories: "vcs.threadRepositories",
   vcsListRefs: "vcs.listRefs",
   vcsCreateWorktree: "vcs.createWorktree",
   vcsRemoveWorktree: "vcs.removeWorktree",
@@ -524,6 +529,7 @@ export const WS_METHODS = {
   pullRequestsStack: "pullRequests.stack",
   pullRequestsLinkedThreads: "pullRequests.linkedThreads",
   pullRequestsDetail: "pullRequests.detail",
+  jiraIssue: "jira.issue",
   pullRequestsPreview: "pullRequests.preview",
   pullRequestsChecks: "pullRequests.checks",
   pullRequestsActivity: "pullRequests.activity",
@@ -990,6 +996,12 @@ const WsPullRequestsDetailRpc = Rpc.make(WS_METHODS.pullRequestsDetail, {
   error: PullRequestRpcError,
 });
 
+const WsJiraIssueRpc = Rpc.make(WS_METHODS.jiraIssue, {
+  payload: JiraIssueInput,
+  success: JiraIssue,
+  error: JiraError,
+});
+
 const WsPullRequestsPreviewRpc = Rpc.make(WS_METHODS.pullRequestsPreview, {
   payload: PullRequestRef,
   success: PullRequestPreview,
@@ -1340,6 +1352,12 @@ const WsVcsRefreshStatusRpc = Rpc.make(WS_METHODS.vcsRefreshStatus, {
   payload: VcsStatusInput,
   success: VcsStatusResult,
   error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsThreadRepositoriesRpc = Rpc.make(WS_METHODS.vcsThreadRepositories, {
+  payload: VcsThreadRepositoriesInput,
+  success: VcsThreadRepositoriesResult,
+  error: Schema.Union([VcsThreadRepositoriesError, EnvironmentAuthorizationError]),
 });
 
 const WsSubscribeWorktreeSetupRpc = Rpc.make(WS_METHODS.subscribeWorktreeSetup, {
@@ -1927,6 +1945,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsStackRpc,
   WsPullRequestsLinkedThreadsRpc,
   WsPullRequestsDetailRpc,
+  WsJiraIssueRpc,
   WsPullRequestsPreviewRpc,
   WsPullRequestsChecksRpc,
   WsPullRequestsActivityRpc,
@@ -1985,6 +2004,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsWorktreeSetupCancelRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,
+  WsVcsThreadRepositoriesRpc,
   WsGitRunStackedActionRpc,
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,

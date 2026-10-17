@@ -153,7 +153,7 @@ describe("t3 server command safety", () => {
       Effect.gen(function* () {
         const baseDir = NodePath.join(root, "home");
         const help = yield* runCli(["help"], { T3CODE_HOME: baseDir }).pipe(Effect.flip);
-        expect(help).toMatchObject({ _tag: "ShowHelp", commandPath: ["t3"], errors: [] });
+        expect(help).toMatchObject({ _tag: "ShowHelp", commandPath: ["par3"], errors: [] });
         expect(yield* pathExists(baseDir)).toBe(false);
       }),
     ),
@@ -193,7 +193,7 @@ describe("t3 server command safety", () => {
             ),
             Effect.flip,
           );
-          expect(String(error)).toContain("A T3 Code server is already running");
+          expect(String(error)).toContain("A Par3 server is already running");
           expect(yield* Effect.promise(() => NodeFSP.readFile(statePath, "utf8"))).toBe(record);
           expect(yield* pathExists(newDirectory)).toBe(false);
           expect(yield* Effect.promise(() => NodeFSP.readdir(stateDir))).toEqual([
@@ -205,7 +205,7 @@ describe("t3 server command safety", () => {
   );
 });
 
-describe("t3 app", () => {
+describe("par3 app", () => {
   it.effect("rejects SSH before it tries to reach a desktop app", () =>
     withTempDirectory("t3-app-ssh-test-", (root) =>
       Effect.gen(function* () {
@@ -217,7 +217,7 @@ describe("t3 app", () => {
         expect(error).toMatchObject({
           _tag: "DesktopAppSshUnsupportedError",
           message:
-            "`t3 app` only controls a desktop app on the same machine. It cannot run over SSH.",
+            "`par3 app` only controls a desktop app on the same machine. It cannot run over SSH.",
         });
         expect(yield* pathExists(baseDir)).toBe(false);
       }),
@@ -236,7 +236,7 @@ describe("t3 app", () => {
         expect(error).toMatchObject({
           _tag: "DesktopAppPlatformUnsupportedError",
           platform: "freebsd",
-          message: "`t3 app` is not supported on freebsd.",
+          message: "`par3 app` is not supported on freebsd.",
         });
         expect(yield* pathExists(baseDir)).toBe(false);
       }),
@@ -253,7 +253,7 @@ describe("t3 app", () => {
           _tag: "DesktopAppUnreachableError",
           candidateAddresses: [expect.any(String)],
           workspaceRoot: yield* HostProcess.WorkingDirectory,
-          message: expect.stringContaining("Could not reach the T3 Code desktop app."),
+          message: expect.stringContaining("Could not reach the Par3 desktop app."),
           cause: { code: "ENOENT" },
         });
         expect(yield* pathExists(baseDir)).toBe(false);

@@ -651,7 +651,7 @@ export class RelayEnvironmentPrincipal extends Context.Service<
 const RelayClientBearerAuthorization = HttpApiSecurity.http({ scheme: "bearer" }).pipe(
   HttpApiSecurity.annotate(
     OpenApi.Description,
-    "Clerk session or OAuth bearer token for the signed-in T3 Connect user.",
+    "Clerk session or OAuth bearer token for the signed-in Parity Connect user.",
   ),
 );
 
@@ -1250,7 +1250,7 @@ export const RelayApi = HttpApi.make("RelayApi")
     RelayServerGroup,
     RelayHooksGroup,
   )
-  .annotate(OpenApi.Title, "T3 Code Relay API")
+  .annotate(OpenApi.Title, "Par3 Relay API")
   .annotate(OpenApi.Version, "1.0.0")
   .annotate(
     OpenApi.Description,
