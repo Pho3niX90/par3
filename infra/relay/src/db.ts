@@ -104,6 +104,8 @@ export const RelayHyperdrive = Effect.gen(function* () {
     caching: {
       disabled: true,
     },
-    originConnectionLimit: 40,
+    // 40 is sized for upstream's PlanetScale cluster. Cloudflare caps the limit at 20 on
+    // plans without a raised Hyperdrive quota and rejects the deploy above it.
+    originConnectionLimit: Option.isSome(selfHosted) ? 20 : 40,
   });
 });
