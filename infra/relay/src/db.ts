@@ -107,5 +107,21 @@ export const RelayHyperdrive = Effect.gen(function* () {
     // 40 is sized for upstream's PlanetScale cluster. Cloudflare caps the limit at 20 on
     // plans without a raised Hyperdrive quota and rejects the deploy above it.
     originConnectionLimit: Option.isSome(selfHosted) ? 20 : 40,
+    // Alchemy resolves the local-dev origin on every deploy and throws for an
+    // Access-protected origin unless one is given. Locally, reach the database through
+    // `cloudflared access tcp --url 127.0.0.1:15432`, as the deploy workflow does.
+    ...(Option.isSome(selfHosted)
+      ? {
+          dev: {
+            scheme: selfHosted.value.scheme,
+            host: "127.0.0.1",
+            port: 15432,
+            database: selfHosted.value.database,
+            user: selfHosted.value.user,
+            password: selfHosted.value.password,
+            sslmode: "disable" as const,
+          },
+        }
+      : {}),
   });
 });
