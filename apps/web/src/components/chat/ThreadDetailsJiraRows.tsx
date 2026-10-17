@@ -19,13 +19,7 @@ import {
 } from "@t3tools/shared/jira";
 import { useAtomValue } from "@effect/atom-react";
 import { FileTextIcon } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 import { useOpenLink } from "~/browser/useOpenLink";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
@@ -93,18 +87,14 @@ export function ThreadDetailsJiraRows({
   const mentionedKeys = useAtomValue(
     threadJiraMentions.mentionsAtom(baseUrl ? (threadRef ?? null) : null, projectKeys),
   );
-  const keys = useMemo(
-    () =>
-      baseUrl
-        ? [
-            ...new Set([
-              ...findJiraIssueKeys({ branch, texts: [pullRequestTitle], projectKeys }),
-              ...mentionedKeys,
-            ]),
-          ]
-        : [],
-    [baseUrl, branch, mentionedKeys, projectKeys, pullRequestTitle],
-  );
+  const keys = baseUrl
+    ? [
+        ...new Set([
+          ...findJiraIssueKeys({ branch, texts: [pullRequestTitle], projectKeys }),
+          ...mentionedKeys,
+        ]),
+      ]
+    : [];
   const openLink = useOpenLink(threadRef);
   const { canReadFiles } = useFilesystemReadAccess(environmentId);
   if (!baseUrl || keys.length === 0) return null;
@@ -263,14 +253,10 @@ function ThreadDetailsJiraFiles({
     refresh();
   }, [refresh, turnCompletedAt]);
   const entries = query.data?.entries;
-  const files = useMemo(
-    () =>
-      jiraIssueMarkdownFiles(
-        (entries ?? []).map((entry) => entry.path),
-        issueKey,
-        projectKeys,
-      ),
-    [entries, issueKey, projectKeys],
+  const files = jiraIssueMarkdownFiles(
+    (entries ?? []).map((entry) => entry.path),
+    issueKey,
+    projectKeys,
   );
   if (files.length === 0) return null;
 

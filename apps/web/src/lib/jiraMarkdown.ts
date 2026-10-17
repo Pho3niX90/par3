@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ScopedThreadRef, ServerSettings } from "@t3tools/contracts";
 import { jiraIssueKeyPattern, jiraIssueUrl, normalizeJiraBaseUrl } from "@t3tools/shared/jira";
 import { Atom } from "effect/reactivity";
-import { useMemo } from "react";
 
 import { readThreadShell } from "~/state/entities";
 import { serverEnvironment } from "~/state/server";
@@ -42,15 +41,13 @@ export function useJiraMarkdownLinks(
   const settings = useAtomValue(
     environmentId ? serverEnvironment.settingsValueAtom(environmentId) : NO_SETTINGS_ATOM,
   );
-  return useMemo(() => {
-    const baseUrl = normalizeJiraBaseUrl(settings?.jira.baseUrl ?? "");
-    if (!settings || !baseUrl) return null;
-    // A thread's project never changes, so a one-off read avoids re-rendering on shell updates.
-    const projectId = threadRef ? readThreadShell(threadRef)?.projectId : undefined;
-    const pattern = jiraIssueKeyPattern(
-      (projectId ? settings.projectSettingsOverrides[projectId]?.jiraProjectKeys : undefined) ??
-        settings.jiraProjectKeys,
-    );
-    return pattern ? [remarkJiraIssueLinks, { baseUrl, pattern }] : null;
-  }, [settings, threadRef]);
+  const baseUrl = normalizeJiraBaseUrl(settings?.jira.baseUrl ?? "");
+  if (!settings || !baseUrl) return null;
+  // A thread's project never changes, so a one-off read avoids re-rendering on shell updates.
+  const projectId = threadRef ? readThreadShell(threadRef)?.projectId : undefined;
+  const pattern = jiraIssueKeyPattern(
+    (projectId ? settings.projectSettingsOverrides[projectId]?.jiraProjectKeys : undefined) ??
+      settings.jiraProjectKeys,
+  );
+  return pattern ? [remarkJiraIssueLinks, { baseUrl, pattern }] : null;
 }
