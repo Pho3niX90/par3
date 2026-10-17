@@ -17,7 +17,7 @@ import ProjectScriptsControl, {
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { memo, useMemo, type ComponentProps } from "react";
+import { memo, type ComponentProps } from "react";
 import { useThreadShell } from "../../state/entities";
 import { ThreadDetailsCard } from "./ThreadDetailsCard";
 import { ThreadDetailsJiraRows } from "./ThreadDetailsJiraRows";
@@ -83,10 +83,7 @@ function NonGitJiraRows({
   threadId: ThreadId;
   cwd: string;
 }) {
-  const threadRef = useMemo(
-    () => scopeThreadRef(environmentId, threadId),
-    [environmentId, threadId],
-  );
+  const threadRef = scopeThreadRef(environmentId, threadId);
   const thread = useThreadShell(threadRef);
   return (
     <ThreadDetailsJiraRows
