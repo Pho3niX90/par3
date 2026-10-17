@@ -1,4 +1,5 @@
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
+import { approvalPrompt } from "./approvalPrompt.ts";
 import { claudeTaskOutputRoot, tailClaudeTaskOutput } from "./ClaudeTaskOutputTail.ts";
 import {
   dynamicToolTitle,
@@ -2264,19 +2265,26 @@ function webSearchResultsFromClaudeOutput(
   });
 }
 
-function summarizeClaudeToolRequest(toolName: string, input: ClaudeNativeToolInput): string {
-  const command = firstStringInputField(input, ["command", "cmd", "script"]);
-  if (command !== undefined) {
-    return `${toolName}: ${command.slice(0, 400)}`;
+export function claudeApprovalPrompt(
+  options: {
+    readonly title?: string | undefined;
+    readonly description?: string | undefined;
+    readonly decisionReason?: string | undefined;
+  },
+  toolName: string,
+  toolInput: unknown,
+): string {
+  const input = claudeNativeToolInputFromUnknown(toolInput);
+  const target =
+    firstStringInputField(input, ["command", "cmd", "script"]) ??
+    firstStringInputField(input, ["file_path", "path", "filename", "fileName"]) ??
+    jsonStringifyForTool(claudeNativeToolInputValue(input));
+  const summary = options.title ?? options.description ?? options.decisionReason;
+  // SDK titles like "Claude wants to read foo.ts" may already name the full target.
+  if (summary !== undefined && target.length > 0 && summary.includes(target)) {
+    return summary.trim();
   }
-  const path = firstStringInputField(input, ["file_path", "path", "filename", "fileName"]);
-  if (path !== undefined) {
-    return `${toolName}: ${path.slice(0, 400)}`;
-  }
-  const serialized = jsonStringifyForTool(claudeNativeToolInputValue(input));
-  return serialized.length <= 400
-    ? `${toolName}: ${serialized}`
-    : `${toolName}: ${serialized.slice(0, 397)}...`;
+  return approvalPrompt(summary, `${toolName}: ${target}`) ?? toolName;
 }
 
 function outputFromClaudeToolResult(
@@ -7857,11 +7865,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           const requestKind = providerRequestKindFromClaudeTool(toolName);
-          const prompt =
-            callbackOptions.title ??
-            callbackOptions.description ??
-            callbackOptions.decisionReason ??
-            summarizeClaudeToolRequest(toolName, nativeToolInput);
+          const prompt = claudeApprovalPrompt(callbackOptions, toolName, toolInput);
           const artifacts = yield* buildApprovalRequestArtifacts({
             context,
             nativeItemId: nativeRequestId,

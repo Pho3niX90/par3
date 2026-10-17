@@ -4,7 +4,7 @@ import type {
   ProviderApprovalOption,
   RuntimeRequestId,
 } from "@t3tools/contracts";
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import type { PendingApproval } from "../../lib/threadActivity";
@@ -40,9 +40,12 @@ export function PendingApprovalCard(props: PendingApprovalCardProps) {
         {props.approval.appName ?? props.approval.requestKind}
       </Text>
       {props.approval.detail ? (
-        <Text className="font-sans text-sm leading-normal text-foreground-secondary">
-          {props.approval.detail}
-        </Text>
+        // Commands can be long; scroll them so the decision buttons stay on screen.
+        <ScrollView style={{ maxHeight: 160, flexGrow: 0 }} nestedScrollEnabled>
+          <Text selectable className="font-sans text-sm leading-normal text-foreground-secondary">
+            {props.approval.detail}
+          </Text>
+        </ScrollView>
       ) : null}
       {!canRespond ? (
         <Text className="font-sans text-sm leading-5 text-foreground-muted">
