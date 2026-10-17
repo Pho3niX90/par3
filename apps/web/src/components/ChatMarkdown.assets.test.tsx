@@ -20,7 +20,7 @@ vi.mock("../state/server", async () => {
   const { Atom } = await import("effect/reactivity");
   const noConfig = Atom.make(null);
   return {
-    serverEnvironment: { configValueAtom: () => noConfig },
+    serverEnvironment: { configValueAtom: () => noConfig, settingsValueAtom: () => noConfig },
     environmentServerConfigsAtom: Atom.make(new Map()),
   };
 });
