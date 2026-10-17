@@ -574,7 +574,7 @@ export default function DiffPanel({
       (candidate) => resolveFileDiffPath(candidate.fileDiff) === filePath,
     );
     const file = renderableFileEntries[index];
-    if (!file) return;
+    if (!file) return false;
     setCollapsedDiffFiles((current) => {
       const next = new Set(
         current.scopeKey === collapseScopeKey ? current.fileKeys : defaultCollapsedDiffFileKeys,
@@ -586,20 +586,26 @@ export default function DiffPanel({
       requestFile(index);
     }
     requestTreeReveal(file.fileKey);
+    return true;
   };
 
   const externalRevealRef = useRef<{ cache: string; key: string } | null>(null);
   useEffect(() => {
-    if (!lazySource || !selectedFilePath) return;
+    if (!selectedFilePath) return;
+    const cache = `${filePatchScope}:${reviewSectionId}`;
     const key = `${selectedFilePath}:${selectedFileRevealRequestId}`;
-    if (
-      externalRevealRef.current?.cache === filePatchScope &&
-      externalRevealRef.current.key === key
-    )
-      return;
-    externalRevealRef.current = { cache: filePatchScope, key };
-    revealDiffFile(selectedFilePath);
-  }, [lazySource, selectedFilePath, selectedFileRevealRequestId, filePatchScope, revealDiffFile]);
+    if (externalRevealRef.current?.cache === cache && externalRevealRef.current.key === key) return;
+    // A turn patch can arrive after the request, so only a found file settles it.
+    if (revealDiffFile(selectedFilePath)) {
+      externalRevealRef.current = { cache, key };
+    }
+  }, [
+    selectedFilePath,
+    selectedFileRevealRequestId,
+    filePatchScope,
+    reviewSectionId,
+    revealDiffFile,
+  ]);
 
   const openDiffFile = (filePath: string) => {
     // The file panel reads paths below the thread's folder, and a child repository's diff
