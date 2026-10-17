@@ -61,3 +61,10 @@ On Windows and macOS, the desktop app also opens GitHub's **Open in GitHub Copil
 as long as the GitHub Copilot app is not installed to handle them. An issue opens a draft that
 asks the agent to work on it, in that repository. A pull request opens like a `pr` link. A
 Copilot session link uses its `repo`, `pr` and `prompt`, and ignores its mode and branch.
+
+## GitHub Copilot app links
+
+On Windows and macOS, the desktop app also opens GitHub's **Open in GitHub Copilot app** links,
+as long as the GitHub Copilot app is not installed to handle them. An issue opens a draft that
+asks the agent to work on it, in that repository. A pull request opens like a `pr` link. A
+Copilot session link uses its `repo`, `pr` and `prompt`, and ignores its mode and branch.

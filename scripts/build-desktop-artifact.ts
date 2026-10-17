@@ -2766,7 +2766,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           name: "Par3",
           schemes: ["par3", "par3-dev", "t3code", "t3code-dev"],
         },
+        // GitHub Copilot app links, which Par3 opens only while no Copilot app claims them.
         { name: "GitHub Copilot app link", schemes: ["ghapp", "github-app"] },
+        // Lets people choose Par3 as their default web browser, which opens
+        // each link in a new thread's browser panel.
         {
           name: "Web site URL",
           schemes: ["http", "https"],
