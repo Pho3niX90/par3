@@ -129,9 +129,12 @@ jobs:
 
       # Builds the server, web client and Electron main, then packages the NSIS installer.
       # No Linux CLI archive is passed, so the installer ships without the WSL backend.
+      # .env.example holds the public Parity Connect identifiers (Clerk publishable key,
+      # relay URL); without them the app hides Parity Connect sign-in.
       - name: Build installer
         shell: bash
         run: |
+          cp .env.example .env
           vp run dist:desktop:artifact \
             --platform win \
             --target nsis \
