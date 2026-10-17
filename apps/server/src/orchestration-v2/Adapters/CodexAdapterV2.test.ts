@@ -101,7 +101,7 @@ describe("Codex context usage compatibility", () => {
 });
 
 describe("CodexAdapterV2 file change approvals", () => {
-  it("uses nonblank reasons before sorted file operations and renamed paths", () => {
+  it("shows nonblank reasons above sorted file operations and renamed paths", () => {
     const fileChanges = {
       "/tmp/removed.md": { type: "delete" as const, content: "gone" },
       "/tmp/added.ts": { type: "add" as const, content: "export {};" },
@@ -116,7 +116,7 @@ describe("CodexAdapterV2 file change approvals", () => {
         reason: "  Update configuration. ",
         fileChanges,
       }),
-      "Update configuration.",
+      "Update configuration.\nadd /tmp/added.ts\nupdate /tmp/moved.ts -> /tmp/renamed.ts\ndelete /tmp/removed.md",
     );
     assert.equal(
       CodexAdapterV2.codexFileChangeApprovalPrompt({ reason: " ", fileChanges }),
@@ -154,6 +154,44 @@ describe("CodexAdapterV2 file change approvals", () => {
     assert.isTrue(detail?.startsWith("add /tmp/file-00.ts") ?? false);
     assert.isTrue(detail?.endsWith("+5 more") ?? false);
     assert.notInclude(detail, "file-20.ts");
+  });
+});
+
+describe("CodexAdapterV2 command approvals", () => {
+  it("keeps the full command next to the reason", () => {
+    const command = `bash -lc '${"echo long-segment && ".repeat(40)}true'`;
+    assert.equal(
+      CodexAdapterV2.codexCommandApprovalPrompt({ reason: "Needs network access", command }),
+      `Needs network access\n${command}`,
+    );
+    assert.equal(
+      CodexAdapterV2.codexCommandApprovalPrompt({ reason: null, command: ["git", "push"] }),
+      "git push",
+    );
+    assert.equal(
+      CodexAdapterV2.codexCommandApprovalPrompt({
+        reason: "Run git status",
+        command: "git status",
+      }),
+      "Run git status",
+    );
+  });
+
+  it("describes network and permission requests that carry no command", () => {
+    assert.equal(
+      CodexAdapterV2.codexCommandApprovalPrompt({
+        reason: "Fetch dependencies",
+        networkApprovalContext: { host: "registry.npmjs.org", protocol: "https" },
+      }),
+      "Fetch dependencies\nhttps registry.npmjs.org",
+    );
+    assert.equal(
+      CodexAdapterV2.codexPermissionsApprovalPrompt({
+        reason: "Write build output",
+        permissions: { fileSystem: { write: ["/workspace/dist"] }, network: { enabled: true } },
+      }),
+      "Write build output\nwrite /workspace/dist\nnetwork access",
+    );
   });
 });
 
