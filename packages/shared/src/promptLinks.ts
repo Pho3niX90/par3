@@ -224,36 +224,12 @@ function copilotAppLinkPath(url: URL): string | null {
   if (prompt !== null) params.set("prompt", prompt);
   return `/new?${params}`;
 }
+
 /**
  * The in-app path a prompt link or thread deep link opens, or null for any other URL.
  * Desktop uses it for links the OS hands over: `par3://` and `t3code://` ones, GitHub Copilot app
  * ones, and, as the default browser on macOS, hosted-app ones.
  */
-function copilotAppLinkPath(url: URL): string | null {
-  const params = new URLSearchParams();
-  const item = url.host === "github.com" ? COPILOT_ITEM_PATH.exec(url.pathname) : null;
-  if (item) {
-    const [, owner, name, kind, number] = item;
-    if (kind === "pull") {
-      params.set("pr", `${owner}/${name}/${number}`);
-    } else {
-      params.set("repo", `${owner}/${name}`);
-      params.set("prompt", `Work on https://github.com/${owner}/${name}/issues/${number}`);
-    }
-    return `/new?${params}`;
-  }
-  const session = url.host === "session" ? COPILOT_SESSION_PATH.exec(url.pathname) : null;
-  if (!session) return null;
-  const repo =
-    session[1] && session[2] ? `${session[1]}/${session[2]}` : url.searchParams.get("repo");
-  const pr = url.searchParams.get("pr");
-  const prompt = url.searchParams.get("prompt");
-  if (repo && pr) params.set("pr", `${repo}/${pr}`);
-  else if (repo) params.set("repo", repo);
-  if (prompt !== null) params.set("prompt", prompt);
-  return `/new?${params}`;
-}
-
 export function promptLinkAppPath(
   value: string,
   hostedAppUrl: string = DEFAULT_HOSTED_APP_URL,
