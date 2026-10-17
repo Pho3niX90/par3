@@ -215,13 +215,22 @@ export async function runHeadlessArm(
     }
   });
 
+  let previousSessionApiMs = 0;
   try {
     for (const [index, prompt] of prompts.entries()) {
       turn = index;
       const { line, at } = await startTurn(prompt);
       const state = current!;
       const wallMs = at - turnStart;
-      const apiMs = typeof line.duration_api_ms === "number" ? line.duration_api_ms : undefined;
+      // `duration_api_ms` is summed over the session, so a warm turn's own
+      // API time is the difference from the previous result.
+      const sessionApiMs =
+        typeof line.duration_api_ms === "number" ? line.duration_api_ms : undefined;
+      const apiMs =
+        sessionApiMs === undefined
+          ? undefined
+          : sessionApiMs - (sessionApiMs >= previousSessionApiMs ? previousSessionApiMs : 0);
+      previousSessionApiMs = sessionApiMs ?? previousSessionApiMs;
       const inputTokens = totalInputTokens(line.usage);
       samples.push({
         arm: input.arm,
