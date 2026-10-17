@@ -21,6 +21,7 @@ import * as NodeUtil from "node:util";
 import { renderSummary } from "./bench/benchReport.ts";
 import {
   ARM_ORDER,
+  isUsageLimitError,
   type ArmId,
   type BenchConfig,
   type RuntimeMode,
@@ -108,6 +109,7 @@ function writeSyntheticRecordings(directory: string): void {
     const lines: string[] = [];
     let turn = -1;
     let ms = 0;
+    let sessionApiMs = 0;
     for (const entry of transcript.entries) {
       if (entry.type === "expect_outbound" && entry.label?.startsWith("prompt.offer")) {
         turn += 1;
@@ -115,8 +117,10 @@ function writeSyntheticRecordings(directory: string): void {
       } else if (entry.type === "emit_inbound") {
         ms += SYNTHETIC_FRAME_GAP_MS;
         const frame = entry.frame as Record<string, unknown>;
-        // The scripted time stands in for model time, as API time does live.
-        const line = frame.type === "result" ? { ...frame, duration_api_ms: ms } : frame;
+        // The scripted time stands in for model time. Like the CLI, the
+        // result reports API time summed over the whole session.
+        if (frame.type === "result") sessionApiMs += ms;
+        const line = frame.type === "result" ? { ...frame, duration_api_ms: sessionApiMs } : frame;
         lines.push(JSON.stringify({ turn, ms, line }));
       }
     }
@@ -287,7 +291,10 @@ async function runArm(arm: ArmId, variant: Variant, repetition: number): Promise
 }
 
 const selectedOrder = ARM_ORDER.filter((arm) => arms.includes(arm));
-for (const variant of variants()) {
+// Once the account's usage window is spent every later turn fails in seconds,
+// so the rest of the run would only record failures.
+let stoppedEarly: string | undefined;
+benchLoop: for (const variant of variants()) {
   const repeats = repeatOverride ?? variant.workload.repeats;
   // One discarded warm-up per arm, then repetitions in alternating order
   // (A0 A1 T B C, C B T A1 A0, ...) so drift over the run hits every arm alike.
@@ -302,8 +309,10 @@ for (const variant of variants()) {
           result.map((sample) => `${sample.turn} ${Math.round(sample.wallMs)} ms`).join(", "),
         );
         if (repetition >= 0) samples.push(...result);
+        stoppedEarly = result.map((sample) => sample.error).find(isUsageLimitError);
       } catch (error) {
         console.log(`failed: ${String(error)}`);
+        if (isUsageLimitError(String(error))) stoppedEarly = String(error);
         if (repetition >= 0) {
           samples.push({
             arm,
@@ -315,6 +324,10 @@ for (const variant of variants()) {
             error: String(error),
           });
         }
+      }
+      if (stoppedEarly !== undefined) {
+        console.log(`Stopping: ${stoppedEarly}`);
+        break benchLoop;
       }
     }
   }
@@ -329,6 +342,7 @@ const meta = {
   os: `${host.platform} ${NodeOS.release()} ${host.arch}`,
   node: process.version,
   finishedAt: new Date().toISOString(),
+  ...(stoppedEarly === undefined ? {} : { stoppedEarly }),
 };
 NodeFS.writeFileSync(
   NodePath.join(outDir, "results.json"),

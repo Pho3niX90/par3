@@ -96,3 +96,21 @@ export function totalInputTokens(usage: unknown): number | undefined {
     read("input_tokens") + read("cache_creation_input_tokens") + read("cache_read_input_tokens")
   );
 }
+
+/** Claude's reply when the account's usage window is spent. */
+const USAGE_LIMIT = /hit your \w+ limit|usage limit/i;
+
+export function isUsageLimitError(error: string | undefined): boolean {
+  return error !== undefined && USAGE_LIMIT.test(error);
+}
+
+/**
+ * The error for a Par3 run: Claude's own `result` text when it reported one,
+ * else the run's status when the run did not complete.
+ */
+export function runError(status: string | undefined, resultError: string | undefined) {
+  if (resultError !== undefined) return resultError;
+  return status === "completed" ? undefined : `run ${status ?? "never finished"}`;
+}
+
+export const optionalError = (error: string | undefined) => (error === undefined ? {} : { error });
