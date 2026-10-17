@@ -236,9 +236,9 @@ export const offerServiceDuringOnboarding = Effect.gen(function* () {
         ? "The installed Par3 service needs an update or repair. Update it now?"
         : platform === "darwin"
           ? "Run Par3 in the background whenever you log in to this Mac? " +
-            "It stays reachable through T3 Connect while you are logged in."
+            "It stays reachable through Parity Connect while you are logged in."
           : "Run Par3 in the background whenever this machine boots? " +
-            "It stays reachable through T3 Connect even after you log out.",
+            "It stays reachable through Parity Connect even after you log out.",
       initial: true,
     }),
   );

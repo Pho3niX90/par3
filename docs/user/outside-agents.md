@@ -20,10 +20,10 @@ The copied URL uses the route this device is connected over, so an agent on the
 same device can reach it.
 
 - **An agent on your own computers** can use any address that computer reaches
-  the environment at: a LAN or Tailscale address, T3 Connect, or `localhost` on
+  the environment at: a LAN or Tailscale address, Parity Connect, or `localhost` on
   the host. See [remote access](./remote-access.md).
 - **A hosted agent**, such as ChatGPT or a bot running in the cloud, must reach
-  the environment from the internet. Use the T3 Connect address. A Tailscale
+  the environment from the internet. Use the Parity Connect address. A Tailscale
   address only works from your own tailnet.
 
 ## Approve a sign-in
