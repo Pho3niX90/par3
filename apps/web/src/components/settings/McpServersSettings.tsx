@@ -32,7 +32,10 @@ import { Textarea } from "../ui/textarea";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
   describeMcpServerTransport,
+  editMcpVariable,
+  type McpVariableDraft,
   mcpServerNameError,
+  mcpServerUrlValid,
   mcpVariableNameValid,
   parseMcpServerArgs,
   toggleToolAllowed,
@@ -126,6 +129,16 @@ function McpServersForm() {
     void refreshStatus();
   };
 
+  // A test describes the settings it ran against, so a changed or removed server drops it.
+  const forgetTest = (serverId: string) =>
+    setTests((previous) =>
+      Object.fromEntries(Object.entries(previous).filter(([id]) => id !== serverId)),
+    );
+
+  const remove = async (serverId: string) => {
+    if (await save(servers.filter((candidate) => candidate.id !== serverId))) forgetTest(serverId);
+  };
+
   return (
     <SettingsSection
       id="mcp-servers"
@@ -177,9 +190,7 @@ function McpServersForm() {
                 }
                 onEdit={() => setEditing({ server, isNew: false })}
                 onTest={() => void runTest(server)}
-                onRemove={() =>
-                  void save(servers.filter((candidate) => candidate.id !== server.id))
-                }
+                onRemove={() => void remove(server.id)}
               />
             ))}
           </ul>
@@ -194,7 +205,10 @@ function McpServersForm() {
           busy={busy}
           onClose={() => setEditing(null)}
           onSave={async (server) => {
-            if (await save(upsertMcpServer(servers, server))) setEditing(null);
+            if (await save(upsertMcpServer(servers, server))) {
+              forgetTest(server.id);
+              setEditing(null);
+            }
           }}
         />
       ) : null}
@@ -306,7 +320,7 @@ function McpServerRow(props: {
                 size="xs"
                 variant="ghost"
                 disabled={props.disabled}
-                onClick={() => props.onPolicy({ ...server.toolPolicy, mode: "all", tools: [] })}
+                onClick={() => props.onPolicy({ ...server.toolPolicy, mode: "all" })}
               >
                 Allow all
               </Button>
@@ -353,10 +367,18 @@ function McpServerRow(props: {
   );
 }
 
-type Variable = McpServerHeader & { readonly key: string };
+type Variable = McpVariableDraft;
 
-const withKey = (variable: McpServerHeader): Variable => ({ ...variable, key: randomUUID() });
-const withoutKey = ({ key: _key, ...variable }: Variable): McpServerHeader => ({
+const withKey = (variable: McpServerHeader): Variable => ({
+  ...variable,
+  key: randomUUID(),
+  ...(variable.valueRedacted ? { savedSecretName: variable.name } : {}),
+});
+const withoutKey = ({
+  key: _key,
+  savedSecretName: _saved,
+  ...variable
+}: Variable): McpServerHeader => ({
   ...variable,
   name: variable.name.trim(),
 });
@@ -368,8 +390,12 @@ function VariablesEditor(props: {
   readonly disabled: boolean;
   readonly onChange: (variables: ReadonlyArray<Variable>) => void;
 }) {
-  const update = (index: number, next: Variable) =>
-    props.onChange(props.variables.map((variable, at) => (at === index ? next : variable)));
+  const edit = (index: number, change: Parameters<typeof editMcpVariable>[1]) =>
+    props.onChange(
+      props.variables.map((variable, at) =>
+        at === index ? editMcpVariable(variable, change) : variable,
+      ),
+    );
   return (
     <div className="space-y-1.5 text-sm">
       <div className="flex items-center justify-between">
@@ -397,11 +423,7 @@ function VariablesEditor(props: {
             disabled={props.disabled}
             spellCheck={false}
             placeholder={props.namePlaceholder}
-            onChange={(event) => {
-              // A saved secret belongs to its old name, so a renamed one must be entered again.
-              const { valueRedacted: _, ...rest } = variable;
-              update(index, { ...rest, name: event.target.value });
-            }}
+            onChange={(event) => edit(index, { name: event.target.value })}
           />
           {variable.sensitive ? (
             <SecretInput
@@ -409,10 +431,7 @@ function VariablesEditor(props: {
               configured={variable.valueRedacted === true}
               value={variable.valueRedacted ? "" : variable.value}
               disabled={props.disabled}
-              onChange={(event) => {
-                const { valueRedacted: _, ...rest } = variable;
-                update(index, { ...rest, value: event.target.value });
-              }}
+              onChange={(event) => edit(index, { value: event.target.value })}
             />
           ) : (
             <Input
@@ -420,21 +439,16 @@ function VariablesEditor(props: {
               value={variable.value}
               disabled={props.disabled}
               spellCheck={false}
-              onChange={(event) => update(index, { ...variable, value: event.target.value })}
+              onChange={(event) => edit(index, { value: event.target.value })}
             />
           )}
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Checkbox
               checked={variable.sensitive}
               disabled={props.disabled}
-              onCheckedChange={(sensitive) => {
-                const { valueRedacted: _, ...rest } = variable;
-                update(index, {
-                  ...rest,
-                  value: variable.valueRedacted ? "" : variable.value,
-                  sensitive,
-                });
-              }}
+              onCheckedChange={(sensitive) =>
+                edit(index, { value: variable.valueRedacted ? "" : variable.value, sensitive })
+              }
             />
             Secret
           </label>
@@ -475,12 +489,12 @@ function McpServerEditor(props: {
   const nameError = mcpServerNameError(draft.name, props.servers, draft.id);
   const transport = draft.transport;
   const transportReady =
-    transport.type === "stdio"
-      ? transport.command.trim() !== ""
-      : /^https?:\/\/./i.test(transport.url);
+    transport.type === "stdio" ? transport.command.trim() !== "" : mcpServerUrlValid(transport.url);
+  // Only the visible list is saved, so an entry in the hidden one cannot block saving.
   const variablesReady =
-    environment.every((variable) => mcpVariableNameValid("env", variable.name)) &&
-    headers.every((header) => mcpVariableNameValid("header", header.name));
+    transport.type === "stdio"
+      ? environment.every((variable) => mcpVariableNameValid("env", variable.name))
+      : headers.every((header) => mcpVariableNameValid("header", header.name));
   const valid = nameError === null && transportReady && variablesReady;
   const { description, ...rest } = draft;
   const build = (): McpServerConfig => ({

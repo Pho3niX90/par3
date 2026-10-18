@@ -1,4 +1,10 @@
-import { McpServerName, type McpServerConfig, type McpServerToolPolicy } from "@t3tools/contracts";
+import {
+  isMcpServerHttpUrl,
+  McpServerName,
+  type McpServerConfig,
+  type McpServerHeader,
+  type McpServerToolPolicy,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 const isServerName = Schema.is(McpServerName);
@@ -27,7 +33,35 @@ export function mcpVariableNameValid(kind: "env" | "header", name: string): bool
   return VARIABLE_NAME_PATTERNS[kind].test(name.trim());
 }
 
-/** Unticking a tool under `all` switches to an allow-list of every other tool the server offers. */
+export function mcpServerUrlValid(url: string): boolean {
+  return isMcpServerHttpUrl(url.trim());
+}
+
+export type McpVariableDraft = McpServerHeader & {
+  readonly key: string;
+  /** The name a saved secret was stored under; its value never reaches the client. */
+  readonly savedSecretName?: string;
+};
+
+/**
+ * A saved secret shows as an empty field. Typing into it and clearing it again under the same name
+ * keeps the saved value instead of saving an empty one; a renamed secret must be entered again.
+ */
+export function editMcpVariable(
+  variable: McpVariableDraft,
+  change: Partial<Pick<McpServerHeader, "name" | "value" | "sensitive">>,
+): McpVariableDraft {
+  const { valueRedacted: _, ...rest } = variable;
+  const next = { ...rest, ...change };
+  return next.sensitive && next.value === "" && next.savedSecretName === next.name.trim()
+    ? { ...next, valueRedacted: true }
+    : next;
+}
+
+/**
+ * Unticking a tool under `all` switches to an allow-list of every other tool the server offers.
+ * The list is kept under `all`, as the contract says.
+ */
 export function toggleToolAllowed(
   policy: McpServerToolPolicy,
   offeredTools: ReadonlyArray<string>,
@@ -39,7 +73,7 @@ export function toggleToolAllowed(
     ? [...new Set([...current, tool])]
     : current.filter((candidate) => candidate !== tool);
   return offeredTools.every((candidate) => tools.includes(candidate))
-    ? { ...policy, mode: "all", tools: [] }
+    ? { ...policy, mode: "all", tools }
     : { ...policy, mode: "allow", tools };
 }
 
