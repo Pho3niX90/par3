@@ -501,6 +501,10 @@ const config: ExpoConfig = {
     eas: easProjectId ? { projectId: easProjectId } : {},
   },
   ...(expoOwner ? { owner: expoOwner } : {}),
+  experiments: {
+    // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
+    reactCompiler: true,
+  },
 };
 
 export default config;
