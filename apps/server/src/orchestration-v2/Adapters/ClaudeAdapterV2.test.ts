@@ -980,19 +980,21 @@ describe("ClaudeAdapterV2 session permissions", () => {
     ]);
   });
 
-  it("adds no session rule for Bash when Claude offers no suggestion", () => {
-    const result = ClaudeAdapterV2.permissionResultFromDecision({
-      toolName: "Bash",
-      decision: "acceptForSession",
-      toolInput: { command: "npm publish" },
-      toolUseID: "tool-3",
-    });
+  it("adds no session rule for a shell tool when Claude offers no suggestion", () => {
+    for (const toolName of ["Bash", "PowerShell"]) {
+      const result = ClaudeAdapterV2.permissionResultFromDecision({
+        toolName,
+        decision: "acceptForSession",
+        toolInput: { command: "npm publish" },
+        toolUseID: "tool-3",
+      });
 
-    assert.equal(result.behavior, "allow");
-    if (result.behavior !== "allow") {
-      return;
+      assert.equal(result.behavior, "allow");
+      if (result.behavior !== "allow") {
+        return;
+      }
+      assert.deepEqual(result.updatedPermissions, [], toolName);
     }
-    assert.deepEqual(result.updatedPermissions, []);
   });
 
   it("adds a whole-tool session rule when Claude offers no suggestion", () => {
