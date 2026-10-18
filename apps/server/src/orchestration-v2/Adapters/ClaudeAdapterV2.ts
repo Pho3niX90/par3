@@ -2535,6 +2535,9 @@ export function permissionResultFromDecision(input: {
   };
 }
 
+// Claude Code's shell tools: PowerShell replaces or joins Bash on Windows.
+const CLAUDE_SHELL_TOOL_NAMES = new Set(["Bash", "PowerShell"]);
+
 function toSessionPermissionUpdates(
   toolName: string,
   suggestions: ReadonlyArray<PermissionUpdate> | undefined,
@@ -2546,9 +2549,9 @@ function toSessionPermissionUpdates(
   if (updates.length > 0) {
     return updates;
   }
-  // A bare Bash rule would allow every later command, including the ones Auto
+  // A bare shell rule would allow every later command, including the ones Auto
   // mode or a hook escalated for a reason.
-  if (toolName === "Bash") {
+  if (CLAUDE_SHELL_TOOL_NAMES.has(toolName)) {
     return [];
   }
   return [
