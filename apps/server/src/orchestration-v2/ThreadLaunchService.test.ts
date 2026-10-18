@@ -1152,6 +1152,50 @@ it.effect("names the worktree itself when the client provides no branch", () =>
   }),
 );
 
+it.effect.each([
+  { message: "Fix the Login bug!", branch: "t3/fix-the-login-bug" },
+  { message: "!!! ???", branch: undefined },
+])(
+  "falls back to the first message when branch generation fails: $message",
+  ({ message, branch }) =>
+    Effect.gen(function* () {
+      const harness = makeHarness({
+        generateBranchName: () => Effect.fail("provider unavailable" as never),
+      });
+      yield* Effect.gen(function* () {
+        const launches = yield* ThreadLaunch.ThreadLaunchService;
+        const threads = yield* ThreadManagement.ThreadManagementService;
+        const launched = yield* launches.launch(
+          launchInput({
+            command: "command:launch:fallback-branch",
+            thread: "thread:launch:fallback-branch",
+            message,
+            workspace: { type: "worktree", baseRef: "main", branch: "t3/abcd1234" },
+          }),
+        );
+        yield* waitUntil(() =>
+          Effect.sync(() => harness.generateBranchName.mock.calls.length === 1),
+        );
+        if (branch === undefined) {
+          // A message with nothing to derive a name from keeps the temporary branch.
+          yield* waitUntil(() => Effect.sync(() => harness.createWorktree.mock.calls.length === 1));
+          assert.equal(harness.renameBranch.mock.calls.length, 0);
+          assert.equal(
+            (yield* threads.getThreadProjection(launched.threadId)).thread.branch,
+            "t3/abcd1234",
+          );
+          return;
+        }
+        yield* waitUntil(() =>
+          threads
+            .getThreadProjection(launched.threadId)
+            .pipe(Effect.map((projection) => projection.thread.branch === branch)),
+        );
+        assert.equal(harness.renameBranch.mock.calls[0]?.[0]?.newBranch, branch);
+      }).pipe(Effect.provide(harness.layer));
+    }),
+);
+
 it.effect.each(
   [false, true].flatMap((archived) =>
     [false, true].map((parentMoved) => ({ archived, parentMoved })),

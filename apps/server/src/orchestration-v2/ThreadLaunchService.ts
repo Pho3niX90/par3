@@ -1,6 +1,7 @@
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
+import { formatGeneratedBranchName } from "@t3tools/shared/git";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   CommandId,
@@ -358,6 +359,30 @@ const make = Effect.gen(function* () {
                 branch: result.branch,
                 exactName: settings.branchNamingMode === "custom",
               })),
+              // Without a fallback the thread keeps its temporary t3/<hash> name.
+              Effect.catch((error) =>
+                // sanitizeBranchFragment turns an unusable message into "update".
+                /[a-z0-9]/i.test(message.text)
+                  ? Effect.logWarning("Branch name generation failed; using the first message", {
+                      cause: error,
+                    }).pipe(
+                      Effect.as({
+                        branch: formatGeneratedBranchName(
+                          message.text,
+                          // Custom mode would use the whole message verbatim.
+                          settings.branchNamingMode === "static"
+                            ? {
+                                mode: "static",
+                                prefix: settings.branchNamePrefix,
+                                instructions: settings.branchNameInstructions,
+                              }
+                            : undefined,
+                        ),
+                        exactName: false,
+                      }),
+                    )
+                  : Effect.fail(error),
+              ),
             );
         });
 
