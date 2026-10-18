@@ -19,7 +19,9 @@ In **Settings → Integrations → Shared MCP servers**, choose **Add server**:
   other headers its provider asks for.
 
 Mark tokens and keys as **Secret**. Secret values stay in the environment's
-secret store and are never sent back to clients.
+secret store and are never sent back to clients. Put tokens in a secret
+environment variable or header, not in the arguments or the URL's query string,
+which are stored and shown as plain text.
 
 Choose **Test connection** from a server's menu to start it and list its tools.
 Untick a tool to stop agents calling it. Turn a server off with its switch;
@@ -29,7 +31,8 @@ agents then see it as disabled.
 
 Agents list the shared servers with `mcp_servers` and call a tool with
 `mcp_call`. Each call shows in the thread as the server and tool it reached,
-for example `linear · lookup`.
+for example `linear · lookup`. A thread in plan mode can call only the tools a
+server marks as read-only.
 
 Par3 connects to a server the first time an agent uses it and disconnects it
 after ten minutes unused. Only people who can change the environment's settings

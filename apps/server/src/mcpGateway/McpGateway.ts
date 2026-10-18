@@ -20,6 +20,7 @@ import {
   type Tool as UpstreamTool,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
+  isMcpServerHttpUrl,
   McpGatewayError,
   type McpGatewayServerStatus,
   type McpGatewayTestResult,
@@ -45,13 +46,17 @@ const CALL_TIMEOUT_MS = 5 * 60_000;
 const IDLE_TIMEOUT_MS = 10 * 60_000;
 const STDERR_TAIL_CHARS = 2_000;
 const ERROR_DETAIL_CHARS = 500;
+const MIN_REDACTED_CHARS = 4;
 
 export interface McpGatewayCaller {
   readonly threadId?: string;
   readonly providerInstanceId?: string;
   readonly clientLabel?: string;
-  /** A read-only MCP client, which may call only tools the upstream marks `readOnlyHint`. */
-  readonly readOnly: boolean;
+  /**
+   * Why the caller may call only tools the upstream marks `readOnlyHint`: a read-only MCP client,
+   * or a thread in plan mode, which must not change anything while it plans.
+   */
+  readonly readOnly: false | "client" | "plan";
 }
 
 /** The upstream `tools/call` result, passed to the agent unchanged. */
@@ -67,6 +72,7 @@ interface OpenedTransport {
   readonly stderrTail: () => string;
 }
 
+/** May throw; the gateway reports that as this server failing to connect. */
 export type OpenTransport = (server: McpServerConfig) => OpenedTransport;
 
 export class McpGateway extends Context.Service<
@@ -101,11 +107,46 @@ const describeCause = (cause: unknown) =>
 const isTimeout = (cause: unknown) =>
   cause instanceof McpError && cause.code === ErrorCode.RequestTimeout;
 
+/**
+ * A JSON-RPC error answer leaves the connection usable. Anything else, such as an HTTP error
+ * status for an expired session, a dropped connection, or a timeout, means it is not.
+ */
+const brokeConnection = (cause: unknown) =>
+  !(cause instanceof McpError) ||
+  cause.code === ErrorCode.ConnectionClosed ||
+  cause.code === ErrorCode.RequestTimeout;
+
+/** Longest first, so a value that contains another is redacted whole. */
+const secretValuesOf = (server: McpServerConfig) =>
+  [...server.environment, ...server.headers]
+    .filter((variable) => variable.sensitive)
+    .flatMap((variable) => {
+      const value = variable.value.trim();
+      // A header such as `Bearer <token>` may be echoed without its scheme.
+      return [value, value.slice(value.lastIndexOf(" ") + 1)];
+    })
+    .filter((value) => value.length >= MIN_REDACTED_CHARS)
+    .sort((left, right) => right.length - left.length);
+
+/** Upstream messages and stderr reach agents, and a server may echo its own token in them. */
+const failureText = (server: McpServerConfig, text: string) =>
+  cut(
+    secretValuesOf(server).reduce(
+      (redacted, secret) => redacted.replaceAll(secret, "[redacted]"),
+      text,
+    ),
+    ERROR_DETAIL_CHARS,
+  );
+
 const headerRecord = (server: McpServerConfig) =>
   Object.fromEntries(server.headers.map((header) => [header.name, header.value]));
 
 const openDefaultTransport: OpenTransport = (server) => {
   if (server.transport.type === "http") {
+    // Saving checks the URL, but settings written before that check still load.
+    if (!isMcpServerHttpUrl(server.transport.url)) {
+      throw new Error("Its URL is not a valid http or https URL.");
+    }
     return {
       // The SDK's own classes declare optional fields without `| undefined`.
       transport: new StreamableHTTPClientTransport(new URL(server.transport.url), {
@@ -161,8 +202,9 @@ const presentTool = (server: McpServerConfig, tool: UpstreamTool): McpGatewayToo
 
 interface Connection {
   readonly client: Client;
-  readonly stderrTail: () => string;
   tools: ReadonlyArray<UpstreamTool> | undefined;
+  /** Bumped by `tools/list_changed`, so a listing already in flight does not cache a stale list. */
+  toolsGeneration: number;
 }
 
 interface Slot {
@@ -171,6 +213,10 @@ interface Slot {
   connection: Connection | undefined;
   lastError: string | undefined;
   lastUsedAt: number;
+  /** The idle reaper leaves a connection alone while a call or listing uses it. */
+  activeCalls: number;
+  /** Replaced or dropped: a connection that opens on it afterwards is closed at once. */
+  retired: boolean;
 }
 
 export const makeWithTransport = (openTransport: OpenTransport) =>
@@ -188,12 +234,18 @@ export const makeWithTransport = (openTransport: OpenTransport) =>
           : Effect.promise(() => connection.client.close().catch(() => undefined));
       });
 
+    const retire = (slot: Slot) =>
+      Effect.suspend(() => {
+        slot.retired = true;
+        return closeConnection(slot);
+      });
+
     const dropSlot = (id: string) =>
       Effect.suspend(() => {
         const slot = slots.get(id);
         if (slot === undefined) return Effect.void;
         slots.delete(id);
-        return closeConnection(slot);
+        return retire(slot);
       });
 
     const readServers = settingsService.getSettings.pipe(
@@ -226,98 +278,163 @@ export const makeWithTransport = (openTransport: OpenTransport) =>
 
     const slotFor = Effect.fn("McpGateway.slotFor")(function* (server: McpServerConfig) {
       const fingerprint = fingerprintOf(server);
-      const existing = slots.get(server.id);
-      if (existing?.fingerprint === fingerprint) return existing;
-      if (existing !== undefined) yield* dropSlot(server.id);
-      const slot: Slot = {
-        fingerprint,
-        lock: yield* Semaphore.make(1),
-        connection: undefined,
-        lastError: undefined,
-        lastUsedAt: yield* Clock.currentTimeMillis,
-      };
-      slots.set(server.id, slot);
+      const now = yield* Clock.currentTimeMillis;
+      // Looked up and replaced in one step, so concurrent callers never orphan each other's slot.
+      const { slot, replaced } = yield* Effect.sync(() => {
+        const existing = slots.get(server.id);
+        if (existing?.fingerprint === fingerprint) return { slot: existing, replaced: undefined };
+        const slot: Slot = {
+          fingerprint,
+          lock: Semaphore.makeUnsafe(1),
+          connection: undefined,
+          lastError: undefined,
+          lastUsedAt: now,
+          activeCalls: 0,
+          retired: false,
+        };
+        slots.set(server.id, slot);
+        return { slot, replaced: existing };
+      });
+      if (replaced !== undefined) yield* retire(replaced);
       return slot;
     });
 
     const connect = (server: McpServerConfig, slot: Slot) =>
       Effect.suspend(() => {
-        const opened = openTransport(server);
+        let opened: OpenedTransport | undefined;
+        const stderrOf = () => {
+          const stderr = opened?.stderrTail().trim();
+          return stderr ? ` ${stderr}` : "";
+        };
         const client = new Client({ name: "par3", version: packageJson.version });
         client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
-          if (slot.connection?.client === client) slot.connection.tools = undefined;
+          const connection = slot.connection;
+          if (connection?.client !== client) return;
+          connection.tools = undefined;
+          connection.toolsGeneration += 1;
         });
         client.onclose = () => {
           if (slot.connection?.client !== client) return;
           slot.connection = undefined;
-          const stderr = opened.stderrTail().trim();
-          slot.lastError = cut(
-            `The server closed the connection.${stderr ? ` ${stderr}` : ""}`,
-            ERROR_DETAIL_CHARS,
-          );
+          slot.lastError = failureText(server, `The server closed the connection.${stderrOf()}`);
         };
         return Effect.tryPromise({
           try: async (signal) => {
+            // Opened inside the try, so a transport that cannot be built fails this server only.
+            opened = openTransport(server);
             try {
               await client.connect(opened.transport, { signal, timeout: CONNECT_TIMEOUT_MS });
             } catch (cause) {
               await client.close().catch(() => undefined);
               throw cause;
             }
-            return { client, stderrTail: opened.stderrTail, tools: undefined } as Connection;
+            return { client, tools: undefined, toolsGeneration: 0 } as Connection;
           },
-          catch: (cause) => {
-            const stderr = opened.stderrTail().trim();
-            return new McpGatewayError({
+          catch: (cause) =>
+            new McpGatewayError({
               reason: isTimeout(cause) ? "timeout" : "connection_failed",
-              detail: cut(
-                `Could not connect to "${server.name}": ${describeCause(cause)}${stderr ? ` ${stderr}` : ""}`,
-                ERROR_DETAIL_CHARS,
+              detail: failureText(
+                server,
+                `Could not connect to "${server.name}": ${describeCause(cause)}${stderrOf()}`,
               ),
-            });
-          },
+            }),
         });
       });
 
-    const connected = Effect.fn("McpGateway.connected")(function* (server: McpServerConfig) {
-      const slot = yield* slotFor(server);
-      slot.lastUsedAt = yield* Clock.currentTimeMillis;
-      const connection = yield* slot.lock.withPermits(1)(
+    const connectedOn = (server: McpServerConfig, slot: Slot) =>
+      slot.lock.withPermits(1)(
         Effect.suspend(() =>
           slot.connection !== undefined
             ? Effect.succeed(slot.connection)
             : connect(server, slot).pipe(
-                Effect.tap((connection) =>
-                  Effect.sync(() => {
-                    slot.connection = connection;
-                    slot.lastError = undefined;
-                  }),
-                ),
                 Effect.tapError((error) =>
                   Effect.sync(() => {
                     slot.lastError = error.detail;
                   }),
                 ),
+                Effect.flatMap((connection) =>
+                  Effect.suspend(() => {
+                    if (!slot.retired) {
+                      slot.connection = connection;
+                      slot.lastError = undefined;
+                      return Effect.succeed(connection);
+                    }
+                    // Its settings changed or it was removed while connecting. Nothing else
+                    // tracks this connection, so a stdio server would outlive it.
+                    return Effect.promise(() =>
+                      connection.client.close().catch(() => undefined),
+                    ).pipe(
+                      Effect.andThen(
+                        Effect.fail(
+                          new McpGatewayError({
+                            reason: "connection_failed",
+                            detail: `The settings of "${server.name}" changed while connecting. Try again.`,
+                          }),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
               ),
         ),
       );
-      return { slot, connection };
-    });
 
-    const upstreamFailure = (server: McpServerConfig, action: string) => (cause: unknown) =>
-      new McpGatewayError({
-        reason: isTimeout(cause) ? "timeout" : "upstream_error",
-        detail: cut(
-          `"${server.name}" ${action} failed: ${describeCause(cause)}`,
-          ERROR_DETAIL_CHARS,
+    const withConnection = <A>(
+      server: McpServerConfig,
+      use: (connection: Connection, slot: Slot) => Effect.Effect<A, McpGatewayError>,
+    ) =>
+      Effect.flatMap(slotFor(server), (slot) =>
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            slot.activeCalls += 1;
+          }),
+          () => Effect.flatMap(connectedOn(server, slot), (connection) => use(connection, slot)),
+          () =>
+            Effect.flatMap(Clock.currentTimeMillis, (now) =>
+              Effect.sync(() => {
+                slot.activeCalls -= 1;
+                slot.lastUsedAt = now;
+              }),
+            ),
         ),
-      });
+      );
 
-    const toolsOf = Effect.fn("McpGateway.toolsOf")(function* (server: McpServerConfig) {
-      const { connection } = yield* connected(server);
-      if (connection.tools !== undefined) return connection.tools;
-      const tools = yield* Effect.tryPromise({
-        try: async (signal) => {
+    /** Closes a broken connection, so the next call reconnects instead of failing the same way. */
+    const request = <A>(
+      server: McpServerConfig,
+      slot: Slot,
+      connection: Connection,
+      action: string,
+      run: (signal: AbortSignal) => Promise<A>,
+    ) =>
+      Effect.tryPromise({ try: run, catch: (cause) => ({ cause }) }).pipe(
+        Effect.catch(({ cause }) => {
+          const error = new McpGatewayError({
+            reason: isTimeout(cause) ? "timeout" : "upstream_error",
+            detail: failureText(
+              server,
+              `"${server.name}" ${action} failed: ${describeCause(cause)}`,
+            ),
+          });
+          return Effect.suspend(() =>
+            brokeConnection(cause) && slot.connection?.client === connection.client
+              ? closeConnection(slot).pipe(
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      slot.lastError = error.detail;
+                    }),
+                  ),
+                )
+              : Effect.void,
+          ).pipe(Effect.andThen(Effect.fail(error)));
+        }),
+      );
+
+    const listedTools = (server: McpServerConfig, connection: Connection, slot: Slot) =>
+      Effect.suspend(() => {
+        if (connection.tools !== undefined) return Effect.succeed(connection.tools);
+        const generation = connection.toolsGeneration;
+        return request(server, slot, connection, "listing tools", async (signal) => {
           const listed: Array<UpstreamTool> = [];
           let cursor: string | undefined;
           do {
@@ -329,12 +446,25 @@ export const makeWithTransport = (openTransport: OpenTransport) =>
             cursor = page.nextCursor;
           } while (cursor !== undefined);
           return listed;
-        },
-        catch: upstreamFailure(server, "listing tools"),
+        }).pipe(
+          Effect.tap((tools) =>
+            Effect.sync(() => {
+              if (connection.toolsGeneration === generation) connection.tools = tools;
+              slot.lastError = undefined;
+            }),
+          ),
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              slot.lastError = error.detail;
+            }),
+          ),
+        );
       });
-      connection.tools = tools;
-      return tools;
-    });
+
+    const toolsOf = (server: McpServerConfig) =>
+      withConnection(server, (connection, slot) => listedTools(server, connection, slot)).pipe(
+        Effect.withSpan("McpGateway.toolsOf"),
+      );
 
     const statusOf = (server: McpServerConfig): McpGatewayServerStatus => {
       const base = {
@@ -345,6 +475,9 @@ export const makeWithTransport = (openTransport: OpenTransport) =>
       if (!server.enabled) return { ...base, state: "disabled" };
       const slot = slots.get(server.id);
       const current = slot?.fingerprint === fingerprintOf(server) ? slot : undefined;
+      if (current?.lastError !== undefined) {
+        return { ...base, state: "error", error: current.lastError };
+      }
       const tools = current?.connection?.tools;
       if (current?.connection !== undefined) {
         return {
@@ -355,9 +488,7 @@ export const makeWithTransport = (openTransport: OpenTransport) =>
             : { toolCount: tools.filter((tool) => allowedByPolicy(server, tool.name)).length }),
         };
       }
-      return current?.lastError === undefined
-        ? { ...base, state: "idle" }
-        : { ...base, state: "error", error: current.lastError };
+      return { ...base, state: "idle" };
     };
 
     const listServers: McpGateway["Service"]["listServers"] = Effect.fn("McpGateway.listServers")(
@@ -389,39 +520,41 @@ export const makeWithTransport = (openTransport: OpenTransport) =>
       input: Parameters<McpGateway["Service"]["callTool"]>[0],
     ): Effect.fn.Return<McpGatewayCallResult, McpGatewayError> {
       const server = yield* findServer(input.server);
-      const upstream = (yield* toolsOf(server)).find((tool) => tool.name === input.tool);
-      if (upstream === undefined) {
-        return yield* new McpGatewayError({
-          reason: "tool_not_found",
-          detail: `"${server.name}" has no tool named "${input.tool}". Call mcp_servers with server "${server.name}" to list its tools.`,
-        });
-      }
-      if (!allowedByPolicy(server, upstream.name)) {
-        return yield* new McpGatewayError({
-          reason: "tool_not_allowed",
-          detail: `Par3's settings do not let agents call "${upstream.name}" on "${server.name}".`,
-        });
-      }
-      if (input.caller.readOnly && upstream.annotations?.readOnlyHint !== true) {
-        return yield* new McpGatewayError({
-          reason: "read_only",
-          detail: `"${upstream.name}" is not marked read-only, and this MCP client was approved for read-only access.`,
-        });
-      }
-      const { connection } = yield* connected(server);
-      const result = yield* Effect.tryPromise({
-        try: (signal) =>
-          connection.client.callTool(
-            { name: upstream.name, arguments: { ...input.arguments } },
-            undefined,
-            {
-              signal,
-              timeout: CALL_TIMEOUT_MS,
-              resetTimeoutOnProgress: true,
-            },
-          ),
-        catch: upstreamFailure(server, `calling "${upstream.name}"`),
-      });
+      const result = yield* withConnection(server, (connection, slot) =>
+        Effect.gen(function* () {
+          const upstream = (yield* listedTools(server, connection, slot)).find(
+            (tool) => tool.name === input.tool,
+          );
+          if (upstream === undefined) {
+            return yield* new McpGatewayError({
+              reason: "tool_not_found",
+              detail: `"${server.name}" has no tool named "${input.tool}". Call mcp_servers with server "${server.name}" to list its tools.`,
+            });
+          }
+          if (!allowedByPolicy(server, upstream.name)) {
+            return yield* new McpGatewayError({
+              reason: "tool_not_allowed",
+              detail: `Par3's settings do not let agents call "${upstream.name}" on "${server.name}".`,
+            });
+          }
+          if (input.caller.readOnly !== false && upstream.annotations?.readOnlyHint !== true) {
+            return yield* new McpGatewayError({
+              reason: "read_only",
+              detail:
+                input.caller.readOnly === "plan"
+                  ? `"${upstream.name}" is not marked read-only, and this thread is in plan mode, where shared MCP servers allow only read-only tools. It can be called once the user takes the thread out of plan mode.`
+                  : `"${upstream.name}" is not marked read-only, and this MCP client was approved for read-only access.`,
+            });
+          }
+          return yield* request(server, slot, connection, `calling "${upstream.name}"`, (signal) =>
+            connection.client.callTool(
+              { name: upstream.name, arguments: { ...input.arguments } },
+              undefined,
+              { signal, timeout: CALL_TIMEOUT_MS },
+            ),
+          );
+        }),
+      );
       // Servers on the 2024-10-07 protocol answer with `toolResult` instead of content blocks.
       if ("toolResult" in result) {
         return { content: [{ type: "text", text: encodeJsonText(result.toolResult) }] };
@@ -486,18 +619,16 @@ export const makeWithTransport = (openTransport: OpenTransport) =>
 
     yield* settingsService.streamChanges.pipe(
       Stream.runForEach((settings) =>
-        Effect.forEach(
-          [...slots.keys()],
-          (id) => {
+        Effect.suspend(() => {
+          const stale = [...slots].filter(([id, slot]) => {
             const server = settings.mcpServers.find((candidate) => candidate.id === id);
-            const stale =
-              server === undefined ||
-              !server.enabled ||
-              slots.get(id)?.fingerprint !== fingerprintOf(server);
-            return stale ? dropSlot(id) : Effect.void;
-          },
-          { discard: true },
-        ),
+            return (
+              server === undefined || !server.enabled || slot.fingerprint !== fingerprintOf(server)
+            );
+          });
+          for (const [id] of stale) slots.delete(id);
+          return Effect.forEach(stale, ([, slot]) => retire(slot), { discard: true });
+        }),
       ),
       Effect.forkScoped,
     );
@@ -505,7 +636,11 @@ export const makeWithTransport = (openTransport: OpenTransport) =>
     yield* Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       for (const slot of slots.values()) {
-        if (slot.connection !== undefined && now - slot.lastUsedAt > IDLE_TIMEOUT_MS) {
+        if (
+          slot.connection !== undefined &&
+          slot.activeCalls === 0 &&
+          now - slot.lastUsedAt > IDLE_TIMEOUT_MS
+        ) {
           yield* closeConnection(slot);
         }
       }

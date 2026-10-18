@@ -7,6 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
@@ -788,6 +789,10 @@ const registerGatewayCall = Effect.fn("McpHttpServer.registerGatewayCall")(funct
                   () =>
                     new McpSchema.CallToolResult({
                       content: [{ type: "text", text: encodeJsonText(encodedResult) }],
+                      ...(Predicate.hasProperty(encodedResult, "isError") &&
+                      encodedResult.isError === true
+                        ? { isError: true }
+                        : {}),
                     }),
                 ),
               ),

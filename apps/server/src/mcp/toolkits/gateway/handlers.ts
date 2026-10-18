@@ -6,7 +6,8 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { McpCallToolkit, McpServersToolkit, type GatewayToolkit } from "./tools.ts";
 
 const handlers = {
-  mcp_servers: McpToolAccess.reads((input) =>
+  // Listing connects to every enabled server, which can start their commands on the host.
+  mcp_servers: McpToolAccess.readsAsLiveCaller((input) =>
     Effect.gen(function* () {
       yield* McpInvocationContext.requireMcpCapability("mcp-gateway");
       const gateway = yield* McpGateway.McpGateway;

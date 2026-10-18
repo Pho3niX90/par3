@@ -523,8 +523,9 @@ add tools at runtime but not remove them, and every client gets the same
 fixed tools stand in for them instead. `mcp_servers` lists the servers and,
 for one server, its tools and schemas; `mcp_call` calls a tool.
 `apps/server/src/mcpGateway/McpGateway.ts` owns the upstream connections and
-applies each server's tool policy, the read-only client ceiling, and the
-timeout when a tool is called. Thread credentials carry the `mcp-gateway`
+applies each server's tool policy, the read-only ceiling, and the timeout when
+a tool is called. The ceiling covers read-only clients and threads in plan
+mode: both may call only tools the upstream marks `readOnlyHint`. Thread credentials carry the `mcp-gateway`
 capability. Outside OAuth clients do not.
 
 ## Code Ownership

@@ -884,7 +884,12 @@ it.effect("only the caller that prepared a pending upload can discard it", () =>
 );
 
 it.effect("reaches shared MCP servers through mcp_servers and mcp_call with a thread token", () => {
-  const calls: Array<{ server: string; tool: string; readOnly: boolean; threadId?: string }> = [];
+  const calls: Array<{
+    server: string;
+    tool: string;
+    readOnly: McpGateway.McpGatewayCaller["readOnly"];
+    threadId?: string;
+  }> = [];
   const gatewayScope = { ...scope, capabilities: new Set(["mcp-gateway"] as const) };
   const call = (
     name: string,
@@ -961,6 +966,43 @@ it.effect("reaches shared MCP servers through mcp_servers and mcp_call with a th
                         { type: "image", data: "aGk=", mimeType: "image/png" },
                       ],
                     });
+              }),
+          }),
+        ),
+      ),
+    ),
+  );
+});
+
+it.effect("a thread in plan mode reaches shared MCP servers read-only", () => {
+  const readOnly: Array<McpGateway.McpGatewayCaller["readOnly"]> = [];
+  const gatewayScope = { ...scope, capabilities: new Set(["mcp-gateway"] as const) };
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({ name: "mcp_call", arguments: { server: "linear", tool: "write" } })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, gatewayScope),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(result.isError).toBeUndefined();
+    expect(readOnly).toEqual(["plan"]);
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerGatewayToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: (id) =>
+              Effect.succeed(McpToolAccessTestkit.liveThreadShell(id, { interactionMode: "plan" })),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(McpGateway.McpGateway)({
+            callTool: (input) =>
+              Effect.sync(() => {
+                readOnly.push(input.caller.readOnly);
+                return { content: [{ type: "text", text: "ok" }] };
               }),
           }),
         ),
