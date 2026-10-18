@@ -6,10 +6,10 @@ name: Fork upstream sync
 #              fast-forward, so `git log fork/main..main` is always the upstream work not yet
 #              taken into the fork.
 #   fork/main  the fork's default branch: upstream plus the fork's own changes. Fork builds and
-#              releases come from here (fork-windows-build.yml).
+#              releases come from here (release.yml).
 #
-# A clean merge of main into fork/main is pushed straight away, which runs CI; the nightly fork
-# build picks it up. A conflicting one is left as a main -> fork/main pull request listing the
+# A clean merge of main into fork/main is pushed straight away, which runs CI; the nightly
+# release picks it up. A conflicting one is left as a main -> fork/main pull request listing the
 # conflicting files; resolve it by merging main into fork/main locally and pushing. Always merge, never
 # rebase: fork releases compare from the previous release's commit.
 #

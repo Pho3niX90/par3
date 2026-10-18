@@ -226,7 +226,7 @@ jobs:
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
           tracing_token="$(sed -n 's/^T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN=//p' "$config_path")"
-          echo "::add-mask::$tracing_token"
+          [[ -n "$tracing_token" ]] && echo "::add-mask::$tracing_token"
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Align package versions to release version
