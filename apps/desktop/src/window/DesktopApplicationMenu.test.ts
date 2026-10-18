@@ -130,6 +130,48 @@ const configureMenu = (
   );
 
 describe("DesktopApplicationMenu", () => {
+  const windowMenuItems = (template: readonly Electron.MenuItemConstructorOptions[]) => {
+    const windowMenu = template.find(
+      (item) => item.label === "Window" || item.role === "windowMenu",
+    );
+    assert.isDefined(windowMenu);
+    return windowMenu;
+  };
+
+  it.effect("has no Close item bound to Ctrl+W in the Window menu off macOS", () =>
+    Effect.gen(function* () {
+      const selectedAction = yield* Deferred.make<string>();
+      const applicationMenuTemplate =
+        yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+
+      yield* configureMenu(selectedAction, applicationMenuTemplate, { platform: "win32" });
+
+      const windowMenu = windowMenuItems(yield* Deferred.await(applicationMenuTemplate));
+      assert.isUndefined(windowMenu.role);
+      if (!Array.isArray(windowMenu.submenu)) {
+        throw new Error("Expected Window menu submenu to be an array.");
+      }
+      assert.deepEqual(
+        windowMenu.submenu.map((item) => item.role),
+        ["minimize", "zoom"],
+      );
+      assert.isFalse(windowMenu.submenu.some((item) => item.role === "close" || item.accelerator));
+    }),
+  );
+
+  it.effect("keeps the native Window menu on macOS", () =>
+    Effect.gen(function* () {
+      const selectedAction = yield* Deferred.make<string>();
+      const applicationMenuTemplate =
+        yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+
+      yield* configureMenu(selectedAction, applicationMenuTemplate, { platform: "darwin" });
+
+      const windowMenu = windowMenuItems(yield* Deferred.await(applicationMenuTemplate));
+      assert.equal(windowMenu.role, "windowMenu");
+    }),
+  );
+
   it.effect("keeps display branding in the macOS application menu", () =>
     Effect.gen(function* () {
       const selectedAction = yield* Deferred.make<string>();
