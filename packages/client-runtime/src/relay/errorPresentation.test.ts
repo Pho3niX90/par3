@@ -1,4 +1,7 @@
-import { RelayAuthInvalidError } from "@t3tools/contracts/relay";
+import {
+  RelayAuthInvalidError,
+  RelayEnvironmentLinkLimitExceededError,
+} from "@t3tools/contracts/relay";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
@@ -53,5 +56,15 @@ describe("relayProtectedErrorMessage", () => {
     });
 
     expect(relayProtectedErrorMessage(error)).toBe("Relay rejected the cloud session token.");
+  });
+
+  it("presents the managed tunnel limit with how many tunnels are allowed", () => {
+    const error = new RelayEnvironmentLinkLimitExceededError({
+      code: "environment_link_limit_exceeded",
+      maxTunnels: 3,
+      traceId: "trace-limit",
+    });
+
+    expect(relayProtectedErrorMessage(error)).toContain("maximum of 3 managed tunnels");
   });
 });

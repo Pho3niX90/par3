@@ -605,6 +605,12 @@ export type RelayProtectedError = typeof RelayProtectedError.Type;
 
 const RelayAuthAndInternalErrors = [RelayAuthInvalidError, RelayInternalError] as const;
 
+const RelayManagedTunnelRecoveryErrors = [
+  RelayAuthInvalidError,
+  RelayEnvironmentLinkLimitExceededError,
+  RelayInternalError,
+] as const;
+
 const RelayEnvironmentLinkErrors = [
   RelayAuthInvalidError,
   RelayEnvironmentLinkProofExpiredError,
@@ -1169,7 +1175,7 @@ const RelayServerGroup = HttpApiGroup.make("server")
         }),
         payload: RelayManagedEndpointRecoveryRegistrationRequest,
         success: RelayManagedEndpointRecoveryRegistrationResponse,
-        error: RelayAuthAndInternalErrors,
+        error: RelayManagedTunnelRecoveryErrors,
       },
     ).annotate(OpenApi.Summary, "Register managed tunnel recovery without provisioning"),
     HttpApiEndpoint.post("recoverManagedEndpoint", "/v1/environments/:environmentId/tunnel", {
@@ -1178,7 +1184,7 @@ const RelayServerGroup = HttpApiGroup.make("server")
       }),
       payload: RelayManagedEndpointRecoveryRequest,
       success: RelayManagedEndpointRecoveryResponse,
-      error: RelayAuthAndInternalErrors,
+      error: RelayManagedTunnelRecoveryErrors,
     }).annotate(OpenApi.Summary, "Recover an environment's managed tunnel"),
     HttpApiEndpoint.post(
       "publishAgentActivity",

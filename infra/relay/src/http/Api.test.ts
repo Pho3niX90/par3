@@ -66,6 +66,7 @@ import * as HookInbox from "../hooks/HookInbox.ts";
 import * as EnvironmentLinks from "../environments/EnvironmentLinks.ts";
 import * as ManagedEndpointAllocations from "../environments/ManagedEndpointAllocations.ts";
 import * as ManagedEndpointProvider from "../environments/ManagedEndpointProvider.ts";
+import * as ManagedTunnelLimits from "../environments/ManagedTunnelLimits.ts";
 import * as AgentActivityPublisher from "../agentActivity/AgentActivityPublisher.ts";
 import * as EnvironmentPublishSignatures from "../environments/EnvironmentPublishSignatures.ts";
 
@@ -1466,6 +1467,107 @@ describe("relay CORS", () => {
       expect(response.headers["access-control-expose-headers"]).toBe(
         "traceparent,www-authenticate",
       );
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("relay managed tunnel recovery limit", () => {
+  const limitExceeded = new ManagedTunnelLimits.ManagedTunnelLimitExceeded({
+    userId: "user-1",
+    environmentId: "environment-1",
+    maxTunnels: 3,
+    activeTunnels: 3,
+  });
+
+  it.effect.each([
+    { action: "recover" as const, path: "tunnel" },
+    { action: "register" as const, path: "tunnel/recovery" },
+  ])("$action reports the environment limit instead of a 500", ({ action, path }) =>
+    Effect.gen(function* () {
+      const keyPair = NodeCrypto.generateKeyPairSync("ed25519", {
+        privateKeyEncoding: { format: "pem", type: "pkcs8" },
+        publicKeyEncoding: { format: "pem", type: "spki" },
+      });
+      const origin = { localHttpHost: "127.0.0.1", localHttpPort: 3773 };
+      const now = yield* DateTime.now;
+      const issuedAt = Math.floor(now.epochMilliseconds / 1_000);
+      const proof = yield* signRelayJwt({
+        privateKey: keyPair.privateKey,
+        typ: RELAY_MANAGED_TUNNEL_RECOVERY_TYP,
+        payload: {
+          iss: "t3-env:environment-1",
+          aud: "https://relay.example.test",
+          sub: "environment-1",
+          jti: `${action}-proof`,
+          iat: issuedAt,
+          exp: issuedAt + 60,
+          action,
+          environmentId: "environment-1",
+          cloudUserId: "user-1",
+          origin,
+          ...(action === "register" ? { tunnelId: "existing-tunnel" } : {}),
+        },
+      });
+      const layerAuth = Layer.succeed(RelayEnvironmentAuth, {
+        environmentBearer: (effect) =>
+          effect.pipe(
+            Effect.provideService(RelayEnvironmentPrincipal, {
+              environmentId: EnvironmentId.make("environment-1"),
+              environmentPublicKey: keyPair.publicKey,
+            }),
+          ),
+      });
+      const layerRequestServices = Layer.mergeAll(
+        Layer.succeed(RelayConfiguration.RelayConfiguration, relaySettings),
+        layerRelayUnlinkTest({
+          getForUser: () =>
+            Effect.succeed({
+              ...linkedEnvironmentRecord,
+              environmentPublicKey: keyPair.publicKey,
+            }),
+          provision: () => Effect.fail(limitExceeded),
+          reconcileOrigin: () => Effect.fail(limitExceeded),
+        }),
+        Layer.mock(ManagedEndpointAllocations.ManagedEndpointAllocations)({}),
+      );
+      const layerRoutes = HttpApiBuilder.layer(
+        HttpApi.make("RelayApi").add(RelayApi.groups.server),
+      ).pipe(
+        Layer.provide(
+          RelayHttpApi.layerServerApi.pipe(
+            Layer.provide([
+              Layer.mock(AgentActivityPublisher.AgentActivityPublisher)({}),
+              Layer.mock(EnvironmentPublishSignatures.EnvironmentPublishSignatures)({}),
+              Layer.mock(HeldHooks.HeldHooks, {}),
+            ]),
+          ),
+        ),
+        Layer.provide(layerAuth),
+        Layer.provide([NodeServices.layer, NodeHttpPlatform.layer, Etag.layerWeak]),
+      );
+      const httpEffect = yield* HttpRouter.toHttpEffect(
+        Layer.mergeAll(layerRoutes, RelayHttpApi.layerNotFoundRoute, RelayHttpApi.layerCors),
+      ).pipe(Effect.provideService(HttpRouter.RouterConfig, RELAY_HTTP_ROUTER_CONFIG));
+
+      const response = yield* sendRelayRequest(
+        httpEffect.pipe(Effect.provide(layerRequestServices)),
+        new Request(`https://relay.test/v1/environments/environment-1/${path}`, {
+          method: "POST",
+          headers: {
+            authorization: "Bearer environment-credential",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            cloudUserId: "user-1",
+            origin,
+            proof,
+            ...(action === "register" ? { tunnelId: "existing-tunnel" } : {}),
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(403);
+      expect(JSON.stringify(response.body)).toContain("environment_link_limit_exceeded");
     }).pipe(Effect.scoped),
   );
 });
