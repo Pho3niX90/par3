@@ -436,7 +436,7 @@ describe("summarizePendingUserInputAnswer", () => {
       { label: "Alpha", description: "a", value: "a" },
       { label: "Beta", description: "b" },
     ],
-  } as never;
+  } as const;
 
   it("is null while unanswered", () => {
     expect(summarizePendingUserInputAnswer(question, undefined)).toBeNull();

@@ -133,3 +133,20 @@ it("still auto-advances once after the answer draft rerenders the same question"
   await act(async () => vi.advanceTimersByTime(200));
   expect(activeIndex()).toBe("1");
 });
+
+it("does not auto-advance past a question picked from the list", async () => {
+  await act(async () => root.render(<Questions />));
+  await chooseOption();
+  await navigate("Question 3");
+  expect(activeIndex()).toBe("2");
+  await act(async () => vi.advanceTimersByTime(200));
+  expect(activeIndex()).toBe("2");
+});
+
+it("stays on the current question when its own list row is clicked", async () => {
+  await act(async () => root.render(<Questions />));
+  await chooseOption();
+  await navigate("Question 1");
+  await act(async () => vi.advanceTimersByTime(200));
+  expect(activeIndex()).toBe("0");
+});
