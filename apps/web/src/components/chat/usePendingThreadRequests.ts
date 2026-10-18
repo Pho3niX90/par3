@@ -500,6 +500,9 @@ export function usePendingThreadRequests(input: {
   const onPreviousActivePendingUserInputQuestionStable = useStableCallback(
     onPreviousActivePendingUserInputQuestion,
   );
+  const onSelectActivePendingUserInputQuestionStable = useStableCallback(
+    setActivePendingUserInputQuestionIndex,
+  );
 
   return {
     pendingApprovals,
@@ -519,5 +522,6 @@ export function usePendingThreadRequests(input: {
     onAdvanceActivePendingUserInput,
     onAdvanceActivePendingUserInputStable,
     onPreviousActivePendingUserInputQuestion: onPreviousActivePendingUserInputQuestionStable,
+    onSelectActivePendingUserInputQuestion: onSelectActivePendingUserInputQuestionStable,
   };
 }
