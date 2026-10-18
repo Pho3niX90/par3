@@ -60,6 +60,9 @@ import * as AttachmentHandlers from "./attachment/handlers.ts";
 import { ThreadToolkit } from "./thread/tools.ts";
 import { WorktreeToolkit } from "./worktree/tools.ts";
 import { DeviceToolkit } from "./device/tools.ts";
+import { GatewayToolkit } from "./gateway/tools.ts";
+import * as McpGateway from "../../mcpGateway/McpGateway.ts";
+import { McpGatewayError } from "@t3tools/contracts";
 
 const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
@@ -103,6 +106,7 @@ it("publishes unique tool names with reference-free object-root inputs", () => {
     DeviceToolkit,
     PullRequestsToolkit,
     HtmlToolkit,
+    GatewayToolkit,
   ]) {
     for (const tool of Object.values(toolkit.tools)) {
       expect(names.has(tool.name)).toBe(false);
@@ -878,3 +882,89 @@ it.effect("only the caller that prepared a pending upload can discard it", () =>
     ),
   ),
 );
+
+it.effect("reaches shared MCP servers through mcp_servers and mcp_call with a thread token", () => {
+  const calls: Array<{ server: string; tool: string; readOnly: boolean; threadId?: string }> = [];
+  const gatewayScope = { ...scope, capabilities: new Set(["mcp-gateway"] as const) };
+  const call = (
+    name: string,
+    args: Record<string, unknown>,
+    invocation: McpInvocationContext.McpInvocationScope = gatewayScope,
+  ) =>
+    Effect.flatMap(McpServer.McpServer, (server) =>
+      server
+        .callTool({ name, arguments: args })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        ),
+    );
+  return Effect.gen(function* () {
+    const listed = yield* call("mcp_servers", {});
+    expect(listed.isError).toBe(false);
+    expect(listed.structuredContent).toEqual({
+      servers: [{ id: "linear-id", name: "linear", state: "connected", toolCount: 1 }],
+    });
+
+    const result = yield* call("mcp_call", {
+      server: "linear",
+      tool: "lookup",
+      arguments: { id: "ABC-1" },
+    });
+    expect(result.isError).toBeUndefined();
+    // The upstream blocks arrive as they were sent, not wrapped in JSON text.
+    expect(result.content).toEqual([
+      { type: "text", text: "ABC-1" },
+      { type: "image", data: new Uint8Array([104, 105]), mimeType: "image/png" },
+    ]);
+    expect(calls).toEqual([
+      { server: "linear", tool: "lookup", readOnly: false, threadId: "mcp-core-thread" },
+    ]);
+
+    const refused = yield* call("mcp_call", { server: "linear", tool: "write" });
+    expect(refused.isError).toBe(true);
+    expect(refused.content).toEqual([{ type: "text", text: "Not allowed." }]);
+
+    const denied = yield* call("mcp_servers", {}, { ...scope, capabilities: new Set() });
+    expect(declaredFailure(denied)).toMatchObject({
+      _tag: "McpCapabilityUnavailableError",
+      capability: "mcp-gateway",
+    });
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerGatewayToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+        Layer.provide(
+          Layer.mock(McpGateway.McpGateway)({
+            listServers: () =>
+              Effect.succeed([
+                { id: "linear-id", name: "linear", state: "connected", toolCount: 1 },
+              ]),
+            callTool: (input) =>
+              Effect.suspend(() => {
+                calls.push({
+                  server: input.server,
+                  tool: input.tool,
+                  readOnly: input.caller.readOnly,
+                  ...(input.caller.threadId === undefined
+                    ? {}
+                    : { threadId: input.caller.threadId }),
+                });
+                return input.tool === "write"
+                  ? Effect.fail(
+                      new McpGatewayError({ reason: "tool_not_allowed", detail: "Not allowed." }),
+                    )
+                  : Effect.succeed({
+                      content: [
+                        { type: "text", text: String(input.arguments.id) },
+                        { type: "image", data: "aGk=", mimeType: "image/png" },
+                      ],
+                    });
+              }),
+          }),
+        ),
+      ),
+    ),
+  );
+});

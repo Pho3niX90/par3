@@ -68,6 +68,14 @@ export function t3ToolResultIndicatesFailure(output: unknown): boolean {
   return readResult(output).failed;
 }
 
+/** `<server> · <tool>` for an `mcp_call`, so it reads like a call to that server's own tool. */
+export function mcpCallTarget(input: unknown): string | undefined {
+  const record = asRecord(input);
+  const server = id(record?.server);
+  const tool = id(record?.tool);
+  return server !== undefined && tool !== undefined ? `${server} · ${tool}` : undefined;
+}
+
 function countEntities(ids: ReadonlyArray<string | undefined>): number {
   return (
     new Set(ids.filter((value) => value !== undefined)).size +
@@ -436,6 +444,18 @@ export function summarizeT3ToolCalls(
     case "capabilities":
       label = phrase("Checked", "check", `orchestration capabilities ${times}`);
       break;
+    case "mcp-servers":
+      label = phrase("Listed", "list", `shared MCP servers ${times}`);
+      break;
+    case "mcp-call": {
+      const targets = new Set(selected.map((call) => mcpCallTarget(call.input)));
+      const [target] = targets;
+      label =
+        targets.size === 1 && target !== undefined
+          ? phrase("Called", "call", selected.length === 1 ? target : `${target} ${times}`)
+          : phrase("Called", "call", quantity(selected.length, "shared MCP tool"));
+      break;
+    }
   }
   return { label, failedCount };
 }

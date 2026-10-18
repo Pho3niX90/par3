@@ -22,6 +22,7 @@ import { classifyToolActivity } from "@t3tools/shared/toolActivity";
 import { toolOutputIndicatesFailure } from "@t3tools/shared/toolOutput";
 
 import {
+  mcpCallTarget,
   summarizeT3ToolCalls,
   t3ToolResultIndicatesFailure,
   type T3ToolSummaryCall,
@@ -176,7 +177,9 @@ function resolveT3McpToolPresentation(
     Number.isSafeInteger(number) &&
     number > 0
       ? `PR #${number}`
-      : detail;
+      : definition.summaryAction === "mcp-call"
+        ? (mcpCallTarget(input) ?? detail)
+        : detail;
   return {
     displayName: `${verb} ${target}`,
     icon: definition.icon,
@@ -619,6 +622,7 @@ function summaryActionPriority(action: ToolGroupAction | T3McpToolSummaryAction)
     case "attachment-prepare":
     case "attachment-discard":
     case "attachment-send":
+    case "mcp-call":
       return 0;
     case "other":
     case "update":

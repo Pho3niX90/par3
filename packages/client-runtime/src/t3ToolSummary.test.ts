@@ -7,6 +7,22 @@ function completed(input: unknown, output?: unknown): T3ToolSummaryCall {
 }
 
 describe("summarizeT3ToolCalls", () => {
+  it("names the shared MCP server and tool an mcp_call reached", () => {
+    const lookup = { server: "linear", tool: "lookup", arguments: { id: "ABC-1" } };
+    expect(summarizeT3ToolCalls("mcp-call", [completed(lookup)]).label).toBe(
+      "Called linear · lookup",
+    );
+    expect(summarizeT3ToolCalls("mcp-call", [completed(lookup), completed(lookup)]).label).toBe(
+      "Called linear · lookup 2 times",
+    );
+    expect(
+      summarizeT3ToolCalls("mcp-call", [
+        completed(lookup),
+        completed({ server: "sentry", tool: "issues" }),
+      ]).label,
+    ).toBe("Called 2 shared MCP tools");
+  });
+
   it("counts registered projects, repository destinations, and accepted thread launches", () => {
     expect(
       summarizeT3ToolCalls("project-create", [

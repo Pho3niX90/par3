@@ -330,6 +330,12 @@ import {
 import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { JiraError, JiraIssue, JiraIssueInput } from "./jira.ts";
 import {
+  McpGatewayError,
+  McpGatewayStatusResult,
+  McpGatewayTestInput,
+  McpGatewayTestResult,
+} from "./mcpGateway.ts";
+import {
   StorageCleanupReport,
   DatabaseStorageStatus,
   ServerSettings,
@@ -530,6 +536,8 @@ export const WS_METHODS = {
   pullRequestsLinkedThreads: "pullRequests.linkedThreads",
   pullRequestsDetail: "pullRequests.detail",
   jiraIssue: "jira.issue",
+  mcpGatewayStatus: "mcpGateway.status",
+  mcpGatewayTest: "mcpGateway.test",
   pullRequestsPreview: "pullRequests.preview",
   pullRequestsChecks: "pullRequests.checks",
   pullRequestsActivity: "pullRequests.activity",
@@ -994,6 +1002,19 @@ const WsPullRequestsDetailRpc = Rpc.make(WS_METHODS.pullRequestsDetail, {
   payload: PullRequestRef,
   success: PullRequestDetail,
   error: PullRequestRpcError,
+});
+
+const WsMcpGatewayStatusRpc = Rpc.make(WS_METHODS.mcpGatewayStatus, {
+  payload: Schema.Struct({}),
+  success: McpGatewayStatusResult,
+  error: EnvironmentAuthorizationError,
+});
+
+/** Reconnects the server, so it can start the configured command on the host. */
+const WsMcpGatewayTestRpc = Rpc.make(WS_METHODS.mcpGatewayTest, {
+  payload: McpGatewayTestInput,
+  success: McpGatewayTestResult,
+  error: Schema.Union([EnvironmentAuthorizationError, McpGatewayError]),
 });
 
 const WsJiraIssueRpc = Rpc.make(WS_METHODS.jiraIssue, {
@@ -1946,6 +1967,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsLinkedThreadsRpc,
   WsPullRequestsDetailRpc,
   WsJiraIssueRpc,
+  WsMcpGatewayStatusRpc,
+  WsMcpGatewayTestRpc,
   WsPullRequestsPreviewRpc,
   WsPullRequestsChecksRpc,
   WsPullRequestsActivityRpc,

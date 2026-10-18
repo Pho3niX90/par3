@@ -44,6 +44,7 @@ import {
   ProviderInstanceId,
   ProviderDriverKind,
 } from "./providerInstance.ts";
+import { McpServerConfigs } from "./mcpGateway.ts";
 import { PullRequestMergeMethod } from "./pullRequest.ts";
 
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
@@ -1229,6 +1230,8 @@ export const ServerSettings = Schema.Struct({
    * names, where `UTF-8` and the like rarely appear.
    */
   jiraProjectKeys: JiraProjectKeys.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  /** Third-party MCP servers shared with every agent through the `t3-code` MCP server. */
+  mcpServers: McpServerConfigs.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   /** Keyed by source control host kind, such as `gitcafe`; see `SourceControlHostSettings`. */
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1498,6 +1501,11 @@ export const ServerSettingsPatch = Schema.Struct({
     }),
   ),
   jiraProjectKeys: Schema.optionalKey(JiraProjectKeys),
+  /**
+   * Replaces the whole list. Send the redaction marker (`valueRedacted`) for each saved secret
+   * header or variable to keep it; a removed server's secrets are deleted.
+   */
+  mcpServers: Schema.optionalKey(McpServerConfigs),
   /**
    * Merges per host: a patched field replaces the saved one, so a client sends a per-server-host
    * map whole, with the redaction marker for each saved secret it keeps. An empty or omitted

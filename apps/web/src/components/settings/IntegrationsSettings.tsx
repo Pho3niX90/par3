@@ -111,6 +111,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { JiraSettings } from "./JiraSettings";
+import { McpServersSettings } from "./McpServersSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
@@ -1500,6 +1501,7 @@ export function IntegrationsSettingsPanel() {
         )}
         <PullRequestLinksOpenInAppSetting />
       </SettingsSection>
+      <McpServersSettings />
       <JiraSettings />
       <DeviceIntegrationSettings />
     </SettingsPageContainer>

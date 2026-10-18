@@ -64,7 +64,9 @@ export type T3McpToolSummaryAction =
   | "browser"
   | "device"
   | "html-preview"
-  | "html-render";
+  | "html-render"
+  | "mcp-servers"
+  | "mcp-call";
 
 export interface T3McpToolDefinition {
   readonly displayName: string;
@@ -334,6 +336,9 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_send_attachments: tool(["Send", "Sending", "Sent", "attachments"], "attachment-send"),
   html_preview: tool(["Preview", "Previewing", "Previewed", "an HTML page"], "html-preview"),
   html_render: tool(["Render", "Rendering", "Rendered", "an HTML page"], "html-render"),
+  mcp_servers: tool(["List", "Listing", "Listed", "shared MCP servers"], "mcp-servers"),
+  // Rows show `<server> · <tool>` from the arguments in place of the detail.
+  mcp_call: tool(["Call", "Calling", "Called", "a shared MCP tool"], "mcp-call"),
 };
 
 export const T3_MCP_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(T3_MCP_TOOLS));
