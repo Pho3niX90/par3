@@ -1276,6 +1276,7 @@ describe("relay routing fallback", () => {
             return { ok: true as const, deliveries: [] };
           }),
         replayForLiveActivityRegistration: () => Effect.succeed(null),
+        endIdleLiveActivities: Effect.void,
       });
       const layerSignatures = Layer.succeed(
         EnvironmentPublishSignatures.EnvironmentPublishSignatures,

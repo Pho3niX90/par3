@@ -3417,6 +3417,36 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("falls back to the context limit when input is 0, and reports none when both are", () =>
+    Effect.gen(function* () {
+      const model = modelCatalog.data[0]!;
+      const withLimits = (limits: ReadonlyArray<{ context: number; input: number }>) => [
+        out("event.subscribe"),
+        out("model.list", "<any>"),
+        reply("model.list", {
+          ...modelCatalog,
+          data: limits.map((limit, index) => ({
+            ...model,
+            id: `m${index}`,
+            modelID: `m${index}`,
+            limit: { ...limit, output: 1000 },
+          })),
+        }),
+      ];
+      const runtime = yield* openCode2ReplayRuntime(
+        withLimits([
+          { context: 128000, input: 0 },
+          { context: 0, input: 0 },
+        ]),
+      );
+      assert.equal(runtime.getModelContextWindow?.({ instanceId, model: "opencode/m0" }), 128000);
+      assert.equal(
+        runtime.getModelContextWindow?.({ instanceId, model: "opencode/m1" }),
+        undefined,
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("reports each directory's own limit for a model its project config changed", () =>
     Effect.gen(function* () {
       const custom = "/work/opencode2-custom";

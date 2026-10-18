@@ -2406,6 +2406,7 @@ export default function ChatView(props: ChatViewProps) {
     onAdvanceActivePendingUserInput,
     onAdvanceActivePendingUserInputStable,
     onPreviousActivePendingUserInputQuestion: onPreviousActivePendingUserInputQuestionStable,
+    onSelectActivePendingUserInputQuestion: onSelectActivePendingUserInputQuestionStable,
   } = usePendingThreadRequests({
     environmentId,
     activeThreadId,
@@ -5183,11 +5184,9 @@ export default function ChatView(props: ChatViewProps) {
       variant: "default",
       priority: "activity",
       icon: (
+        // Pulses for commands too: a static dot beside live work reads as a dead thread.
         <span
-          className={cn(
-            "size-1.5 rounded-full bg-foreground",
-            presentation.waiting && "animate-status-pulse",
-          )}
+          className="size-1.5 rounded-full bg-foreground animate-status-pulse"
           aria-hidden="true"
         />
       ),
@@ -8310,6 +8309,9 @@ export default function ChatView(props: ChatViewProps) {
                               onDismissActivePendingUserInput={onDismissUserInputStable}
                               onPreviousActivePendingUserInputQuestion={
                                 onPreviousActivePendingUserInputQuestionStable
+                              }
+                              onSelectActivePendingUserInputQuestion={
+                                onSelectActivePendingUserInputQuestionStable
                               }
                               onChangeActivePendingUserInputCustomAnswer={
                                 onChangeActivePendingUserInputCustomAnswer

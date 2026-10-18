@@ -12,6 +12,7 @@ import {
   projectPendingUserInputAnswer,
   resolvePendingUserInputAnswer,
   setPendingUserInputCustomAnswer,
+  summarizePendingUserInputAnswer,
   togglePendingUserInputOptionSelection,
 } from "./pendingUserInput";
 
@@ -422,5 +423,36 @@ describe("carryDisplacedCustomAnswerIntoPrompt", () => {
     expect(carryDisplacedCustomAnswerIntoPrompt("first half\n", "second half")).toBe(
       "first half\n\nsecond half",
     );
+  });
+});
+
+describe("summarizePendingUserInputAnswer", () => {
+  const question = {
+    id: "q",
+    header: "Q",
+    question: "Pick",
+    multiSelect: true,
+    options: [
+      { label: "Alpha", description: "a", value: "a" },
+      { label: "Beta", description: "b" },
+    ],
+  } as never;
+
+  it("is null while unanswered", () => {
+    expect(summarizePendingUserInputAnswer(question, undefined)).toBeNull();
+  });
+
+  it("shows option labels rather than provider values", () => {
+    expect(summarizePendingUserInputAnswer(question, { selectedOptionValues: ["a", "Beta"] })).toBe(
+      "Alpha, Beta",
+    );
+  });
+
+  it("shows a custom answer as typed", () => {
+    expect(summarizePendingUserInputAnswer(question, { customAnswer: " Gamma " })).toBe("Gamma");
+  });
+
+  it("labels attachment-only answers", () => {
+    expect(summarizePendingUserInputAnswer(question, { attachmentCount: 1 })).toBe("Attachment");
   });
 });
