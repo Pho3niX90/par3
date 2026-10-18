@@ -62,7 +62,7 @@ async function stagePackage(name: string, from: string, destination: string): Pr
   }
 }
 
-it("loads packaged Cursor catalog chunks without credentials or checkout dependencies", async () => {
+it("loads packaged MCP schemas and Cursor chunks without credentials or checkout dependencies", async () => {
   const scratch = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-cursor-package-"));
   try {
     for (let parent = NodePath.dirname(scratch); ; parent = NodePath.dirname(parent)) {
@@ -75,7 +75,10 @@ it("loads packaged Cursor catalog chunks without credentials or checkout depende
       entry,
       `
       import assert from 'node:assert/strict';
+      import { McpServer } from ${JSON.stringify(NodePath.join(repoRoot, "apps/server/node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js"))};
       import { Cursor } from ${JSON.stringify(NodePath.join(repoRoot, "packages/provider-cursor/src/server/sdk.ts"))};
+      const mcp = new McpServer({ name: 'packaging-probe', version: '1.0.0' });
+      mcp.registerTool('ping', {}, async () => ({ content: [{ type: 'text', text: 'pong' }] }));
       for (const [operation, request] of [
         ['Cursor.models.list', () => Cursor.models.list({ apiKey: '' })],
         ['Cursor.me', () => Cursor.me({ apiKey: '' })],
@@ -87,7 +90,7 @@ it("loads packaged Cursor catalog chunks without credentials or checkout depende
           return true;
         });
       }
-      console.log('Cursor catalog chunks loaded; empty keys rejected locally');
+      console.log('MCP schemas and Cursor chunks loaded; empty keys rejected locally');
     `,
     );
     await build({
@@ -127,7 +130,7 @@ it("loads packaged Cursor catalog chunks without credentials or checkout depende
         timeout: 30_000,
       },
     );
-    assert.include(stdout, "Cursor catalog chunks loaded; empty keys rejected locally");
+    assert.include(stdout, "MCP schemas and Cursor chunks loaded; empty keys rejected locally");
   } finally {
     await NodeFSP.rm(scratch, { recursive: true, force: true });
   }

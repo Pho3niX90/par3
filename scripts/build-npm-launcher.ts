@@ -50,7 +50,8 @@ export function npmLauncherPackageManifest(version: string) {
     description:
       "Par3 CLI. Downloads the self-contained executable for this platform from the GitHub Release.",
     license: serverPackageJson.license,
-    repository: serverPackageJson.repository,
+    // npm provenance requires the repository that runs the publishing workflow.
+    repository: { type: "git", url: "git+https://github.com/Pho3niX90/par3.git" },
     bin: { par3: "./bin/t3.mjs", p3: "./bin/t3.mjs" },
     files: ["bin", "dist"],
     engines: { node: ">=20.11" },

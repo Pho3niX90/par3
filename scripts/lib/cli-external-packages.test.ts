@@ -42,6 +42,17 @@ describe("shouldBundleCliDependency", () => {
     assert.strictEqual(shouldBundleCliDependency("node:fs"), false);
   });
 
+  it("bundles MCP's Zod imports while retaining Cursor's disk-backed dependency", () => {
+    for (const id of ["zod", "zod/v3", "zod/v4", "zod/v4-mini"]) {
+      assert.strictEqual(shouldBundleCliDependency(id), true, id);
+      assert.strictEqual(isRuntimeExternalCliDependency(id), true, id);
+    }
+    assert.strictEqual(isRuntimeExternalCliDependency("zod-to-json-schema"), false);
+    assert.deepStrictEqual(selectCliRuntimeExternalDependencies({ zod: "4.4.3" }), {
+      zod: "4.4.3",
+    });
+  });
+
   it("leaves native addons and their dlopen wrappers external", () => {
     for (const id of [
       "node-pty",
@@ -222,11 +233,12 @@ var x = 1;
   it("ignores packages that are meant to be bundled", () => {
     const source =
       region("../../node_modules/.pnpm/effect@4.0.0/node_modules/effect/dist/index.js") +
+      region("../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/index.js") +
       region("../../src/server/main.ts");
     const result = findInlinedExternalPackages(source);
 
     assert.deepStrictEqual(result.inlined, []);
-    assert.strictEqual(result.regionCount, 2);
+    assert.strictEqual(result.regionCount, 3);
   });
 
   it("reports the packages that were inlined, not just the violations", () => {

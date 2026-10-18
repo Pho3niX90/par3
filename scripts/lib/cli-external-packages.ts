@@ -1,12 +1,4 @@
 /**
- * Two consumers derive from this list, and they must never disagree:
- *
- * - apps/server/vite.config.ts decides what stays external to the bundle.
- * - scripts/build-desktop-artifact.ts selects the runtime dependency roots for
- *   the Windows server sidecar.
- *
- */
-/**
  * An external package is loaded from the real filesystem, so its own `require`
  * also resolves from the real filesystem; a dependency that was bundled away
  * exists only inside the emitted bundle and is unreachable there.
@@ -56,6 +48,9 @@ export function isRuntimeExternalCliDependency(id: string): boolean {
  * stays external, but a transitive one gets bundled.
  */
 export function isExternalCliDependency(id: string): boolean {
+  // MCP imports Zod through ESM, which a Node SEA cannot resolve from disk.
+  // Bundle that copy while still staging Cursor's filesystem dependency above.
+  if (id === "zod" || id.startsWith("zod/")) return false;
   return isRuntimeExternalCliDependency(id);
 }
 

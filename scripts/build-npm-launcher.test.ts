@@ -13,9 +13,16 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeEvents from "node:events";
 import * as NodeHttp from "node:http";
 
-import { buildNpmLauncher } from "./build-npm-launcher.ts";
+import { buildNpmLauncher, npmLauncherPackageManifest } from "./build-npm-launcher.ts";
 
 const VERSION = "1.2.3";
+
+it("identifies the publishing repository for npm provenance", () => {
+  assert.deepStrictEqual(npmLauncherPackageManifest(VERSION).repository, {
+    type: "git",
+    url: "git+https://github.com/Pho3niX90/par3.git",
+  });
+});
 const decodeManifest = Schema.decodeEffect(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
 );
