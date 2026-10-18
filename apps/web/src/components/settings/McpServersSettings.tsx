@@ -7,7 +7,7 @@ import type {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { MoreVertical, PlusIcon, XIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { randomUUID } from "../../lib/utils";
 import { serverEnvironment } from "../../state/server";
@@ -86,6 +86,8 @@ function McpServersForm() {
   const testServer = useAtomCommand(serverEnvironment.mcpGatewayTest, { reportFailure: false });
   const [statuses, setStatuses] = useState<ReadonlyArray<McpGatewayServerStatus>>([]);
   const [tests, setTests] = useState<Record<string, TestOutcome>>({});
+  // Bumped when a server changes, so a test still running against the old settings is dropped.
+  const testGenerations = useRef(new Map<string, number>());
   const [editing, setEditing] = useState<{ server: McpServerConfig; isNew: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -113,6 +115,8 @@ function McpServersForm() {
 
   const runTest = async (server: McpServerConfig) => {
     if (!environmentId) return;
+    const generation = (testGenerations.current.get(server.id) ?? 0) + 1;
+    testGenerations.current.set(server.id, generation);
     setTests((previous) => ({ ...previous, [server.id]: { status: "pending" } }));
     const response = await testServer({ environmentId, input: { serverId: server.id } });
     const outcome: TestOutcome =
@@ -125,15 +129,24 @@ function McpServersForm() {
               return error instanceof Error ? error.message : "The connection test failed.";
             })(),
           };
+    if (testGenerations.current.get(server.id) !== generation) return;
     setTests((previous) => ({ ...previous, [server.id]: outcome }));
     void refreshStatus();
   };
 
   // A test describes the settings it ran against, so a changed or removed server drops it.
-  const forgetTest = (serverId: string) =>
+  const forgetTest = (serverId: string) => {
+    testGenerations.current.set(serverId, (testGenerations.current.get(serverId) ?? 0) + 1);
     setTests((previous) =>
       Object.fromEntries(Object.entries(previous).filter(([id]) => id !== serverId)),
     );
+  };
+
+  const saveServer = async (server: McpServerConfig) => {
+    const saved = await save(upsertMcpServer(servers, server));
+    if (saved) forgetTest(server.id);
+    return saved;
+  };
 
   const remove = async (serverId: string) => {
     if (await save(servers.filter((candidate) => candidate.id !== serverId))) forgetTest(serverId);
@@ -184,10 +197,8 @@ function McpServersForm() {
                 status={statuses.find((status) => status.id === server.id)}
                 test={tests[server.id]}
                 disabled={!canEdit || busy}
-                onToggle={(enabled) => void save(upsertMcpServer(servers, { ...server, enabled }))}
-                onPolicy={(toolPolicy) =>
-                  void save(upsertMcpServer(servers, { ...server, toolPolicy }))
-                }
+                onToggle={(enabled) => void saveServer({ ...server, enabled })}
+                onPolicy={(toolPolicy) => void saveServer({ ...server, toolPolicy })}
                 onEdit={() => setEditing({ server, isNew: false })}
                 onTest={() => void runTest(server)}
                 onRemove={() => void remove(server.id)}
@@ -205,10 +216,7 @@ function McpServersForm() {
           busy={busy}
           onClose={() => setEditing(null)}
           onSave={async (server) => {
-            if (await save(upsertMcpServer(servers, server))) {
-              forgetTest(server.id);
-              setEditing(null);
-            }
+            if (await saveServer(server)) setEditing(null);
           }}
         />
       ) : null}
