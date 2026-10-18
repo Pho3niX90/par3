@@ -1821,12 +1821,13 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
     readOnlyTools !== undefined && readOnlyPolicyAllowsGlobalReads(runtimePolicy)
       ? readOnlyTools
       : undefined;
-  // acceptEdits approves edits before the callback runs; everything else it
-  // leaves to the callback, which must ask rather than allow.
+  // Claude approves what its mode allows before the callback runs (edits in
+  // acceptEdits, classifier-approved actions in auto) and sends the rest,
+  // including user ask rules, to the callback, which must ask rather than
+  // allow. Only Full access answers it without asking.
   const installPermissionCallback =
     runtimePolicy.approvalPolicy === undefined
-      ? runtimePolicy.runtimeMode === "approval-required" ||
-        runtimePolicy.runtimeMode === "auto-accept-edits"
+      ? runtimePolicy.runtimeMode !== "full-access"
       : runtimePolicy.approvalPolicy !== "never";
 
   if (permissionMode === "plan") {
@@ -2544,6 +2545,11 @@ function toSessionPermissionUpdates(
   }));
   if (updates.length > 0) {
     return updates;
+  }
+  // A bare Bash rule would allow every later command, including the ones Auto
+  // mode or a hook escalated for a reason.
+  if (toolName === "Bash") {
+    return [];
   }
   return [
     {
