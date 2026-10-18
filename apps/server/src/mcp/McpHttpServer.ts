@@ -7,6 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
@@ -57,6 +58,9 @@ import {
   DeviceStandardToolkit,
 } from "./toolkits/device/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
+import * as GatewayHandlers from "./toolkits/gateway/handlers.ts";
+import { McpCallTool, McpCallToolkit, McpServersToolkit } from "./toolkits/gateway/tools.ts";
+import * as McpGateway from "../mcpGateway/McpGateway.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
@@ -730,6 +734,74 @@ const registerHtmlPreview = Effect.fn("McpHttpServer.registerHtmlPreview")(funct
   );
 });
 
+const decodeCallToolResult = Schema.decodeUnknownEffect(McpSchema.CallToolResult);
+
+/**
+ * `McpServer.toolkit` would wrap the upstream result in JSON text; the agent needs the shared
+ * server's own content blocks, images included, as if it had called that server itself.
+ */
+const registerGatewayCall = Effect.fn("McpHttpServer.registerGatewayCall")(function* () {
+  const server = yield* McpServer.McpServer;
+  const gateway = yield* McpGateway.McpGateway;
+  const threads = yield* ThreadManagementService.ThreadManagementService;
+  const built = yield* McpCallToolkit;
+  const tool = McpCallTool;
+  yield* server.addTool({
+    tool: new McpSchema.Tool({
+      name: tool.name,
+      description: Tool.getDescription(tool),
+      inputSchema: Tool.getJsonSchema(tool),
+      annotations: {
+        ...Context.getOption(tool.annotations, Tool.Title).pipe(
+          Option.map((title) => ({ title })),
+          Option.getOrUndefined,
+        ),
+        readOnlyHint: Context.get(tool.annotations, Tool.Readonly),
+        destructiveHint: Context.get(tool.annotations, Tool.Destructive),
+        idempotentHint: Context.get(tool.annotations, Tool.Idempotent),
+        openWorldHint: Context.get(tool.annotations, Tool.OpenWorld),
+      },
+    }),
+    annotations: tool.annotations,
+    handle: (payload) =>
+      Effect.withFiber((fiber) => {
+        const invocation = Context.getUnsafe(
+          fiber.context,
+          McpInvocationContext.McpInvocationContext,
+        );
+        return built.handle("mcp_call", payload as Tool.Parameters<typeof McpCallTool>).pipe(
+          Stream.unwrap,
+          Stream.run(Sink.last()),
+          Effect.flatMap(Effect.fromOption),
+          Effect.provideService(McpGateway.McpGateway, gateway),
+          Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
+          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+          Effect.matchCauseEffect({
+            onFailure: imageToolFailure(tool.name, "call", (error) =>
+              typeof error === "object" && error !== null && "message" in error
+                ? String(error.message)
+                : "Shared MCP tool call failed.",
+            ),
+            onSuccess: ({ encodedResult }) =>
+              decodeCallToolResult(encodedResult).pipe(
+                // A content block from a newer protocol than Effect knows still reaches the agent.
+                Effect.orElseSucceed(
+                  () =>
+                    new McpSchema.CallToolResult({
+                      content: [{ type: "text", text: encodeJsonText(encodedResult) }],
+                      ...(Predicate.hasProperty(encodedResult, "isError") &&
+                      encodedResult.isError === true
+                        ? { isError: true }
+                        : {}),
+                    }),
+                ),
+              ),
+          }),
+        );
+      }),
+  });
+});
+
 /**
  * `McpServer.toolkit` asks for every service its tools declare when it
  * registers them, but the auth middleware provides `McpInvocationContext` to
@@ -824,6 +896,11 @@ export const layerDeviceToolkit = Layer.mergeAll(
   layerDeviceScreenshotRegistration,
 );
 
+export const layerGatewayToolkit = Layer.mergeAll(
+  toolkitRegistration(McpServersToolkit, GatewayHandlers.layerServers),
+  imageToolRegistration(registerGatewayCall(), GatewayHandlers.layerCall),
+);
+
 export const layerMcpTransport = McpServer.layerHttp({
   name: "Par3",
   version: packageJson.version,
@@ -844,4 +921,5 @@ export const layer = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
+  layerGatewayToolkit,
 ).pipe(Layer.provideMerge(layerMcpTransport));

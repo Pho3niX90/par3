@@ -1331,6 +1331,14 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:check-otlp-endpoint",
       tag: WS_METHODS.serverCheckOtlpEndpoint,
     }),
+    mcpGatewayStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:mcp-gateway-status",
+      tag: WS_METHODS.mcpGatewayStatus,
+    }),
+    mcpGatewayTest: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:mcp-gateway-test",
+      tag: WS_METHODS.mcpGatewayTest,
+    }),
     retryResourceTelemetry: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:retry-resource-telemetry",
       tag: WS_METHODS.serverRetryResourceTelemetry,

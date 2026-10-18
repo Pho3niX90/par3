@@ -150,5 +150,47 @@ export function mapSettingsSecrets(
     (field) => `jira-${encode(field)}`,
   ) as ServerSettings["jira"];
 
-  return { ...settings, providerInstances, sourceControlHosts, usageLimitSources, jira };
+  const mapVariables = <
+    V extends {
+      readonly name: string;
+      readonly value: string;
+      readonly sensitive: boolean;
+      readonly valueRedacted?: boolean;
+    },
+  >(
+    serverId: string,
+    kind: "env" | "header",
+    variables: ReadonlyArray<V>,
+  ) =>
+    variables.map((variable) => {
+      const result = map({
+        secretName: `mcp-server-${encode(serverId)}-${kind}-${encode(variable.name)}`,
+        kind: "environment",
+        value: variable.value,
+        redacted: variable.valueRedacted === true,
+        sensitive: variable.sensitive,
+        environmentVariable: variable.name,
+      });
+      const { valueRedacted: _omit, ...rest } = variable;
+      return {
+        ...rest,
+        value: result.value,
+        ...(result.redacted ? { valueRedacted: true } : {}),
+      };
+    });
+
+  const mcpServers = settings.mcpServers.map((server) => ({
+    ...server,
+    environment: mapVariables(server.id, "env", server.environment),
+    headers: mapVariables(server.id, "header", server.headers),
+  }));
+
+  return {
+    ...settings,
+    providerInstances,
+    sourceControlHosts,
+    usageLimitSources,
+    jira,
+    mcpServers,
+  };
 }

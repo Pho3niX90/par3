@@ -513,6 +513,21 @@ invalid_request
 orchestration_error
 ```
 
+## Shared MCP Servers
+
+Third-party MCP servers configured under Settings > Integrations reach agents
+through this same endpoint, so every provider's existing `t3-code` injection
+carries them. They are not mirrored as top-level tools: Effect's `McpServer` can
+add tools at runtime but not remove them, and every client gets the same
+`tools/list`, with no filter that sees the calling thread or credential. Two
+fixed tools stand in for them instead. `mcp_servers` lists the servers and,
+for one server, its tools and schemas; `mcp_call` calls a tool.
+`apps/server/src/mcpGateway/McpGateway.ts` owns the upstream connections and
+applies each server's tool policy, the read-only ceiling, and the timeout when
+a tool is called. The ceiling covers read-only clients and threads in plan
+mode: both may call only tools the upstream marks `readOnlyHint`. Thread credentials carry the `mcp-gateway`
+capability. Outside OAuth clients do not.
+
 ## Code Ownership
 
 - Shared schemas: `packages/contracts/src/orchestratorMcp.ts` and

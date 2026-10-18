@@ -760,6 +760,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment",
   },
   {
+    id: "mcp-servers",
+    title: "Shared MCP servers",
+    to: "/settings/integrations",
+    searchTerms: ["mcp model context protocol server tools linear sentry gateway integration"],
+    environmentOnly: true,
+    scope: "environment",
+  },
+  {
     id: "jira-project-keys",
     title: "Jira project keys",
     to: "/settings/integrations",

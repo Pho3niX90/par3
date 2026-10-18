@@ -1698,6 +1698,64 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect("keeps sensitive MCP server headers and variables in the secret store", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const secrets = yield* ServerSecretStore.ServerSecretStore;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const server = {
+        id: "linear-id",
+        name: "linear",
+        enabled: true,
+        transport: { type: "stdio" as const, command: "npx", args: ["-y", "linear-mcp"] },
+        toolPolicy: {
+          mode: "all" as const,
+          tools: [],
+          readOnlyClientsMayCall: "readOnlyHint" as const,
+        },
+        environment: [
+          { name: "LINEAR_API_KEY", value: "lin-secret", sensitive: true },
+          { name: "LINEAR_TEAM", value: "platform", sensitive: false },
+        ],
+        headers: [{ name: "Authorization", value: "Bearer header-secret", sensitive: true }],
+      };
+
+      const saved = yield* serverSettings.updateSettings({ mcpServers: [server] });
+      assert.equal(saved.mcpServers[0]?.environment[0]?.value, "lin-secret");
+      assert.equal(saved.mcpServers[0]?.headers[0]?.value, "Bearer header-secret");
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      for (const secret of ["lin-secret", "header-secret"]) assert.notInclude(raw, secret);
+      assert.include(raw, "platform");
+
+      const forClient = ServerSettingsModule.redactServerSettingsForClient(saved).mcpServers[0];
+      assert.deepEqual(forClient?.environment, [
+        { name: "LINEAR_API_KEY", value: "", sensitive: true, valueRedacted: true },
+        { name: "LINEAR_TEAM", value: "platform", sensitive: false },
+      ]);
+      assert.deepEqual(forClient?.headers, [
+        { name: "Authorization", value: "", sensitive: true, valueRedacted: true },
+      ]);
+
+      // A client edits the server from its redacted copy; the secrets survive.
+      const edited = yield* serverSettings.updateSettings({
+        mcpServers: [{ ...forClient!, description: "Issues" }],
+      });
+      assert.equal(edited.mcpServers[0]?.environment[0]?.value, "lin-secret");
+      assert.equal(edited.mcpServers[0]?.headers[0]?.value, "Bearer header-secret");
+
+      // Removing the server deletes its secrets.
+      yield* serverSettings.updateSettings({ mcpServers: [] });
+      const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
+      for (const name of [
+        `mcp-server-${encode("linear-id")}-env-${encode("LINEAR_API_KEY")}`,
+        `mcp-server-${encode("linear-id")}-header-${encode("Authorization")}`,
+      ]) {
+        assert.isTrue(Option.isNone(yield* secrets.get(name)));
+      }
+    }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
+  );
+
   it.effect("stores sensitive provider instance environment values outside settings.json", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

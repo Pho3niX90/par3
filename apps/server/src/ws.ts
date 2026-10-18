@@ -256,6 +256,7 @@ import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as JiraIssues from "./jira/JiraIssues.ts";
+import * as McpGateway from "./mcpGateway/McpGateway.ts";
 import * as ThreadRepositories from "./vcs/ThreadRepositories.ts";
 
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -1228,6 +1229,7 @@ const layerWsRpc = (
       const usage = yield* UsageService.UsageService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
       const jiraIssues = yield* JiraIssues.JiraIssues;
+      const mcpGateway = yield* McpGateway.McpGateway;
       const threadRepositories = yield* ThreadRepositories.ThreadRepositories;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
@@ -2472,6 +2474,13 @@ const layerWsRpc = (
         [WS_METHODS.pullRequestsDetail]: (input) =>
           withPullRequestViewer(input, pullRequests.detail(input)),
         [WS_METHODS.jiraIssue]: (input) => jiraIssues.issue(input),
+        // Reading settings is the only way the status read fails, which is not the client's to handle.
+        [WS_METHODS.mcpGatewayStatus]: () =>
+          mcpGateway.listServers({ connect: false }).pipe(
+            Effect.map((servers) => ({ servers })),
+            Effect.orDie,
+          ),
+        [WS_METHODS.mcpGatewayTest]: (input) => mcpGateway.test(input.serverId),
         [WS_METHODS.pullRequestsPreview]: (input) =>
           withPullRequestViewer(input, pullRequests.preview(input)),
         [WS_METHODS.pullRequestsChecks]: (input) =>

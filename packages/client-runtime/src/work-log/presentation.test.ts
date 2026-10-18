@@ -445,6 +445,18 @@ describe("resolveWorkEntryToolPresentation", () => {
     expect(summarizeToolGroup([entry]).summary).toBe("Used 1 tool");
   });
 
+  it("titles an mcp_call row with the shared server and tool it reached", () => {
+    const entry: WorkLogPresentationEntry = {
+      id: "mcp-call",
+      createdAt: "2026-09-19T00:00:00.000Z",
+      tone: "tool",
+      label: "mcp__t3-code__mcp_call",
+      toolLifecycleStatus: "completed",
+      toolData: { arguments: { server: "linear", tool: "lookup", arguments: {} } },
+    };
+    expect(resolveWorkEntryToolPresentation(entry)?.displayName).toBe("Called linear · lookup");
+  });
+
   it("shows returned MCP errors as failures even in the live activity row", () => {
     const entry: WorkLogPresentationEntry = {
       id: "clone",

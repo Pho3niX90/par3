@@ -92,6 +92,7 @@ import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 import * as ProviderUsageLimitsIngestion from "./provider/ProviderUsageLimitsIngestion.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as JiraIssues from "./jira/JiraIssues.ts";
+import * as McpGateway from "./mcpGateway/McpGateway.ts";
 import * as ThreadRepositories from "./vcs/ThreadRepositories.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
@@ -603,6 +604,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       EnvironmentTheme.layer,
       UsageLimitSources.layer,
       JiraIssues.layer,
+      McpGateway.layer,
     ),
   ),
   Layer.provideMerge(ProviderRegistry.layer),

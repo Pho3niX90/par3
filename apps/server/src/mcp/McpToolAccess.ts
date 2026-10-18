@@ -124,6 +124,42 @@ export const writes = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>
 export const writesWithCapability = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare((params: P) => writingCaller.pipe(Effect.flatMap(() => handle(params))));
 
+/** For reads that start work on the host, such as connecting to shared MCP servers. */
+export const readsAsLiveCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
+  declare((params: P) =>
+    loadCaller().pipe(
+      Effect.tap(assertLiveCaller),
+      Effect.flatMap(() => handle(params)),
+    ),
+  );
+
+/**
+ * For tools that read or write depending on what they reach, such as a shared MCP server's tools:
+ * a read-only client, or a thread in plan mode, still gets to the handler, told why, and the
+ * handler refuses anything that is not a read.
+ */
+export const writesUnlessReadOnly = <P, A, E, R>(
+  handle: (
+    params: P,
+    access: { readonly readOnly: false | "client" | "plan" },
+  ) => Effect.Effect<A, E, R>,
+) =>
+  declare((params: P) =>
+    loadCaller().pipe(
+      Effect.tap(assertLiveCaller),
+      Effect.flatMap((caller) =>
+        handle(params, {
+          readOnly:
+            caller.scope.client?.access === "read-only"
+              ? "client"
+              : caller.limits.interactionMode === "plan"
+                ? "plan"
+                : false,
+        }),
+      ),
+    ),
+  );
+
 export const writesThreads = <P, A, E, R>(
   threads: (params: P) => ReadonlyArray<ThreadId | undefined>,
   handle: (params: P) => Effect.Effect<A, E, R>,
