@@ -69,6 +69,38 @@ export type McpServerConfig = typeof McpServerConfig.Type;
 
 export const McpServerConfigs = Schema.Array(McpServerConfig);
 
+/** Whether Par3 can reach an MCP server at this URL over HTTP. */
+export function isMcpServerHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const firstDuplicate = (values: ReadonlyArray<string>) =>
+  values.find((value, index) => values.indexOf(value) !== index);
+
+/**
+ * What a save may write. Stored settings decode without these checks, so an entry written before
+ * them cannot stop the whole settings file from loading; the gateway reports it on that server.
+ */
+export const McpServerConfigsPatch = McpServerConfigs.check(
+  Schema.makeFilter((servers) => {
+    const id = firstDuplicate(servers.map((server) => server.id));
+    if (id !== undefined) return `Two MCP servers share the id "${id}".`;
+    const name = firstDuplicate(servers.map((server) => server.name));
+    if (name !== undefined) return `Two MCP servers share the name "${name}".`;
+    const badUrl = servers.find(
+      (server) => server.transport.type === "http" && !isMcpServerHttpUrl(server.transport.url),
+    );
+    return badUrl === undefined
+      ? true
+      : `The MCP server "${badUrl.name}" needs an http or https URL.`;
+  }),
+);
+
 const McpGatewayToolAnnotations = Schema.Struct({
   title: Schema.optionalKey(Schema.String),
   readOnlyHint: Schema.optionalKey(Schema.Boolean),

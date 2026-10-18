@@ -44,7 +44,7 @@ import {
   ProviderInstanceId,
   ProviderDriverKind,
 } from "./providerInstance.ts";
-import { McpServerConfigs } from "./mcpGateway.ts";
+import { McpServerConfigs, McpServerConfigsPatch } from "./mcpGateway.ts";
 import { PullRequestMergeMethod } from "./pullRequest.ts";
 
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
@@ -1505,7 +1505,7 @@ export const ServerSettingsPatch = Schema.Struct({
    * Replaces the whole list. Send the redaction marker (`valueRedacted`) for each saved secret
    * header or variable to keep it; a removed server's secrets are deleted.
    */
-  mcpServers: Schema.optionalKey(McpServerConfigs),
+  mcpServers: Schema.optionalKey(McpServerConfigsPatch),
   /**
    * Merges per host: a patched field replaces the saved one, so a client sends a per-server-host
    * map whole, with the redaction marker for each saved secret it keeps. An empty or omitted
