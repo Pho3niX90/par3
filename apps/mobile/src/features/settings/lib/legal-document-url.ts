@@ -1,4 +1,4 @@
-const DEFAULT_MARKETING_SITE_URL = "https://t3.codes";
+const DEFAULT_MARKETING_SITE_URL = "https://paritylabs.co.za";
 
 function resolveMarketingSiteUrl(override: string | undefined): URL {
   try {
@@ -22,9 +22,9 @@ function marketingSiteDocumentUrl(path: string): string {
   return new URL(path, MARKETING_SITE_URL).toString();
 }
 
-export const PRIVACY_POLICY_URL = marketingSiteDocumentUrl("privacy-policy");
+export const PRIVACY_POLICY_URL = marketingSiteDocumentUrl("privacy");
 export const SECURITY_POLICY_URL = marketingSiteDocumentUrl("security-policy");
-export const TERMS_OF_SERVICE_URL = marketingSiteDocumentUrl("terms-of-service");
+export const TERMS_OF_SERVICE_URL = marketingSiteDocumentUrl("terms");
 export const LEGAL_URL = marketingSiteDocumentUrl("legal");
 
 export const ALLOWED_LEGAL_DOCUMENT_URLS = [

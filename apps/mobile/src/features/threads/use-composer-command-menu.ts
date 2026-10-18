@@ -95,7 +95,7 @@ export function buildComposerSlashCommandItems(input: {
       type: "slash-command",
       command: "default",
       label: "/default",
-      description: "Switch to default mode",
+      description: "Switch to build mode",
     },
   ] satisfies ComposerCommandItem[];
   const items: ComposerCommandItem[] = builtIn.filter(

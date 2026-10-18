@@ -108,6 +108,7 @@ import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { ComposerPopoverAnchor } from "./ComposerPopoverAnchor";
 import { ComposerQueuedEditAttachments } from "./ComposerQueuedEdit";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
+import { usePlanModeState } from "./use-plan-mode-enabled";
 import {
   ComposerDictationCancelAction,
   ComposerDictationDraftContent,
@@ -417,6 +418,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     });
   };
   const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
+  const { enabled: planModeEnabled } = usePlanModeState();
   const usageLimitsOffered =
     selectedProviderStatus !== null &&
     hasProviderUsageLimits(
@@ -455,7 +457,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     hasCompactableConversation: props.hasCompactableConversation,
     onChangeDraftMessage: props.onChangeDraftMessage,
     onUpdateInteractionMode:
-      selectedProviderStatus?.showInteractionModeToggle === false
+      !planModeEnabled || selectedProviderStatus?.showInteractionModeToggle === false
         ? undefined
         : props.onUpdateInteractionMode,
     offersUsageLimits: usageLimitsOffered,
@@ -576,7 +578,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         armAgentAwarenessLiveActivityForLocalWork({
           environmentId: props.environmentId,
           threadTitle: props.selectedThread.title,
-          projectTitle: props.environmentLabel ?? "T3 Code",
+          projectTitle: props.environmentLabel ?? "Par3",
         });
       } finally {
         inFlightThreadIdsRef.current.delete(threadKey);
@@ -1088,6 +1090,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                           <ProviderIcon
                             iconUrl={currentModelOption?.providerIconUrl}
                             provider={currentModelOption?.providerDriver}
+                            model={currentModelSelection.model}
                             size={size}
                           />
                         )}

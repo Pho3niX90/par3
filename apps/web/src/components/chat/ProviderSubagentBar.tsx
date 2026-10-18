@@ -13,6 +13,8 @@ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 export function ProviderSubagentBar(props: {
   readonly provider: ProviderInstanceEntry | null;
   readonly showInstanceBadge: boolean;
+  /** The subagent's model slug, so multi-vendor drivers such as Copilot draw the vendor's glyph. */
+  readonly model: string | undefined;
   readonly modelLabel: string;
   readonly effortLabel: string | null;
   readonly status: ProviderSubagentStatus | null;
@@ -49,6 +51,7 @@ export function ProviderSubagentBar(props: {
           <ProviderInstanceIcon
             driverKind={props.provider.driverKind}
             displayName={props.provider.displayName}
+            model={props.model}
             accentColor={props.provider.accentColor}
             acpRegistryAgentId={props.provider.acpRegistryAgentId}
             acpRegistryIconUrl={props.provider.acpRegistryIconUrl}

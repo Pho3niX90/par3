@@ -364,7 +364,7 @@ function PairingScanCard(props: {
           )}
         </View>
         <Text className={cn("text-center text-sm", light ? "text-black/70" : "text-white/80")}>
-          Scan the code from t3 pair or desktop Connections settings
+          Scan the code from par3 pair or desktop Connections settings
         </Text>
       </View>
     </Pressable>
@@ -401,7 +401,7 @@ function T3ConnectSection() {
           className="min-h-13 flex-row items-center gap-3 rounded-[26px] border-continuous bg-grouped-card px-4 active:opacity-70"
         >
           <View className="min-w-0 flex-1 py-3">
-            <Text className="text-base text-foreground">Sign in to T3 Connect</Text>
+            <Text className="text-base text-foreground">Sign in to Parity Connect</Text>
             <Text className="text-sm text-foreground-muted">
               Reach your machines from anywhere, no network setup.
             </Text>

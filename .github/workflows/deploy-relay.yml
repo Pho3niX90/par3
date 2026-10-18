@@ -1,9 +1,11 @@
-name: Deploy T3 Connect relay
+name: Deploy Parity Connect relay
 
 on:
   push:
     branches:
       - main
+      # Par3 fork ships from fork/main.
+      - fork/main
   # Redeploys main after a variable or secret change. Alchemy redeploys the
   # Worker when a value it reads changes, so force is rarely needed, and it
   # replaces the Postgres runtime role (alchemy-run/alchemy#1832).
@@ -20,15 +22,16 @@ permissions:
   statuses: write
 
 concurrency:
-  group: relay-production
+  # The fork's own group: the shared name was left holding a stale lock on GitHub.
+  group: relay-production${{ github.repository_owner != 'pingdotgg' && '-par3' || '' }}
   cancel-in-progress: false
 
 jobs:
   deploy_relay:
     name: Deploy production relay
     # A manual run from another branch would deploy that branch to production.
-    if: github.ref == 'refs/heads/main'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    if: (github.repository_owner == 'pingdotgg' && github.ref == 'refs/heads/main') || (github.repository_owner == 'Pho3niX90' && github.ref == 'refs/heads/fork/main')
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
       name: production
@@ -47,6 +50,13 @@ jobs:
       APNS_TEAM_ID: ${{ vars.APNS_TEAM_ID }}
       APNS_KEY_ID: ${{ vars.APNS_KEY_ID }}
       APNS_BUNDLE_ID: ${{ vars.APNS_BUNDLE_ID }}
+      APNS_ENABLED: ${{ vars.APNS_ENABLED }}
+      RELAY_AXIOM_ENABLED: ${{ vars.RELAY_AXIOM_ENABLED }}
+      # Self-hosted Postgres behind the par3-db tunnel; unset means PlanetScale.
+      RELAY_DB_HOST: ${{ vars.RELAY_DB_HOST }}
+      RELAY_DB_NAME: ${{ vars.RELAY_DB_NAME }}
+      RELAY_DB_USER: ${{ vars.RELAY_DB_USER }}
+      RELAY_DB_ACCESS_CLIENT_ID: ${{ vars.RELAY_DB_ACCESS_CLIENT_ID }}
       ALCHEMY_TELEMETRY_DISABLED: "1"
     steps:
       - name: Checkout
@@ -66,6 +76,21 @@ jobs:
             args:
               - --filter=t3code-relay...
 
+      - name: Migrate self-hosted relay database
+        if: vars.RELAY_DB_HOST != ''
+        env:
+          RELAY_DB_PASSWORD: ${{ secrets.RELAY_DB_PASSWORD }}
+          RELAY_DB_ACCESS_CLIENT_SECRET: ${{ secrets.RELAY_DB_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/cloudflared" https://github.com/cloudflare/cloudflared/releases/download/2025.9.1/cloudflared-linux-amd64
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          "$RUNNER_TEMP/cloudflared" access tcp --hostname "$RELAY_DB_HOST" --url 127.0.0.1:15432             --service-token-id "$RELAY_DB_ACCESS_CLIENT_ID" --service-token-secret "$RELAY_DB_ACCESS_CLIENT_SECRET" &
+          for _ in $(seq 1 30); do nc -z 127.0.0.1 15432 && break; sleep 1; done
+          password="$(node -p 'encodeURIComponent(process.env.RELAY_DB_PASSWORD)')"
+          cd infra/relay
+          RELAY_DB_MIGRATION_URL="postgres://${RELAY_DB_USER}:${password}@127.0.0.1:15432/${RELAY_DB_NAME}"             vp exec drizzle-kit migrate --config drizzle.self-hosted.config.ts
+
       - name: Deploy production relay stage
         run: vp run --filter t3code-relay deploy --stage prod --yes --no-input ${{ inputs.force && '--force' || '' }}
         env:
@@ -77,6 +102,8 @@ jobs:
           PLANETSCALE_API_TOKEN: ${{ secrets.PLANETSCALE_API_TOKEN }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          RELAY_DB_PASSWORD: ${{ secrets.RELAY_DB_PASSWORD }}
+          RELAY_DB_ACCESS_CLIENT_SECRET: ${{ secrets.RELAY_DB_ACCESS_CLIENT_SECRET }}
           APNS_PRIVATE_KEY: ${{ secrets.APNS_PRIVATE_KEY }}
           FCM_SERVICE_ACCOUNT: ${{ secrets.FCM_SERVICE_ACCOUNT }}
 

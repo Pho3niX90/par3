@@ -1,6 +1,7 @@
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
+import { subscribePlanModeToggle } from "./chat/planModeActionBus";
 import {
   isThreadWokeUnseen,
   mergeDirectPreviewAnnotation,
@@ -36,7 +37,7 @@ import {
   latestExecutedRun,
   latestRootProviderFailure,
 } from "@t3tools/shared/orchestrationV2ThreadError";
-import type { UsageLimitSourceSnapshots } from "@t3tools/contracts";
+import type { UsageLimitSourceSnapshots, VcsThreadRepository } from "@t3tools/contracts";
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
 import { useUsageLimitsPanel } from "./chat/useUsageLimitsPanel";
@@ -555,6 +556,7 @@ import { observeResize } from "~/lib/observeResize";
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_MODELS: ServerProvider["models"] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
+const EMPTY_REPOSITORIES: ReadonlyArray<VcsThreadRepository> = [];
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
 
 const TIMELINE_SCROLL_CANCEL_SENTINEL = Object.freeze({});
@@ -2360,7 +2362,7 @@ export default function ChatView(props: ChatViewProps) {
   const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
   const activeProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const { enabled: interactionModeEnabled, interactionMode } = resolveComposerInteractionMode({
-    planModeEnabled: settings.planModeEnabled,
+    planModeEnabled: settings.composerPlanModeEnabled,
     provider: activeProviderStatus,
     interactionMode:
       composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE,
@@ -2427,6 +2429,8 @@ export default function ChatView(props: ChatViewProps) {
     interactionMode,
     latestTurnSettled: latestRunSettled,
     hasActionableProposedPlan: hasActionableProposedPlan(activeProposedPlan),
+    planFromLatestRun:
+      activeLatestRun != null && activeProposedPlan?.runId === activeLatestRun.runId,
     hasComposerAttachments: composerHasAttachments,
   });
   // A pending approval or question is part of the key: once it is answered,
@@ -2990,6 +2994,30 @@ export default function ChatView(props: ChatViewProps) {
     }
   }, [environmentId, gitStatusCwd, liveIsGitRepo]);
   const isGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitStatusCwd) ?? true;
+  // A folder that holds several repositories has no status of its own; the panel and the diff
+  // show the child repositories the thread edited instead.
+  const childRepositoriesQuery = useEnvironmentQuery(
+    isServerThread && liveIsGitRepo === false && activeThread
+      ? vcsEnvironment.threadRepositories({
+          environmentId,
+          input: { threadId: activeThread.id },
+        })
+      : null,
+  );
+  useWorkspaceMutationRefresh({
+    enabled: isServerThread && liveIsGitRepo === false,
+    mutationId: workspaceMutationId,
+    refresh: childRepositoriesQuery.refresh,
+    resourceKey: `thread-repositories:${activeThreadKey ?? ""}`,
+  });
+  const childRepositories =
+    liveIsGitRepo === false
+      ? (childRepositoriesQuery.data?.repositories ?? EMPTY_REPOSITORIES)
+      : EMPTY_REPOSITORIES;
+  const hasDiffSource = isGitRepo || childRepositories.length > 0;
+  // When context is enabled, keep a hidden, off-flow strip mounted so the composer
+  // can measure whether its relocated controls fit. The visible chrome remains
+  // content-driven: Git/environment context or controls that actually fit.
   // A provider-native subagent cannot take messages: a status bar replaces the
   // composer and its strips. Its approvals and questions are asked on the
   // top-level parent thread.
@@ -3555,6 +3583,10 @@ export default function ChatView(props: ChatViewProps) {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   };
   const toggleInteractionModeStable = useStableCallback(toggleInteractionMode);
+  useEffect(
+    () => subscribePlanModeToggle(toggleInteractionModeStable),
+    [toggleInteractionModeStable],
+  );
   const openProviderSetup = (instanceId: ProviderInstanceId) => {
     void navigate({
       to: "/settings/providers",
@@ -3588,12 +3620,18 @@ export default function ChatView(props: ChatViewProps) {
   };
   const createBrowserSurfaceStable = useStableCallback(createBrowserSurface);
   const addDiffSurface = () => {
-    if (!activeThreadRef || !isServerThread || !isGitRepo) return;
+    if (!activeThreadRef || !isServerThread || !hasDiffSource) return;
     useDiffPanelStore.getState().selectGitScope(activeThreadRef, "branch");
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   };
   const addDiffSurfaceStable = useStableCallback(addDiffSurface);
+  const openChildRepositoryChanges = (cwd: string) => {
+    if (!activeThreadRef) return;
+    useDiffPanelStore.getState().selectRepository(activeThreadRef, cwd);
+    addDiffSurface();
+  };
+  const openChildRepositoryChangesStable = useStableCallback(openChildRepositoryChanges);
   const openChangesFromThreadPanel = () => {
     addDiffSurface();
   };
@@ -6147,7 +6185,6 @@ export default function ChatView(props: ChatViewProps) {
     }
     if (
       !directAnnotation &&
-      sendInteractionModeEnabled &&
       showPlanFollowUpPrompt &&
       activeProposedPlan &&
       composerImages.length === 0 &&
@@ -6156,6 +6193,7 @@ export default function ChatView(props: ChatViewProps) {
       const followUp = resolvePlanFollowUpSubmission({
         draftText: promptForSend,
         planMarkdown: activeProposedPlan.planMarkdown,
+        planModeAvailable: sendInteractionModeEnabled,
       });
       const outgoingFollowUpText = formatOutgoingPrompt({
         provider: ctxSelectedProvider,
@@ -6184,6 +6222,7 @@ export default function ChatView(props: ChatViewProps) {
           threadContexts: composerThreadContexts,
         }),
         interactionMode: followUp.interactionMode,
+        implementsPlan: followUp.implementsPlan,
       });
       if (!followUpSent) {
         promptRef.current = followUpPromptSnapshot;
@@ -6371,7 +6410,7 @@ export default function ChatView(props: ChatViewProps) {
         models: provider.models,
         modelOptions: selection.options,
         promptInjectionState: getComposerPromptInjectionState(messageTextForSend),
-        planModeEnabled: settings.planModeEnabled,
+        planModeEnabled: settings.composerPlanModeEnabled,
       });
       const text = formatOutgoingPrompt({
         provider: provider.driverKind,
@@ -6389,7 +6428,7 @@ export default function ChatView(props: ChatViewProps) {
         ),
         text,
         interactionMode: resolveComposerInteractionMode({
-          planModeEnabled: settings.planModeEnabled,
+          planModeEnabled: settings.composerPlanModeEnabled,
           provider: provider.snapshot,
           interactionMode: sendInteractionMode,
         }).interactionMode,
@@ -7099,10 +7138,13 @@ export default function ChatView(props: ChatViewProps) {
     text,
     context,
     interactionMode: nextInteractionMode,
+    implementsPlan,
   }: {
     text: string;
     context?: ReturnType<typeof buildMessageContext>;
     interactionMode: "default" | "plan";
+    /** Only Implement completes the plan; refining in build mode leaves it active. */
+    implementsPlan: boolean;
   }) {
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
@@ -7121,7 +7163,11 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
+    // Refining stays in plan mode, so it needs the toggle; implementing does not.
+    if (
+      !sendCtx?.providerAvailable ||
+      (nextInteractionMode === "plan" && !sendCtx.interactionModeEnabled)
+    ) {
       return false;
     }
     const {
@@ -7205,7 +7251,7 @@ export default function ChatView(props: ChatViewProps) {
           titleSeed: activeThread.title,
           runtimeMode,
           interactionMode: nextInteractionMode,
-          ...(nextInteractionMode === "default" && activeProposedPlan
+          ...(implementsPlan && activeProposedPlan
             ? {
                 sourceProposedPlan: {
                   threadId: activeThread.id,
@@ -7256,7 +7302,7 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
+    if (!sendCtx?.providerAvailable) {
       return;
     }
     const {
@@ -7799,6 +7845,7 @@ export default function ChatView(props: ChatViewProps) {
           rightPanelMaximized ? "w-0 flex-none" : "flex-1",
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
+        data-run-status={activeLatestRun?.status ?? "none"}
       >
         <header
           ref={threadPanelPopoverAnchorRef}
@@ -8102,6 +8149,7 @@ export default function ChatView(props: ChatViewProps) {
                                   providerInstanceEntries,
                                 )
                               }
+                              model={activeThread?.modelSelection.model}
                               modelLabel={providerSubagentModelLabel}
                               effortLabel={providerSubagentEffortLabel}
                               status={providerSubagentStatus}
@@ -8401,6 +8449,10 @@ export default function ChatView(props: ChatViewProps) {
               showOpenInPicker={showOpenInPicker}
               gitCwd={gitCwd}
               isGitRepo={isGitRepo}
+              childRepositories={childRepositories}
+              {...(isServerThread
+                ? { onOpenRepositoryChanges: openChildRepositoryChangesStable }
+                : {})}
               envLocked={envLocked}
               availableEnvironments={logicalProjectEnvironments}
               autoEnvironmentLabel={autoEnvironmentLabel}
@@ -8503,7 +8555,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddDevice={addDeviceSurfaceStable}
           browserAvailable={canOperatePreview && browserAvailable}
           terminalAvailable={activeProject !== null && canOperateTerminal}
-          diffAvailable={isServerThread && isGitRepo}
+          diffAvailable={isServerThread && hasDiffSource}
           filesAvailable={activeProject !== null}
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
@@ -8558,7 +8610,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddDevice={addDeviceSurfaceStable}
             browserAvailable={canOperatePreview && browserAvailable}
             terminalAvailable={activeProject !== null && canOperateTerminal}
-            diffAvailable={isServerThread && isGitRepo}
+            diffAvailable={isServerThread && hasDiffSource}
             filesAvailable={activeProject !== null}
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}

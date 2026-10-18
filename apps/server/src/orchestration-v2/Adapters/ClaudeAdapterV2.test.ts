@@ -1118,6 +1118,32 @@ describe("ClaudeAdapterV2 Auto-accept edits", () => {
   );
 });
 
+describe("ClaudeAdapterV2 approval prompts", () => {
+  it("shows the full command under the SDK title", () => {
+    const command = `find . -name '*.ts' ${"-o -name '*.tsx' ".repeat(60)}`.trim();
+    assert.equal(
+      ClaudeAdapterV2.claudeApprovalPrompt({ title: "Find source files" }, "Bash", { command }),
+      `Find source files\nBash: ${command}`,
+    );
+  });
+
+  it("does not repeat a target the title already names", () => {
+    assert.equal(
+      ClaudeAdapterV2.claudeApprovalPrompt({ title: "Claude wants to edit src/index.ts" }, "Edit", {
+        file_path: "src/index.ts",
+      }),
+      "Claude wants to edit src/index.ts",
+    );
+    assert.equal(
+      ClaudeAdapterV2.claudeApprovalPrompt({}, "Write", {
+        file_path: "src/index.ts",
+        content: "x",
+      }),
+      "Write: src/index.ts",
+    );
+  });
+});
+
 describe("ClaudeAdapterV2 approval cancellation", () => {
   it.effect("observes an approval signal that was already aborted", () =>
     Effect.gen(function* () {

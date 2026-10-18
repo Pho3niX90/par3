@@ -249,16 +249,22 @@ export function SubagentElapsed({ agent }: { agent: Parameters<typeof AgentElaps
   return <AgentElapsed agent={agent} />;
 }
 
+const SUBAGENT_DRIVER_BADGE_CLASS =
+  "top-[-0.25rem] right-[-0.25rem] bottom-auto h-3 min-w-3 px-0.5 text-5xs";
+
 function SubagentAvatar({
   driver,
   displayName,
   iconUrl,
+  model,
   status,
   className,
 }: {
   driver?: ProviderDriverKind | undefined;
   displayName?: string | undefined;
   iconUrl?: string | undefined;
+  /** The subagent's model, so multi-vendor drivers such as Copilot draw the vendor's glyph. */
+  model?: string | null | undefined;
   status?: OrchestrationV2TurnItem["status"] | undefined;
   className?: string;
 }) {
@@ -274,9 +280,13 @@ function SubagentAvatar({
         <ProviderInstanceIcon
           driverKind={driver}
           displayName={displayName ?? driver}
+          model={model ?? undefined}
           acpRegistryIconUrl={iconUrl}
           className="z-auto"
           iconClassName="size-3.5"
+          indicatorBackground="var(--muted)"
+          // The status dot owns the bottom-right corner.
+          badgeClassName={SUBAGENT_DRIVER_BADGE_CLASS}
         />
       ) : (
         <BotIcon className="size-3.5 text-muted-foreground" />
@@ -306,6 +316,7 @@ export function EnvironmentSubagentAvatar({
   environmentId: EnvironmentId;
   providerInstanceId: ProviderInstanceId;
   driver?: ProviderDriverKind | undefined;
+  model?: string | null | undefined;
   status?: OrchestrationV2TurnItem["status"] | undefined;
 }) {
   const providersAtom = serverEnvironment.providersValueAtom(environmentId);
@@ -427,6 +438,7 @@ function SubagentTimelineLink(props: {
         environmentId={props.parentRef.environmentId}
         providerInstanceId={props.providerInstanceId}
         driver={props.driver}
+        model={agent?.model ?? agent?.modelSelection?.model}
         status={status ?? undefined}
       />
       <span className="min-w-0 flex-1">

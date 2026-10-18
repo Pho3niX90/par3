@@ -71,27 +71,30 @@ const RELEASE_ASSETS = {
 
 const VARIANT_CONFIG = {
   development: {
-    appName: "T3 Code Dev",
-    scheme: "t3code-dev",
-    iosBundleIdentifier: "com.t3tools.t3code.dev",
-    androidPackage: "com.t3tools.t3code.dev",
-    relyingParty: "clerk.t3.codes",
+    appName: "Par3 Dev",
+    scheme: "par3-dev",
+    legacyScheme: "t3code-dev",
+    iosBundleIdentifier: "com.paritylabs.par3.dev",
+    androidPackage: "com.paritylabs.par3.dev",
+    relyingParty: "clerk.paritylabs.co.za",
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "T3 Code Preview",
-    scheme: "t3code-preview",
-    iosBundleIdentifier: "com.t3tools.t3code.preview",
-    androidPackage: "com.t3tools.t3code.preview",
-    relyingParty: "clerk.t3.codes",
+    appName: "Par3 Preview",
+    scheme: "par3-preview",
+    legacyScheme: "t3code-preview",
+    iosBundleIdentifier: "com.paritylabs.par3.preview",
+    androidPackage: "com.paritylabs.par3.preview",
+    relyingParty: "clerk.paritylabs.co.za",
     assets: PREVIEW_ASSETS,
   },
   production: {
-    appName: "T3 Code",
-    scheme: "t3code",
-    iosBundleIdentifier: "com.t3tools.t3code",
-    androidPackage: "com.t3tools.t3code",
-    relyingParty: "clerk.t3.codes",
+    appName: "Par3",
+    scheme: "par3",
+    legacyScheme: "t3code",
+    iosBundleIdentifier: "com.paritylabs.par3",
+    androidPackage: "com.paritylabs.par3",
+    relyingParty: "clerk.paritylabs.co.za",
     assets: RELEASE_ASSETS,
   },
 } as const;
@@ -132,7 +135,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "SubscriptionUsage",
         displayName: "Subscription usage",
-        description: "Subscription quotas from your connected T3 Code environments.",
+        description: "Subscription quotas from your connected Par3 environments.",
         ios: {
           configuration: {
             title: "Subscription usage",
@@ -183,7 +186,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "AgentActivity",
         displayName: "Agent Activity",
-        description: "Shows the current state of active T3 Code agents.",
+        description: "Shows the current state of active Par3 agents.",
         android: null,
         ios: { supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"] },
       },
@@ -221,11 +224,18 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 // names on Android so React Native and the native composer use one set of
 // family names without waiting for runtime font loading.
 
+// The Expo project and account this build publishes to. Both come from the env so a
+// build without them cannot ship updates to another account's project.
+const easProjectId = repoEnv.T3CODE_EAS_PROJECT_ID?.trim() || undefined;
+const expoOwner = repoEnv.T3CODE_EXPO_OWNER?.trim() || undefined;
+
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "t3-code",
+  slug: "par3",
   platforms: ["ios", "android"],
-  scheme: variant.scheme,
+  // par3 first: code that needs one scheme reads the first. t3code:// keeps links from
+  // upstream T3 Code servers and older Par3 builds opening this app.
+  scheme: [variant.scheme, variant.legacyScheme],
   version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.0.0",
   runtimeVersion: {
     // Development manifests resolve on every launch, so avoid fingerprint's
@@ -237,8 +247,8 @@ const config: ExpoConfig = {
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
-    enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
-    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+    enabled: easProjectId !== undefined && repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
+    ...(easProjectId ? { url: `https://u.expo.dev/${easProjectId}` } : {}),
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -247,10 +257,10 @@ const config: ExpoConfig = {
     supportsTablet: true,
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
-    // does not fall back to a personal team (which cannot sign app groups,
-    // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
+    // Pin code signing to the Parity Labs team (T3CODE_APPLE_TEAM_ID) so
+    // non-interactive `expo run:ios` does not fall back to a personal team
+    // (which cannot sign app groups, Sign in with Apple, or push entitlements).
+    appleTeamId: repoEnv.T3CODE_APPLE_TEAM_ID?.trim() || undefined,
     associatedDomains: [
       `applinks:${variant.relyingParty}`,
       `webcredentials:${variant.relyingParty}`,
@@ -268,8 +278,8 @@ const config: ExpoConfig = {
         NSAllowsArbitraryLoads: true,
       },
       NSLocalNetworkUsageDescription:
-        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
-      NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
+        "Allow Par3 to connect to Par3 servers on your local network or tailnet.",
+      NSPhotoLibraryAddUsageDescription: "Allow Par3 to save images to your photo library.",
       // "Audio, AirPlay, and Picture in Picture": the browser screen's system
       // picture in picture needs it to start and to stay up outside the app.
       UIBackgroundModes: ["audio"],
@@ -294,6 +304,10 @@ const config: ExpoConfig = {
   android: {
     icon: variant.assets.appIcon,
     package: variant.androidPackage,
+    // Builds outside EAS (fork-mobile-android.yml) pass Play's increasing version code here.
+    ...(repoEnv.T3CODE_ANDROID_VERSION_CODE
+      ? { versionCode: Number(repoEnv.T3CODE_ANDROID_VERSION_CODE) }
+      : {}),
     ...(repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE
       ? { googleServicesFile: repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE }
       : {}),
@@ -377,7 +391,7 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow T3 Code to use your microphone for voice input.",
+        microphonePermission: "Allow Par3 to use your microphone for voice input.",
         recordAudioAndroid: false,
         enableBackgroundPlayback: false,
         enableBackgroundRecording: false,
@@ -386,7 +400,7 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        cameraPermission: "Allow T3 Code to access your camera so you can scan pairing QR codes.",
+        cameraPermission: "Allow Par3 to access your camera so you can scan pairing QR codes.",
         microphonePermission: false,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,
@@ -484,11 +498,9 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
-    eas: {
-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
-    },
+    eas: easProjectId ? { projectId: easProjectId } : {},
   },
-  owner: "pingdotgg",
+  ...(expoOwner ? { owner: expoOwner } : {}),
   experiments: {
     // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
     reactCompiler: true,

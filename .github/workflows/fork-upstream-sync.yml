@@ -1,0 +1,150 @@
+name: Fork upstream sync
+
+# Keeps this fork current with the repository it was forked from:
+#
+#   main       an exact mirror of upstream main. Only this job writes to it, and only by
+#              fast-forward, so `git log fork/main..main` is always the upstream work not yet
+#              taken into the fork.
+#   fork/main  the fork's default branch: upstream plus the fork's own changes. Fork builds and
+#              releases come from here (fork-windows-build.yml).
+#
+# A clean merge of main into fork/main is pushed straight away, which runs CI; the nightly fork
+# build picks it up. A conflicting one is left as a main -> fork/main pull request listing the
+# conflicting files; resolve it by merging main into fork/main locally and pushing. Always merge, never
+# rebase: fork releases compare from the previous release's commit.
+#
+# Upstream runs on Blacksmith runners, which this fork has no access to. Every run rewrites
+# Blacksmith labels on fork/main to their GitHub-hosted equivalents and commits the change, so
+# upstream workflow edits (and manual conflict merges) never bring them back. Workflows that
+# publish to upstream's infrastructure skip unless the owner is pingdotgg. main keeps upstream's
+# unmodified files, so pushes to it still start upstream's workflows on Blacksmith labels.
+#
+# FORK_SYNC_TOKEN must be a fine-grained token (or GitHub App token) for this repository with
+# Contents, Workflows and Pull requests write access. GITHUB_TOKEN cannot push upstream changes
+# to .github/workflows, and pushes made with it do not start other workflows.
+#
+# Scheduled runs only fire from the default branch, so this file lives on fork/main. Skipped on
+# the upstream repository.
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: fork-upstream-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync upstream main into fork/main
+    if: github.repository_owner != 'pingdotgg'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      UPSTREAM_REPOSITORY: pingdotgg/t3code
+      MIRROR_BRANCH: main
+      FORK_BRANCH: fork/main
+      GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
+    steps:
+      - name: Check token
+        shell: bash
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::Add a FORK_SYNC_TOKEN repository secret (see the comment at the top of this workflow)."
+            exit 1
+          fi
+
+      # A blobless clone of fork/main, without the vendored .repos tree the merge never needs.
+      - name: Clone fork
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none --no-checkout --branch "$FORK_BRANCH" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" fork
+          cd fork
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --quiet "$FORK_BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --quiet --no-tags upstream "+refs/heads/main:refs/remotes/upstream/main"
+
+      # Fast-forward only: if main ever gains commits of its own, this fails rather than
+      # overwrite them. Move such commits to a branch off fork/main and reset main to upstream.
+      - name: Mirror upstream main
+        shell: bash
+        working-directory: fork
+        run: |
+          set -euo pipefail
+          git push origin "refs/remotes/upstream/main:refs/heads/${MIRROR_BRANCH}"
+          echo "${MIRROR_BRANCH} is at $(git rev-parse --short upstream/main)."
+
+      - name: Merge into fork/main
+        shell: bash
+        working-directory: fork
+        run: |
+          set -euo pipefail
+          behind="$(git rev-list --count HEAD..upstream/main)"
+          if [[ "$behind" == "0" ]]; then
+            echo "${FORK_BRANCH} already has every upstream commit."
+            exit 0
+          fi
+          echo "${FORK_BRANCH} is ${behind} upstream commit(s) behind; merging."
+
+          if git merge --no-edit --no-ff -m "Merge upstream main into ${FORK_BRANCH}" upstream/main; then
+            {
+              echo "### Merged ${behind} upstream commit(s) into \`${FORK_BRANCH}\`"
+              echo
+              git log --no-merges --max-count=50 --format='- %s (`%h`)' "HEAD^1..HEAD^2"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          conflicts="$(git diff --name-only --diff-filter=U)"
+          git merge --abort
+          body="$(
+            echo "Upstream main has ${behind} commit(s) that do not merge cleanly into \`${FORK_BRANCH}\`."
+            echo
+            echo "Conflicting files:"
+            echo
+            printf '%s\n' "$conflicts" | sed 's/^/- `/; s/$/`/'
+            echo
+            echo "To resolve: \`git fetch origin && git switch ${FORK_BRANCH} && git merge origin/${MIRROR_BRANCH}\`, fix the conflicts, commit, and push. This pull request then closes as merged."
+          )"
+          pr="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$MIRROR_BRANCH" --base "$FORK_BRANCH" \
+            --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$pr" ]]; then
+            gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --head "$MIRROR_BRANCH" --base "$FORK_BRANCH" \
+              --title "Merge upstream main into ${FORK_BRANCH} (conflicts)" --body "$body"
+          fi
+          echo "::warning::Upstream main conflicts with ${FORK_BRANCH}; see the open main -> ${FORK_BRANCH} pull request."
+
+      # Pushes a clean merge, and also catches labels that a manual conflict merge brought in.
+      # After a conflict the merge was aborted, so only fork/main's own labels are rewritten.
+      - name: Use GitHub-hosted runners
+        shell: bash
+        working-directory: fork
+        run: |
+          set -euo pipefail
+          # ubuntu-24.04(-arm) -> ubuntu-24.04(-arm); macOS and Windows labels
+          # only lose the prefix.
+          files="$(git grep -lE 'blacksmith-[0-9]+vcpu-' -- .github || true)"
+          if [[ -n "$files" ]]; then
+            printf '%s\n' "$files" | xargs sed -i -E \
+              -e 's/blacksmith-[0-9]+vcpu-ubuntu-2404/ubuntu-24.04/g' \
+              -e 's/blacksmith-[0-9]+vcpu-//g'
+            git commit --quiet -am "ci(fork): use GitHub-hosted runners"
+            echo "Replaced Blacksmith runner labels in:" >> "$GITHUB_STEP_SUMMARY"
+            printf -- '- `%s`\n' $files >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/${FORK_BRANCH}")" ]]; then
+            git push origin "HEAD:refs/heads/${FORK_BRANCH}"
+          fi

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Builds the `t3` npm package behind `npx t3` / `npm i -g t3`: a launcher
+ * Builds the `@paritylabs/par3` npm package behind `npx @paritylabs/par3` /
+ * `npm i -g @paritylabs/par3`: a launcher
  * with no dependencies that downloads this exact version's CLI archive from
  * the GitHub Release on first run (scripts/npm-launcher/t3.mjs).
  * The executables are not published to npm. npm's publish-time scanning held
@@ -28,7 +29,7 @@ import serverPackageJson from "../apps/server/package.json" with { type: "json" 
 
 import { windowsSystemTar } from "./build-cli-archive.ts";
 
-export const NPM_LAUNCHER_PACKAGE_NAME = "t3";
+export const NPM_LAUNCHER_PACKAGE_NAME = "@paritylabs/par3";
 
 const encodePackageJson = Schema.encodeEffect(fromJsonStringPretty(Schema.Unknown));
 
@@ -47,10 +48,10 @@ export function npmLauncherPackageManifest(version: string) {
     name: NPM_LAUNCHER_PACKAGE_NAME,
     version,
     description:
-      "T3 Code CLI. Downloads the self-contained executable for this platform from the GitHub Release.",
+      "Par3 CLI. Downloads the self-contained executable for this platform from the GitHub Release.",
     license: serverPackageJson.license,
     repository: serverPackageJson.repository,
-    bin: { t3: "./bin/t3.mjs" },
+    bin: { par3: "./bin/t3.mjs", p3: "./bin/t3.mjs" },
     files: ["bin", "dist"],
     engines: { node: ">=20.11" },
   };
@@ -85,8 +86,10 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
     yield* fs.copyFile(readme, path.join(stageDir, "README.md"));
   }
 
-  const packageDir = path.join(input.outputDir, NPM_LAUNCHER_PACKAGE_NAME);
-  const tarball = path.join(input.outputDir, `${NPM_LAUNCHER_PACKAGE_NAME}.tgz`);
+  // Fixed file names: the scoped package name would nest them under `@paritylabs/`, and
+  // `cli.ts publish` reads `t3.tgz`.
+  const packageDir = path.join(input.outputDir, "t3");
+  const tarball = path.join(input.outputDir, "t3.tgz");
   yield* fs.remove(tarball, { force: true });
   const tar = (yield* HostProcess.Platform) === "win32" ? windowsSystemTar() : "tar";
   // npm tarballs root everything under `package/`.

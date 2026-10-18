@@ -140,6 +140,18 @@ export check's workspace selectors as more workspaces become clean. Review calle
 deleting code; production mode can also report development scripts and test fixtures.
 Runtime-discovered entrypoints and dependency exceptions belong in [knip.jsonc](../../knip.jsonc).
 
+### Provider benchmark
+
+`vp run bench:provider` times Claude turns through raw `claude -p` (A0), `claude` with Par3's
+configuration (A1) and a fresh Par3 server (B), using a generated fixture repo, and writes
+`results.json` and `summary.md` to a temp directory (`--out` to choose). It calls the model, so
+start small: `vp run bench:provider --workloads W1 --n 1`. `--arms A0,A1,B,T,C` adds
+interactive `claude` in a terminal (T) and the web app in Chrome or Edge (C); both open windows.
+`--stub <out>/recordings` replays an earlier run's A0 output with no network, which makes B − A0
+exact plumbing overhead. `--matrix` covers the permission and streaming modes. The
+[Provider benchmark workflow](../../.github/workflows/provider-bench.yml) runs it on demand and
+weekly.
+
 ## Desktop artifacts
 
 Local artifact builds are unsigned by default and write to `release/`:
