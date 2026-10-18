@@ -86,7 +86,8 @@ function McpServersForm() {
   const testServer = useAtomCommand(serverEnvironment.mcpGatewayTest, { reportFailure: false });
   const [statuses, setStatuses] = useState<ReadonlyArray<McpGatewayServerStatus>>([]);
   const [tests, setTests] = useState<Record<string, TestOutcome>>({});
-  // Bumped when a server changes, so a test still running against the old settings is dropped.
+  // Bumped when a server's connection or enabled state changes, so a test of the old settings is
+  // dropped. A tool policy change keeps the result, since the tool checklist is rendered from it.
   const testGenerations = useRef(new Map<string, number>());
   const [editing, setEditing] = useState<{ server: McpServerConfig; isNew: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -198,7 +199,9 @@ function McpServersForm() {
                 test={tests[server.id]}
                 disabled={!canEdit || busy}
                 onToggle={(enabled) => void saveServer({ ...server, enabled })}
-                onPolicy={(toolPolicy) => void saveServer({ ...server, toolPolicy })}
+                onPolicy={(toolPolicy) =>
+                  void save(upsertMcpServer(servers, { ...server, toolPolicy }))
+                }
                 onEdit={() => setEditing({ server, isNew: false })}
                 onTest={() => void runTest(server)}
                 onRemove={() => void remove(server.id)}
