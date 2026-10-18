@@ -266,7 +266,17 @@ export const make = Effect.gen(function* () {
           { role: "togglefullscreen" },
         ],
       },
-      { role: "windowMenu" },
+      environment.platform === "darwin"
+        ? { role: "windowMenu" }
+        : {
+            /*
+              Not the windowMenu role: off macOS it adds a Close item bound to
+              Ctrl+W, which closes the last window and quits the app whenever
+              the web shortcut (close right panel) declines the key.
+            */
+            label: "Window",
+            submenu: [{ role: "minimize" }, { role: "zoom" }],
+          },
       {
         role: "help",
         submenu: [
