@@ -3447,6 +3447,63 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("forgets a model's window once a later read reports its limit as 0", () =>
+    Effect.gen(function* () {
+      const model = modelCatalog.data[0]!;
+      const catalog = (pickleLimit: number, otherLimit: number) => ({
+        ...modelCatalog,
+        data: [
+          { ...model, limit: { context: pickleLimit, input: 0, output: 1000 } },
+          {
+            ...model,
+            id: "other",
+            modelID: "other",
+            limit: { context: otherLimit, input: 0, output: 1000 },
+          },
+        ],
+      });
+      const other = { instanceId, model: "opencode/other" };
+      const gate = makeProviderReplayGate(["reread"]);
+      const runtime = yield* openCode2ReplayRuntime(
+        withInstructions([
+          out("event.subscribe"),
+          out("model.list", "<any>"),
+          reply("model.list", catalog(0, 128000)),
+          out("session.get", { sessionID: SESSION }),
+          replyData("session.get", sessionInfo()),
+          ...noOpenRequests,
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("session.execution.succeeded", { sessionID: SESSION }),
+          // The turn's own window is unknown, so its end reads the catalog again.
+          out("model.list", "<any>"),
+          reply("model.list", catalog(160000, 0)),
+          event("session.usage.updated", { sessionID: SESSION }, "reread"),
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("session.execution.succeeded", { sessionID: SESSION }),
+        ]),
+        { replayGate: gate },
+      );
+      const thread = yield* runtime.resumeThread({
+        providerThread: providerThread(yield* DateTime.now),
+        threadId,
+        modelSelection: bigPickle,
+        runtimePolicy: policy(),
+      });
+      assert.equal(runtime.getModelContextWindow?.(other), 128000);
+      const ended = yield* terminals(runtime, 2);
+      yield* runtime.startTurn(turnInput(thread));
+      yield* Effect.promise(() => gate.waitForReached("reread"));
+      gate.release("reread");
+      yield* runtime.startTurn(secondTurn(thread));
+      const [, second] = yield* Fiber.join(ended);
+      assert.equal(second?.status, "completed");
+      assert.equal(runtime.getModelContextWindow?.(bigPickle), 160000);
+      assert.equal(runtime.getModelContextWindow?.(other), undefined);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("reports each directory's own limit for a model its project config changed", () =>
     Effect.gen(function* () {
       const custom = "/work/opencode2-custom";

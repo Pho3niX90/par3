@@ -2626,12 +2626,15 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           Effect.tap((models) =>
             Effect.sync(() => {
               for (const model of models.data) {
-                // OpenRouter and custom models often report a 0 limit; that must
-                // read as unknown, not as a 0-token window.
+                // OpenRouter and custom models may report a 0 limit; that must
+                // read as unknown, not as a 0-token window, and a limit that
+                // dropped to 0 since the last read must not keep the old one.
+                const key = `${model.providerID}/${model.id}`;
                 const limit = [model.limit.input, model.limit.context].find(
                   (value) => value !== undefined && value > 0,
                 );
-                if (limit !== undefined) windows.set(`${model.providerID}/${model.id}`, limit);
+                if (limit === undefined) windows.delete(key);
+                else windows.set(key, limit);
               }
             }),
           ),
