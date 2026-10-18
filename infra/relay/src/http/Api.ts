@@ -1322,7 +1322,7 @@ export const layerServerApi = HttpApiBuilder.group(
               relayInternalErrorResponse("upstream_unavailable"),
             ManagedEndpointProvisioningFailed: () =>
               relayInternalErrorResponse("upstream_unavailable"),
-            ManagedTunnelLimitExceeded: () => relayInternalErrorResponse("upstream_unavailable"),
+            ManagedTunnelLimitExceeded: relayLinkLimitExceededResponse,
           }),
           mapRelayCommonApiErrors("not_authorized"),
         ),
@@ -1359,7 +1359,7 @@ export const layerServerApi = HttpApiBuilder.group(
               relayInternalErrorResponse("upstream_unavailable"),
             ManagedEndpointDeprovisioningFailed: () =>
               relayInternalErrorResponse("upstream_unavailable"),
-            ManagedTunnelLimitExceeded: () => relayInternalErrorResponse("upstream_unavailable"),
+            ManagedTunnelLimitExceeded: relayLinkLimitExceededResponse,
           }),
           mapRelayCommonApiErrors("not_authorized"),
         ),
@@ -1466,6 +1466,20 @@ export function relayDpopFailureReason(
     case "invalid_proof":
       return "invalid_proof";
   }
+}
+
+function relayLinkLimitExceededResponse(limitError: { readonly maxTunnels: number }) {
+  return currentTraceId.pipe(
+    Effect.flatMap((traceId) =>
+      Effect.fail(
+        new RelayEnvironmentLinkLimitExceededError({
+          code: "environment_link_limit_exceeded",
+          maxTunnels: limitError.maxTunnels,
+          traceId,
+        }),
+      ),
+    ),
+  );
 }
 
 function relayInternalErrorResponse(reason: RelayInternalError["reason"]) {
