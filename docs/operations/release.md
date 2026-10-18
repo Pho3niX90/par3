@@ -96,7 +96,16 @@ credentials documented below:
 
 The finalize job uses them to commit and push aligned package versions to `main` as the Release App.
 GitHub Release publication uses the repository-scoped workflow token so it has a rate-limit quota
-independent from the shared Release App installation.
+independent from the shared Release App installation. Without the Release App (the Par3 fork has
+none), finalize pushes the bump to the default branch with `GITHUB_TOKEN` instead.
+
+### In the Par3 fork
+
+`release.yml` runs for the `Pho3niX90` owner too, against the `production` environment's relay
+and Clerk values, and dispatches select `fork/main`, the fork's default branch. The hosted web
+app and marketing site (Vercel), AUR and Discord jobs are upstream-only: the fork deploys web from
+`fork-web-deploy.yml`. Missing signing secrets produce unsigned desktop builds rather than
+failures, and a relay stack without Axiom builds the clients without relay tracing.
 
 ## Parity Connect relay deployment
 

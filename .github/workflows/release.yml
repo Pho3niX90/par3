@@ -50,9 +50,10 @@ jobs:
   # have already run. Scheduled runs also decide here whether a nightly is due.
   resolve_commit:
     name: Resolve release commit
-    # Upstream only: publishes upstream's npm packages, releases, web and relay. Every
-    # other job needs this one, so the whole release skips in forks.
-    if: github.repository_owner == 'pingdotgg'
+    # Upstream and the Par3 fork (Pho3niX90) only. Every other job needs this one, so the
+    # whole release skips in other forks. Jobs that publish to upstream-only infrastructure
+    # (Vercel, AUR, Discord) are gated to pingdotgg on their own.
+    if: github.repository_owner == 'pingdotgg' || github.repository_owner == 'Pho3niX90'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -206,7 +207,7 @@ jobs:
             echo "release_channel=stable" >> "$GITHUB_OUTPUT"
             echo "version=$version" >> "$GITHUB_OUTPUT"
             echo "tag=v$version" >> "$GITHUB_OUTPUT"
-            echo "name=T3 Code v$version" >> "$GITHUB_OUTPUT"
+            echo "name=Par3 v$version" >> "$GITHUB_OUTPUT"
             echo "cli_dist_tag=latest" >> "$GITHUB_OUTPUT"
             if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
@@ -403,6 +404,13 @@ jobs:
             jq -er --arg key "$1" '.[$key] | if type == "object" then .__redacted__ else . end | select(. != null and . != "")' <<<"$output" \
               || { echo "Relay stack output is missing $1" >&2; exit 1; }
           }
+          # A stack deployed without Axiom publishes all three tracing fields empty; the
+          # clients then ship without relay tracing rather than failing the release.
+          if [[ -z "$(jq -r '.clientTracingUrl // ""' <<<"$output")" ]]; then
+            echo "Relay stack has no client tracing configured; building without it."
+            : > "$RUNNER_TEMP/relay-client-tracing.env"
+            exit 0
+          fi
           url="$(field clientTracingUrl)"
           dataset="$(field clientTracingDataset)"
           token="$(field clientTracingToken)"
@@ -512,7 +520,7 @@ jobs:
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
           tracing_token="$(sed -n 's/^T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN=//p' "$config_path")"
-          echo "::add-mask::$tracing_token"
+          [[ -n "$tracing_token" ]] && echo "::add-mask::$tracing_token"
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Align package versions to release version
@@ -865,7 +873,7 @@ jobs:
           > [!WARNING]
           > **This is a preview build. Do not install it unless you know exactly why you are here.**
           >
-          > Preview builds are cut by maintainers from unreleased branches to exercise the release pipeline. They can be broken, receive no fixes, are never offered as updates, and are not supported. If you want T3 Code, install the [latest release](https://github.com/pingdotgg/t3code/releases/latest) or a nightly instead.
+          > Preview builds are cut by maintainers from unreleased branches to exercise the release pipeline. They can be broken, receive no fixes, are never offered as updates, and are not supported. If you want Par3, install the [latest release](https://github.com/${{ github.repository }}/releases/latest) or a nightly instead.
 
           Built from `${{ needs.preflight.outputs.ref }}`.
           EOF
@@ -960,10 +968,11 @@ jobs:
   # still move the project's own *.vercel.app production hostname at build time.
   # That hostname sits behind Vercel SSO and is not a user channel, so the
   # npm-before-client order in docs/operations/release.md holds for users.
+  # Upstream only: the Par3 fork deploys the hosted web app from fork-web-deploy.yml.
   build_web:
     name: Build hosted web app
     needs: [preflight, relay_public_config]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
+    if: ${{ github.repository_owner == 'pingdotgg' && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -1009,7 +1018,7 @@ jobs:
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
           tracing_token="$(sed -n 's/^T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN=//p' "$config_path")"
-          echo "::add-mask::$tracing_token"
+          [[ -n "$tracing_token" ]] && echo "::add-mask::$tracing_token"
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Align package versions to release version
@@ -1133,10 +1142,11 @@ jobs:
   # Same split as the web app: build a production deployment early, then
   # promote it to t3.codes once the release it links to exists. As above, the
   # project's own *.vercel.app hostname moves at build time.
+  # Upstream only, like build_web.
   build_marketing:
     name: Build marketing site
     needs: [preflight]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
+    if: ${{ github.repository_owner == 'pingdotgg' && !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -1248,9 +1258,17 @@ jobs:
     needs: [preflight, release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Without the release app (the Par3 fork has none), the bump is pushed with
+    # GITHUB_TOKEN, which needs write access and starts no further workflows.
+    permissions:
+      contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
     steps:
       - id: app_token
         name: Mint release app token
+        if: env.HAS_RELEASE_APP == 'true'
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
@@ -1260,9 +1278,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ env.DEFAULT_BRANCH }}
           fetch-depth: 0
-          token: ${{ steps.app_token.outputs.token }}
+          token: ${{ steps.app_token.outputs.token || github.token }}
           persist-credentials: true
           sparse-checkout: |
             /*
@@ -1272,8 +1290,8 @@ jobs:
       - id: app_bot
         name: Resolve GitHub App bot identity
         env:
-          GH_TOKEN: ${{ steps.app_token.outputs.token }}
-          APP_SLUG: ${{ steps.app_token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token || github.token }}
+          APP_SLUG: ${{ steps.app_token.outputs.app-slug || 'github-actions' }}
         run: |
           user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
           echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
@@ -1319,7 +1337,7 @@ jobs:
 
           git add apps/server/package.json apps/desktop/package.json apps/web/package.json packages/contracts/package.json pnpm-lock.yaml
           git commit -m "chore(release): prepare $RELEASE_TAG"
-          git push origin HEAD:main
+          git push origin "HEAD:$DEFAULT_BRANCH"
 
   announce_discord:
     name: Announce release on Discord
