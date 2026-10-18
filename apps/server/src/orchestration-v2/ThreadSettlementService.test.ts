@@ -150,17 +150,17 @@ describe("isAutoSettlementCandidate", () => {
     ).toBe(false);
   });
 
-  it("settles a thread whose only background work is a command left running", () => {
+  it("keeps a thread whose agent waits on a background command it started", () => {
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(
         shell({
           pendingBackgroundTasks: [
-            { taskId: "dev", kind: "command", description: "vp run dev --share" },
+            { taskId: "poll", kind: "command", description: "Wait for PR checks" },
           ],
         }),
         NOW_MS,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("keeps snoozed threads parked until they wake early on error or completion", () => {

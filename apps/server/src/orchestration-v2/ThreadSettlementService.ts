@@ -1,4 +1,3 @@
-import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import {
@@ -136,7 +135,11 @@ export function isAutoSettlementCandidate(
   if (thread.pinnedAt != null || thread.autoSettleDisabledAt != null) return false;
   if (thread.pendingRuntimeRequest !== null) return false;
   if (thread.activityRunStatus != null) return false;
-  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) return false;
+  // Par3 diverges from upstream #15355 here (keep this on upstream merges): unlike the sidebar's
+  // Waiting status, a background command counts. Settling detaches the session, which kills it,
+  // and agents wait on commands they started to wake them. A forgotten dev server settles once
+  // releasing its idle session ends it.
+  if ((thread.pendingBackgroundTasks?.length ?? 0) > 0) return false;
   if (threadHasQueuedTurnStart(thread, nowMs)) return false;
   const snoozedUntilMs = toMillis(thread.snoozedUntil);
   if (snoozedUntilMs === null || snoozedUntilMs <= nowMs) return true;
