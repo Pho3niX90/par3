@@ -151,12 +151,14 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   };
 
   const jumpToQuestion = (index: number) => {
-    if (disabled || isResponding || index === questionIndex) return;
-    // A pending auto-advance would otherwise move on from the question jumped to.
+    if (disabled || isResponding) return;
+    // A pending auto-advance would otherwise move on from the question jumped to, even when
+    // that is the question already showing.
     if (autoAdvanceTimerRef.current !== null) {
       window.clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = null;
     }
+    if (index === progress.questionIndex) return;
     onSelectQuestion(index);
   };
 
