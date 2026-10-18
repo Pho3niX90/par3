@@ -406,7 +406,11 @@ jobs:
           }
           # A stack deployed without Axiom publishes all three tracing fields empty; the
           # clients then ship without relay tracing rather than failing the release.
-          if [[ -z "$(jq -r '.clientTracingUrl // ""' <<<"$output")" ]]; then
+          # A partially configured stack falls through to field() and fails there.
+          tracing_empty="$(jq -r 'if type != "object" then error("not an object") else
+            [.clientTracingUrl, .clientTracingDataset, (.clientTracingToken | if type == "object" then .__redacted__ else . end)]
+            | all(. == null or . == "") end' <<<"$output")"             || { echo "Relay stack output is not a JSON object" >&2; exit 1; }
+          if [[ "$tracing_empty" == "true" ]]; then
             echo "Relay stack has no client tracing configured; building without it."
             : > "$RUNNER_TEMP/relay-client-tracing.env"
             exit 0

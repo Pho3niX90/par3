@@ -62,11 +62,25 @@ for (const prefix of [
   });
 }
 
+test("builds without tracing when the stack has none configured", () => {
+  const empty = {
+    clientTracingUrl: "",
+    clientTracingDataset: "",
+    clientTracingToken: { __redacted__: "" },
+  };
+  const result = runStep(JSON.stringify(empty, null, 2));
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /::add-mask::/);
+  assert.equal(result.envFile, "");
+});
+
 for (const [name, stdout, exitCode] of [
   ["failed CLI even with valid JSON", json, 1],
   ["missing JSON", "Refreshing credentials...", 0],
   ["malformed JSON", "{not JSON", 0],
   ["missing token", JSON.stringify({ ...config, clientTracingToken: null }, null, 2), 0],
+  ["non-object JSON", JSON.stringify("tracing"), 0],
+  ["partial tracing config", JSON.stringify({ ...config, clientTracingUrl: "" }, null, 2), 0],
 ]) {
   test(`rejects ${name} without writing config`, () => {
     const result = runStep(stdout, exitCode);
