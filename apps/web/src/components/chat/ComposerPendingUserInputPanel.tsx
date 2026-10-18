@@ -4,6 +4,7 @@ import { useStableCallback } from "~/hooks/useStableCallback";
 import { type PendingUserInput } from "../../session-logic";
 import {
   derivePendingUserInputProgress,
+  summarizePendingUserInputAnswer,
   type PendingUserInputDraftAnswer,
 } from "../../pendingUserInput";
 import { CheckIcon } from "lucide-react";
@@ -22,6 +23,7 @@ interface PendingUserInputPanelProps {
   questionIndex: number;
   onToggleOption: (questionId: string, optionValue: string) => void;
   onAdvance: () => void;
+  onSelectQuestion: (questionIndex: number) => void;
   onDismiss: (requestId: RuntimeRequestId) => void;
 }
 
@@ -35,6 +37,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
   questionIndex,
   onToggleOption,
   onAdvance,
+  onSelectQuestion,
   onDismiss,
 }: PendingUserInputPanelProps) {
   if (pendingUserInputs.length === 0) return null;
@@ -53,6 +56,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
       questionIndex={questionIndex}
       onToggleOption={onToggleOption}
       onAdvance={onAdvance}
+      onSelectQuestion={onSelectQuestion}
       onDismiss={onDismiss}
     />
   );
@@ -68,6 +72,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   questionIndex,
   onToggleOption,
   onAdvance,
+  onSelectQuestion,
   onDismiss,
 }: {
   prompt: PendingUserInput;
@@ -79,6 +84,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   questionIndex: number;
   onToggleOption: (questionId: string, optionValue: string) => void;
   onAdvance: () => void;
+  onSelectQuestion: (questionIndex: number) => void;
   onDismiss: (requestId: RuntimeRequestId) => void;
 }) {
   // Message-mode requests remain answerable after their provider turn ends.
@@ -142,6 +148,16 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       autoAdvanceTimerRef.current = null;
       advance();
     }, 200);
+  };
+
+  const jumpToQuestion = (index: number) => {
+    if (disabled || isResponding || index === questionIndex) return;
+    // A pending auto-advance would otherwise move on from the question jumped to.
+    if (autoAdvanceTimerRef.current !== null) {
+      window.clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    onSelectQuestion(index);
   };
 
   const selectOptionFromShortcut = useEffectEvent(handleOptionSelection);
@@ -234,6 +250,45 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       <CollapsiblePanel>
         <ComposerBanner.Scroll>
           <ComposerBanner.Body className="pe-1 pb-1 wrap-anywhere">
+            {prompt.questions.length > 1 ? (
+              <ul className="mb-2 space-y-0.5" aria-label="All questions">
+                {prompt.questions.map((question, index) => {
+                  const summary = summarizePendingUserInputAnswer(question, answers[question.id]);
+                  const isActive = index === progress.questionIndex;
+                  return (
+                    <li key={question.id}>
+                      <button
+                        type="button"
+                        disabled={disabled || isResponding}
+                        aria-current={isActive ? "step" : undefined}
+                        onClick={() => {
+                          jumpToQuestion(index);
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-md px-2.5 py-1 text-left text-xs outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
+                          isActive ? "bg-muted/55" : "hover:bg-muted/30",
+                          (disabled || isResponding) && "opacity-50 cursor-not-allowed",
+                        )}
+                      >
+                        <span className="flex size-4 shrink-0 items-center justify-center text-3xs font-medium text-muted-foreground tabular-nums">
+                          {summary !== null ? (
+                            <CheckIcon className="size-3.5 text-primary" />
+                          ) : (
+                            index + 1
+                          )}
+                        </span>
+                        <span className="shrink-0 font-medium text-foreground/85">
+                          {question.header}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-secondary-label">
+                          {summary ?? "Not answered"}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
             <ChatMarkdown
               text={activeQuestion.question}
               cwd={cwd}

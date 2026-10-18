@@ -49,6 +49,7 @@ function Questions({ initialIndex = 0 }: { initialIndex?: number }) {
         answers={answers}
         questionIndex={questionIndex}
         onAdvance={advance}
+        onSelectQuestion={setQuestionIndex}
         onToggleOption={(questionId, value) => {
           const question = prompt.questions.find((entry) => entry.id === questionId)!;
           setAnswers((existing) => ({
@@ -83,7 +84,8 @@ afterEach(async () => {
 });
 
 function buttonWithText(text: string) {
-  const button = [...document.querySelectorAll("button")].find((element) =>
+  // The question list repeats chosen labels earlier in the DOM; the option button comes last.
+  const button = [...document.querySelectorAll("button")].findLast((element) =>
     element.textContent?.includes(text),
   );
   expect(button, `button ${text}`).toBeDefined();

@@ -85,6 +85,20 @@ export function resolvePendingUserInputAnswer(
   );
 }
 
+/** Short label for a question's current answer, or null while it is unanswered. */
+export function summarizePendingUserInputAnswer(
+  question: UserInputQuestion,
+  draft: PendingUserInputDraftAnswer | undefined,
+): string | null {
+  const answer = resolvePendingUserInputAnswer(question, draft);
+  if (answer === null) return null;
+  const labelFor = (value: string) =>
+    question.options.find((option) => (option.value ?? option.label) === value)?.label ?? value;
+  const text = Array.isArray(answer) ? answer.map(labelFor).join(", ") : labelFor(answer);
+  // An attachment-only answer resolves to an empty string.
+  return text.length > 0 ? text : "Attachment";
+}
+
 export function setPendingUserInputCustomAnswer(
   draft: PendingUserInputDraftAnswer | undefined,
   customAnswer: string,
