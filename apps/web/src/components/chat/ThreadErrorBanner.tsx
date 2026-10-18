@@ -6,6 +6,7 @@ import { CircleAlertIcon, XIcon } from "lucide-react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { OpenAI } from "../Icons";
 import { ChatGptUsageButton } from "../settings/ChatGptUsageButton";
+import { getReadableProviderErrorMessage } from "../../providerErrorMessage";
 
 export function getThreadErrorBannerKey(threadKey: string, error: string | null): string | null {
   return error === null ? null : `${threadKey}\u0000${error}`;
@@ -60,7 +61,9 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
             </div>
           ) : (
             <Tooltip>
-              <TooltipTrigger render={<div className="line-clamp-3" />}>{error}</TooltipTrigger>
+              <TooltipTrigger render={<div className="line-clamp-3" />}>
+                {getReadableProviderErrorMessage(error)}
+              </TooltipTrigger>
               <TooltipPopup side="top" className="whitespace-pre-wrap">
                 {error}
               </TooltipPopup>

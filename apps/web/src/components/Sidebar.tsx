@@ -114,6 +114,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { isElectron } from "../env";
+import { getReadableProviderErrorMessage } from "../providerErrorMessage";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -1046,7 +1047,7 @@ function SidebarThreadTooltip({
             <div className="min-w-0 truncate">
               {thread.runtime.lastErrorClass === "usage_limit"
                 ? "Usage limit reached"
-                : "Error occurred"}
+                : getReadableProviderErrorMessage(thread.runtime.lastError)}
             </div>
           </div>
         ) : null}

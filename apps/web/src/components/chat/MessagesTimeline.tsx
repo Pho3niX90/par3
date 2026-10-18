@@ -97,6 +97,7 @@ import {
   workEntrySignalsSevereFailure,
   workLogEntryIsToolLike,
 } from "../../session-logic";
+import { getReadableProviderErrorMessage } from "../../providerErrorMessage";
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
 import {
   type ChatMessage,
@@ -5270,9 +5271,18 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         }
       >
         {!warning ? (
-          <p className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
-            {failureItem.failure.message}
-          </p>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <p className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80" />
+              }
+            >
+              {getReadableProviderErrorMessage(failureItem.failure.message)}
+            </TooltipTrigger>
+            <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap">
+              {failureItem.failure.message}
+            </TooltipPopup>
+          </Tooltip>
         ) : null}
         {retryRunId !== null && onRetryWorkspacePreparation ? (
           <div className="ms-7 pb-1">
