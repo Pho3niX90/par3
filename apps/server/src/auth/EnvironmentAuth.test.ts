@@ -181,26 +181,26 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       const token = "reusable-dev-auth-token-that-is-long-enough";
       const exchanged = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
         token,
-        ["orchestration:read"],
+        ["filesystem:read"],
         requestMetadata,
       );
 
       expect(exchanged.access_token).not.toBe(token);
-      expect(exchanged.scope).toBe("orchestration:read");
+      expect(exchanged.scope).toBe("filesystem:read");
       const dpop = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
         token,
-        ["orchestration:read"],
+        ["filesystem:read"],
         requestMetadata,
         { proofKeyThumbprint: "test-proof-key" },
       );
       expect(dpop.access_token).not.toBe(token);
       expect(dpop.access_token).not.toBe(exchanged.access_token);
       expect(dpop.token_type).toBe("DPoP");
-      expect(dpop.scope).toBe("orchestration:read");
+      expect(dpop.scope).toBe("filesystem:read");
 
       const secondBearer = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
         token,
-        ["orchestration:read"],
+        ["filesystem:read"],
         requestMetadata,
       );
       const firstSession = yield* serverAuth.authenticateHttpRequest(
@@ -393,7 +393,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       const reused = yield* serverAuth
         .exchangeBootstrapCredentialForAccessToken(
           pairingCredential.credential,
-          ["orchestration:read"],
+          ["filesystem:read"],
           requestMetadata,
         )
         .pipe(Effect.flip);
@@ -424,20 +424,60 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }).pipe(Effect.provide(layerEnvironmentAuth())),
   );
 
-  it.effect("narrows seeded desktop grants to the requested scopes", () =>
+  it.effect("grants split permissions to clients that request the pre-split vocabulary", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const pairingCredential = yield* serverAuth.issuePairingCredential();
+
       const token = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        "desktop-bootstrap-token",
-        ["orchestration:read"],
+        pairingCredential.credential,
+        ["orchestration:read", "orchestration:operate", "terminal:operate", "relay:read"],
         requestMetadata,
       );
       const session = yield* serverAuth.authenticateHttpRequest(
         makeBearerRequest(token.access_token),
       );
 
-      expect(token.scope).toBe("orchestration:read");
-      expect(session.scopes).toEqual(["orchestration:read"]);
+      expect(session.scopes).toContain("providers:manage");
+      // access:* and relay:write are legacy scopes the request did not name.
+      const notRequested = new Set<string>(["access:read", "access:write", "relay:write"]);
+      expect([...session.scopes].toSorted()).toEqual(
+        AuthStandardClientScopes.filter((scope) => !notRequested.has(scope)).toSorted(),
+      );
+    }).pipe(Effect.provide(layerEnvironmentAuth())),
+  );
+
+  it.effect("keeps split permissions within the pairing grant for pre-split requests", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const pairingCredential = yield* serverAuth.issuePairingCredential({
+        scopes: ["orchestration:read", "orchestration:operate", "filesystem:read"],
+      });
+
+      const token = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
+        pairingCredential.credential,
+        ["orchestration:read", "orchestration:operate"],
+        requestMetadata,
+      );
+
+      expect(token.scope).toBe("orchestration:read orchestration:operate filesystem:read");
+    }).pipe(Effect.provide(layerEnvironmentAuth())),
+  );
+
+  it.effect("narrows seeded desktop grants to the requested scopes", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const token = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
+        "desktop-bootstrap-token",
+        ["filesystem:read"],
+        requestMetadata,
+      );
+      const session = yield* serverAuth.authenticateHttpRequest(
+        makeBearerRequest(token.access_token),
+      );
+
+      expect(token.scope).toBe("filesystem:read");
+      expect(session.scopes).toEqual(["filesystem:read"]);
     }).pipe(
       Effect.provide(layerEnvironmentAuth({ desktopBootstrapToken: "desktop-bootstrap-token" })),
     ),
