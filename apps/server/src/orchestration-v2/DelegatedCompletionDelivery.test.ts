@@ -148,7 +148,7 @@ const seedParentWithTerminalTask = (input: {
   readonly runId: RunId;
   readonly rootNodeId: NodeId;
   readonly taskId: NodeId;
-  readonly deliveryState: "delivered" | "claimed" | "acknowledged" | "disposed";
+  readonly deliveryState: "pending" | "delivered" | "claimed" | "acknowledged" | "disposed";
   readonly completionWake?: "always" | "settled_only";
   readonly deliveryTaskIds?: ReadonlyArray<NodeId>;
   readonly now: DateTime.Utc;
@@ -921,6 +921,104 @@ const seedRestartCancelledChild = (input: {
     });
     return { taskId, childThreadId, childRunId };
   });
+
+it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
+  "delegated task wake policy",
+  (it) => {
+    it.effect("keeps a checkpoint completion committed between wake-policy's read and write", () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const requests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("thread:wake-policy-capture-race");
+        const projectId = ProjectId.make("project:wake-policy-capture-race");
+        const runId = RunId.make("run:wake-policy-capture-race");
+        const rootNodeId = NodeId.make("node:wake-policy-capture-race");
+        const taskId = NodeId.make("node:wake-policy-capture-task");
+        const checkpointId = CheckpointId.make("checkpoint:wake-policy-capture-race");
+        yield* seedParentWithTerminalTask({
+          threadId,
+          projectId,
+          runId,
+          rootNodeId,
+          taskId,
+          deliveryState: "pending",
+          completionWake: "settled_only",
+          now,
+        });
+        const running = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+        const commit = sink.commitCommand;
+        let captured = false;
+        const committedParentRuns: Array<OrchestrationV2Run> = [];
+        yield* Effect.acquireUseRelease(
+          Effect.sync(() =>
+            vi.spyOn(sink, "commitCommand").mockImplementation((input) =>
+              Effect.gen(function* () {
+                if (input.commandType !== "delegated_task.wake-policy") return yield* commit(input);
+                captured = true;
+                // The parent's turn ends and its capture commits after wake-policy read it running.
+                const { delegatedCompletion: _cohort, ...captureRun } = running;
+                yield* commit({
+                  commandId: CommandId.make("command:wake-policy-capture-race"),
+                  threadId,
+                  commandType: "checkpoint.capture",
+                  acceptedAt: now,
+                  effects: [],
+                  events: [
+                    {
+                      id: EventId.make("event:wake-policy-capture-completed"),
+                      type: "run.updated",
+                      threadId,
+                      runId,
+                      occurredAt: now,
+                      payload: {
+                        ...captureRun,
+                        status: "completed",
+                        completedAt: now,
+                        checkpointId,
+                      },
+                    },
+                  ],
+                });
+                const result = yield* commit(input);
+                for (const { event } of result.storedEvents) {
+                  if (event.type === "run.updated" && event.payload.id === runId) {
+                    committedParentRuns.push(event.payload);
+                  }
+                }
+                return result;
+              }),
+            ),
+          ),
+          () =>
+            orchestrator.dispatch({
+              type: "delegated_task.wake-policy",
+              commandId: CommandId.make("command:wake-policy-capture-race:upgrade"),
+              parentThreadId: threadId,
+              taskId,
+              completionWake: "always",
+            }),
+          (spy) => Effect.sync(() => spy.mockRestore()),
+        );
+        assert.isTrue(captured);
+        assert.equal(committedParentRuns.length, 1);
+        const committedParentRun = committedParentRuns[0];
+        assert.equal(committedParentRun?.status, "completed");
+        assert.deepEqual(committedParentRun?.completedAt, now);
+        assert.equal(committedParentRun?.checkpointId, checkpointId);
+        assert.deepEqual(committedParentRun?.delegatedCompletion?.delivery?.taskIds, [taskId]);
+        const finished = yield* orchestrator.getThreadProjection(threadId);
+        const completed = finished.runs.find((run) => run.id === runId)!;
+        assert.equal(completed.status, "completed");
+        assert.equal(completed.checkpointId, checkpointId);
+        assert.deepEqual(completed.delegatedCompletion?.delivery?.taskIds, [taskId]);
+        const wake = yield* requests.take;
+        assert.equal(wake.delegatedCompletion?.parentRunId, runId);
+      }),
+    );
+  },
+);
 
 it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
   "subagent follow-ups",
