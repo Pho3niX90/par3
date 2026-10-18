@@ -273,7 +273,7 @@ jobs:
     needs: [preflight]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -306,7 +306,9 @@ jobs:
         run: node apps/web/node_modules/playwright/cli.js install --with-deps --only-shell chromium
 
       - name: Test
-        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/monorepo' test
+        # Each workspace starts its own Vitest workers; four workspaces contend
+        # enough on hosted runners to trip otherwise passing tests' deadlines.
+        run: vp run --parallel --concurrency-limit 2 --filter '!t3' --filter '!@t3tools/monorepo' test
 
   test_server:
     name: Release server tests ${{ matrix.shard }}
