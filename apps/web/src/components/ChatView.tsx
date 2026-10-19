@@ -326,7 +326,7 @@ import {
   clearBackgroundDraftSubmissionByRef,
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
-  restoreFailedBackgroundDraftThread,
+  restoreFailedDraftThread,
   composerDraftHasUserContent,
   type ComposerFileAttachment,
   type ComposerImageAttachment,
@@ -4231,7 +4231,9 @@ export default function ChatView(props: ChatViewProps) {
     // The anchored end space must be gone before the scroll measures, or the
     // list lands short of the real end (#6519).
     requestAnimationFrame(() => {
-      void legendListRef.current?.scrollToEnd?.({ animated });
+      void legendListRef.current?.scrollToEnd?.({
+        animated: animated && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      });
     });
   };
   const scrollToEndStable = useStableCallback(scrollToEnd);
@@ -4436,7 +4438,7 @@ export default function ChatView(props: ChatViewProps) {
         scrollNode.addEventListener("scrollend", finishAnimatedPositioning, { once: true });
         void list.scrollToIndex({
           index: anchorIndex,
-          animated: true,
+          animated: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
           viewPosition: 0,
           viewOffset: CHAT_LIST_ANCHOR_OFFSET,
         });
@@ -6883,6 +6885,11 @@ export default function ChatView(props: ChatViewProps) {
         }),
       );
     }
+    const sentDraftThreadRef = isLocalDraftThread
+      ? scopeThreadRef(environmentId, threadIdForSend)
+      : null;
+    // Keep new-thread flows from reusing this draft while attachments and worktree setup settle.
+    if (sentDraftThreadRef) markPromotedDraftThreadByRef(sentDraftThreadRef);
     promptRef.current = "";
     clearComposerDraftContent(composerDraftTarget);
     composerRef.current?.resetCursorState();
@@ -7036,7 +7043,6 @@ export default function ChatView(props: ChatViewProps) {
         },
       });
       if (backgroundThreadRef) {
-        markPromotedDraftThreadByRef(backgroundThreadRef);
         try {
           backgroundDraftOpened = Boolean(
             await handleNewThread(
@@ -7070,12 +7076,15 @@ export default function ChatView(props: ChatViewProps) {
           releaseDraftAttachments(composerAttachmentsSnapshot);
         }
         acknowledgeActiveThreadWoke();
-        if (backgroundThreadRef) {
+        // A draft still on screen finalizes once its thread route takes over.
+        if (sentDraftThreadRef) {
           if (backgroundDraftOpened || currentRouteThreadKeyRef.current !== routeThreadKey) {
-            finalizePromotedDraftThreadByRef(backgroundThreadRef);
+            finalizePromotedDraftThreadByRef(sentDraftThreadRef);
           } else {
-            clearBackgroundDraftSubmissionByRef(backgroundThreadRef);
+            clearBackgroundDraftSubmissionByRef(sentDraftThreadRef);
           }
+        }
+        if (backgroundThreadRef) {
           if (backgroundDraftOpened) {
             toastManager.add(
               stackedThreadToast({
@@ -7104,8 +7113,8 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     if (failure !== null) {
-      if (submissionIntent === "background" && draftId && draftThread) {
-        restoreFailedBackgroundDraftThread(
+      if (isLocalDraftThread && draftId && draftThread) {
+        restoreFailedDraftThread(
           draftId,
           draftThread,
           wasBootstrapThreadDeleted(squashAtomCommandFailure(failure))
@@ -7115,20 +7124,9 @@ export default function ChatView(props: ChatViewProps) {
         clearBackgroundDraftSubmissionByRef(scopeThreadRef(environmentId, threadIdForSend));
       }
       if (
-        backgroundDraftOpened
-          ? !composerDraftHasUserContent(
-              useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
-            )
-          : promptRef.current.length === 0 &&
-            composerImagesRef.current.length === 0 &&
-            composerFilesRef.current.length === 0 &&
-            composerTerminalContextsRef.current.length === 0 &&
-            (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)
-              ?.previewAnnotations.length ?? 0) === 0 &&
-            (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
-              .length ?? 0) === 0 &&
-            (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.threadContexts
-              .length ?? 0) === 0
+        !composerDraftHasUserContent(
+          useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
+        )
       ) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
@@ -7138,11 +7136,7 @@ export default function ChatView(props: ChatViewProps) {
           const next = existing.filter((message) => message.id !== messageIdForSend);
           return next.length === existing.length ? existing : next;
         });
-        promptRef.current = messageTextForSend;
         const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
-        composerImagesRef.current = retryComposerImages;
-        composerFilesRef.current = composerFilesSnapshot;
-        composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
         setComposerDraftPrompt(composerDraftTarget, messageTextForSend);
         addComposerDraftImages(composerDraftTarget, retryComposerImages);
         addComposerDraftFiles(composerDraftTarget, composerFilesSnapshot);
@@ -7150,11 +7144,17 @@ export default function ChatView(props: ChatViewProps) {
         setComposerDraftPreviewAnnotations(composerDraftTarget, composerPreviewAnnotationsSnapshot);
         setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
         setComposerDraftThreadContexts(composerDraftTarget, composerThreadContextsSnapshot);
-        composerRef.current?.resetCursorState({
-          cursor: collapseExpandedComposerCursor(messageTextForSend, messageTextForSend.length),
-          prompt: messageTextForSend,
-          detectTrigger: true,
-        });
+        if (currentRouteThreadKeyRef.current === routeThreadKey) {
+          promptRef.current = messageTextForSend;
+          composerImagesRef.current = retryComposerImages;
+          composerFilesRef.current = composerFilesSnapshot;
+          composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
+          composerRef.current?.resetCursorState({
+            cursor: collapseExpandedComposerCursor(messageTextForSend, messageTextForSend.length),
+            prompt: messageTextForSend,
+            detectTrigger: true,
+          });
+        }
       }
       if (!isAtomCommandInterrupted(failure)) {
         const error = squashAtomCommandFailure(failure);
@@ -7162,11 +7162,17 @@ export default function ChatView(props: ChatViewProps) {
           threadIdForSend,
           error instanceof Error ? error.message : "Failed to send message.",
         );
-        if (backgroundDraftOpened && draftId) {
+        if (
+          draftId &&
+          (backgroundDraftOpened || currentRouteThreadKeyRef.current !== routeThreadKey)
+        ) {
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Background task failed",
+              title:
+                submissionIntent === "background"
+                  ? "Background task failed"
+                  : "Could not start thread",
               description: error instanceof Error ? error.message : "Failed to send message.",
               actionProps: {
                 children: "Open draft",
@@ -8041,6 +8047,7 @@ export default function ChatView(props: ChatViewProps) {
                     <>
                       <div className="chat-content-lane">
                         <HandoffRow
+                          environmentId={environmentId}
                           endpoints={pendingHandoff}
                           providers={providerStatuses}
                           pending

@@ -70,6 +70,7 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   acpRegistryIconUrl?: string | undefined;
   showBadge?: boolean;
   badgeContent?: "initials" | "none";
+  size?: "default" | "compact";
   className?: string;
   iconClassName?: string;
   badgeClassName?: string;
@@ -87,6 +88,7 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
     ? ({ "--provider-accent": props.accentColor } as CSSProperties)
     : undefined;
   const badgeContent = props.badgeContent ?? "initials";
+  const iconClassName = cn(props.size === "compact" && "size-3.5", props.iconClassName);
   const isAcpRegistry = props.driverKind === "acpRegistry";
   const acpRegistryIconUrl = resolveProviderInstanceAcpRegistryIconUrl({
     driverKind: props.driverKind,
@@ -105,7 +107,7 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
     >
       {isAcpRegistry ? (
         <AcpRegistryAgentIcon
-          className={cn("size-5 rounded-none bg-transparent", props.iconClassName)}
+          className={cn("size-5 rounded-none bg-transparent", iconClassName)}
           fallbackClassName="size-full"
           icon={acpRegistryIconUrl}
         />
@@ -118,13 +120,13 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
       ) : packageIcon ? (
         <ProviderPackageIcon
           icon={packageIcon}
-          className={cn("size-5 shrink-0", props.iconClassName)}
+          className={cn("size-5 shrink-0", iconClassName)}
           aria-hidden
         />
       ) : Icon ? (
-        <Icon className={cn("size-5 shrink-0", props.iconClassName)} aria-hidden />
+        <Icon className={cn("size-5 shrink-0", iconClassName)} aria-hidden />
       ) : (
-        <span className={cn("text-3xs font-semibold leading-none", props.iconClassName)}>
+        <span className={cn("text-3xs font-semibold leading-none", iconClassName)}>
           {providerInstanceInitials(props.displayName)}
         </span>
       )}
@@ -145,6 +147,8 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
             props.accentColor
               ? "bg-(--provider-accent) text-white"
               : "bg-card text-muted-foreground",
+            props.size === "compact" &&
+              "right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-5xs",
             props.badgeClassName,
           )}
           style={{ borderColor: indicatorBackground }}

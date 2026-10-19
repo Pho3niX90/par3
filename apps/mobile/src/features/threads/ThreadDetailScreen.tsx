@@ -81,6 +81,7 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
+  useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
@@ -731,6 +732,7 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
     [userInputCoverageApplies],
   );
   const { freeze, scrollMessageToEnd } = useKeyboardScrollToEnd({ listRef });
+  const reduceMotion = useReducedMotion();
   // Repin timers fire after the render that scheduled them, so they read follow
   // state from the ref the writers below keep in step with it.
   const endFollowEnabledRef = useRef(true);
@@ -900,7 +902,10 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
           ) {
             return;
           }
-          return scrollMessageToEnd({ animated: true, closeKeyboard: false });
+          return scrollMessageToEnd({
+            animated: !reduceMotion,
+            closeKeyboard: false,
+          });
         })
         .catch(() => {
           if (
@@ -921,6 +926,7 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
     contentPresentationKind,
     props.queuedMessages,
     selectedThreadFeed,
+    reduceMotion,
     scrollMessageToEnd,
     selectedThreadKey,
   ]);
@@ -986,7 +992,7 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
 
   const handleScrollToEnd = () => {
     void Haptics.selectionAsync();
-    void scrollMessageToEnd({ animated: true, closeKeyboard: false }).catch(() => {
+    void scrollMessageToEnd({ animated: !reduceMotion, closeKeyboard: false }).catch(() => {
       freeze.set(false);
     });
   };
