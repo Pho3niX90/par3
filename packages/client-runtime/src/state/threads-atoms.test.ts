@@ -56,6 +56,8 @@ const SNAPSHOT: OrchestrationV2ThreadDetailSnapshot = { snapshotSequence: 7, pro
 const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?: {
   readonly snapshot?: OrchestrationV2ThreadDetailSnapshot;
   readonly snapshotUnavailable?: boolean;
+  /** The server answers "not found" until this many loads have happened. */
+  readonly missingLoads?: number;
 }) {
   const subscriptions = yield* Queue.unbounded<{
     readonly afterSequence: number | undefined;
@@ -192,6 +194,9 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
           load: () =>
             Effect.sync(() => {
               httpLoads += 1;
+              if (httpLoads <= (options?.missingLoads ?? 0)) {
+                return { _tag: "missing" as const };
+              }
               if (options?.snapshotUnavailable === true) {
                 return { _tag: "unavailable" as const };
               }
@@ -213,7 +218,8 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
       ),
     ),
   );
-  const raw = createEnvironmentThreadStateAtoms(runtime);
+  const listed = Atom.make(false).pipe(Atom.keepAlive);
+  const raw = createEnvironmentThreadStateAtoms(runtime, { listedAtom: () => listed });
   const details = createEnvironmentThreadDetailAtoms(raw.stateAtom);
   const ref = { environmentId: TARGET.environmentId, threadId: THREAD_ID };
   const stateAtom = details.stateAtom(ref);
@@ -227,6 +233,7 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
     registry,
     makeRegistry,
     rawAtoms: raw,
+    listed,
     stateAtom,
     details,
     ref,
@@ -276,6 +283,51 @@ describe("createEnvironmentThreadStateAtoms", () => {
       unmountStatus();
       yield* Deferred.await(first.closed);
       expect(h.counts().active).toBe(0);
+    }),
+  );
+
+  it.effect("recovers a detail opened before its thread existed once the shell lists it", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness({ missingLoads: 1 });
+      const unmount = h.registry.mount(h.stateAtom);
+      yield* observeState(h.registry, h.stateAtom, (state) => state.status === "deleted");
+      expect(h.counts().opened).toBe(0);
+
+      h.registry.set(h.listed, true);
+      const subscription = yield* Queue.take(h.subscriptions);
+      yield* Queue.offer(subscription.events, { kind: "synchronized" });
+      const live = yield* observeState(
+        h.registry,
+        h.stateAtom,
+        (state) => state.status === "live" && Option.isSome(state.data),
+      );
+
+      expect(Option.getOrThrow(live.data).thread.title).toBe("Cached thread");
+      expect(h.counts()).toMatchObject({ httpLoads: 2, opened: 1, active: 1 });
+      unmount();
+      yield* Deferred.await(subscription.closed);
+    }),
+  );
+
+  it.effect("recovers a retained deletion when remounted after the shell lists the thread", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness({ missingLoads: 1 });
+      const unmount = h.registry.mount(h.stateAtom);
+      yield* observeState(h.registry, h.stateAtom, (state) => state.status === "deleted");
+      unmount();
+
+      h.registry.set(h.listed, true);
+      const remount = h.registry.mount(h.stateAtom);
+      const subscription = yield* Queue.take(h.subscriptions);
+      yield* Queue.offer(subscription.events, { kind: "synchronized" });
+      yield* observeState(
+        h.registry,
+        h.stateAtom,
+        (state) => state.status === "live" && Option.isSome(state.data),
+      );
+      expect(h.counts().httpLoads).toBe(2);
+      remount();
+      yield* Deferred.await(subscription.closed);
     }),
   );
 

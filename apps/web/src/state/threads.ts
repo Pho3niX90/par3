@@ -21,7 +21,10 @@ export const threadEnvironment = createThreadEnvironmentAtoms(
   connectionAtomRuntime,
   environmentSnapshotAtom,
 );
-const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
+const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime, {
+  listedAtom: (environmentId, threadId) =>
+    environmentThreadShells.threadListedAtom({ environmentId, threadId }),
+});
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
   environmentThreads.stateAtom,
 );

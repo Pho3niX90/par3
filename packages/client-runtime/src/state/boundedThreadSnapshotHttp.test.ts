@@ -1,7 +1,9 @@
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import { PrimaryConnectionTarget, type PreparedConnection } from "../connection/model.ts";
 import * as RpcHttp from "../rpc/http.ts";
@@ -250,6 +252,37 @@ describe("boundedThreadSnapshotLoader", () => {
       const result = yield* loader.load(PREPARED, THREAD_ID);
       expect(result).toEqual({ _tag: "missing" });
       expect(fullCalls).toBe(1);
+    }).pipe(
+      Effect.provide(
+        Layer.provide(BoundedThreadSnapshotHttp.layer, RpcHttp.layerRemoteHttpClient(fetchFn)),
+      ),
+    );
+  });
+
+  it.effect("skips HTTP snapshots for a while after one times out", () => {
+    let requests = 0;
+    let stalled = true;
+    const fetchFn = (() => {
+      requests += 1;
+      return stalled
+        ? new Promise<Response>(() => {})
+        : Promise.resolve(Response.json(boundedBody(true)));
+    }) satisfies typeof fetch;
+
+    return Effect.gen(function* () {
+      const loader = yield* ThreadSnapshotLoader.ThreadSnapshotLoader;
+      const first = yield* loader.load(PREPARED, THREAD_ID).pipe(Effect.forkChild);
+      yield* TestClock.adjust("6 seconds");
+      expect(yield* Fiber.join(first)).toEqual({ _tag: "unavailable" });
+      expect(requests).toBe(1);
+
+      expect(yield* loader.load(PREPARED, THREAD_ID)).toEqual({ _tag: "unavailable" });
+      expect(requests).toBe(1);
+
+      stalled = false;
+      yield* TestClock.adjust(BoundedThreadSnapshotHttp.THREAD_SNAPSHOT_HTTP_SKIP_AFTER_TIMEOUT_MS);
+      expect((yield* loader.load(PREPARED, THREAD_ID))._tag).toBe("present");
+      expect(requests).toBe(2);
     }).pipe(
       Effect.provide(
         Layer.provide(BoundedThreadSnapshotHttp.layer, RpcHttp.layerRemoteHttpClient(fetchFn)),

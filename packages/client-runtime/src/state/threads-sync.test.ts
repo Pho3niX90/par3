@@ -112,6 +112,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   readonly saveThread?: Persistence.EnvironmentCacheStore["Service"]["saveThread"];
   readonly historyPaging?: "enabled" | "no-http" | "no-controller";
   readonly historyHttpClient?: HttpClient.HttpClient;
+  readonly listedByShell?: Stream.Stream<boolean>;
 }) {
   const inputs = yield* Queue.unbounded<TestThreadInput>();
   const observed = yield* Queue.unbounded<EnvironmentThreadState>();
@@ -218,7 +219,11 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     clearVcsRefs: () => Effect.void,
     clear: () => Effect.void,
   });
-  let makeThreadState = makeEnvironmentThreadState(THREAD_ID, options?.resumeCache).pipe(
+  let makeThreadState = makeEnvironmentThreadState(
+    THREAD_ID,
+    options?.resumeCache,
+    options?.listedByShell,
+  ).pipe(
     Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
     Effect.provideService(Persistence.EnvironmentCacheStore, cache),
     Effect.provideService(ThreadSnapshotLoader.ThreadSnapshotLoader, snapshotLoader),
@@ -1776,6 +1781,72 @@ describe("EnvironmentThreads", () => {
       expect(yield* Ref.get(harness.retryCount)).toBe(0);
       expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
       expect((yield* Ref.get(harness.latest)).status).toBe("deleted");
+    }),
+  );
+
+  it.effect("revives a definitive HTTP miss once the shell lists the thread", () =>
+    Effect.gen(function* () {
+      const listed = yield* SubscriptionRef.make(false);
+      const harness = yield* makeHarness({
+        httpSnapshot: { _tag: "missing" },
+        listedByShell: SubscriptionRef.changes(listed),
+      });
+      yield* awaitThreadState(harness.observed, (value) => value.status === "deleted");
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(0);
+
+      yield* SubscriptionRef.set(listed, true);
+      yield* awaitThreadState(
+        harness.observed,
+        (value) => value.status === "synchronizing" && Option.isNone(value.data),
+      );
+      yield* Queue.offer(harness.inputs, snapshot(BASE_PROJECTION, 4));
+      const live = yield* awaitThreadState(
+        harness.observed,
+        (value) => value.status === "live" && Option.isSome(value.data),
+      );
+
+      expect(Option.getOrThrow(live.data).thread.title).toBe("Cached thread");
+      expect(yield* Ref.get(harness.loaderCalls)).toBe(2);
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
+      expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBeUndefined();
+    }),
+  );
+
+  it.effect("uses the socket when the shell already lists a thread the HTTP snapshot missed", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        httpSnapshot: { _tag: "missing" },
+        listedByShell: Stream.make(true).pipe(Stream.concat(Stream.never)),
+      });
+
+      yield* Queue.offer(harness.inputs, snapshot(BASE_PROJECTION, 4));
+      const live = yield* awaitThreadState(
+        harness.observed,
+        (value) => value.status === "live" && Option.isSome(value.data),
+      );
+
+      expect(Option.getOrThrow(live.data).thread.title).toBe("Cached thread");
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
+      expect(yield* Ref.get(harness.removedThreads)).toEqual([]);
+    }),
+  );
+
+  it.effect("keeps a deleted thread deleted while the shell still lists it", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        httpSnapshot: { _tag: "unavailable" },
+        listedByShell: Stream.make(true).pipe(Stream.concat(Stream.never)),
+      });
+      yield* Queue.offer(harness.inputs, snapshot(BASE_PROJECTION, 1));
+      yield* awaitThreadState(harness.observed, (value) => value.status === "live");
+      yield* Queue.offer(harness.inputs, deleted(2));
+      yield* awaitThreadState(harness.observed, (value) => value.status === "deleted");
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        yield* Effect.yieldNow;
+      }
+      expect((yield* Ref.get(harness.latest)).status).toBe("deleted");
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
     }),
   );
 

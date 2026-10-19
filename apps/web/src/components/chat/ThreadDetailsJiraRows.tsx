@@ -28,6 +28,7 @@ import { jiraEnvironment, threadJiraMentions } from "~/state/jira";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import { projectEnvironment } from "~/state/projects";
 import { useEnvironmentQuery } from "~/state/query";
+import { useThreadShell } from "~/state/entities";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import { JiraIcon } from "../Icons";
@@ -84,8 +85,14 @@ export function ThreadDetailsJiraRows({
       settings.jiraProjectKeys ??
       EMPTY_KEYS,
   );
+  // A draft's thread id is unknown to the server until its first send. Reading its detail
+  // earlier gets a 404 that marks the thread deleted, which leaves the chat empty once it starts.
+  const serverThread = useThreadShell(threadRef ?? null);
   const mentionedKeys = useAtomValue(
-    threadJiraMentions.mentionsAtom(baseUrl ? (threadRef ?? null) : null, projectKeys),
+    threadJiraMentions.mentionsAtom(
+      baseUrl && serverThread ? (threadRef ?? null) : null,
+      projectKeys,
+    ),
   );
   const keys = baseUrl
     ? [
