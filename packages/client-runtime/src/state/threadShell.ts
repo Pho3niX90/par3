@@ -279,6 +279,14 @@ export function createEnvironmentThreadShellAtoms(input: {
     }).pipe(Atom.withLabel(`environment-quiet-thread-shell:${key}`));
   });
 
+  const threadListedAtomFamily = Atom.family((key: string) => {
+    const ref = parseThreadKey(key);
+    return Atom.make((get) => {
+      const source = get(environmentThreadIndexAtom(ref.environmentId)).get(ref.threadId);
+      return source !== undefined && source.deletedAt === null;
+    }).pipe(Atom.withLabel(`environment-thread-listed:${key}`));
+  });
+
   // Child approvals and questions are hidden with their sidebar rows. Read their
   // shell summaries, without subscribing to every child transcript.
   const childThreadInputsAtomFamily = Atom.family((key: string) => {
@@ -416,6 +424,7 @@ export function createEnvironmentThreadShellAtoms(input: {
       threadShellsForProjectRefsAtomFamily(projectRefCollectionKey(refs)),
     threadShellAtom: (ref: ScopedThreadRef) => threadShellAtomFamily(threadKey(ref)),
     quietThreadShellAtom: (ref: ScopedThreadRef) => quietThreadShellAtomFamily(threadKey(ref)),
+    threadListedAtom: (ref: ScopedThreadRef) => threadListedAtomFamily(threadKey(ref)),
     childThreadInputsAtom: (ref: ScopedThreadRef) => childThreadInputsAtomFamily(threadKey(ref)),
   };
 }

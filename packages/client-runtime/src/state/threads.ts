@@ -164,6 +164,8 @@ function cachedThreadState(value: EnvironmentThreadState): EnvironmentThreadStat
 export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make")(function* (
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
+  /** Whether the environment's shell lists the thread as live. */
+  listedByShell?: Stream.Stream<boolean>,
 ) {
   const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
   const cache = yield* Persistence.EnvironmentCacheStore;
@@ -750,6 +752,46 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       service.changes.pipe(Stream.filter(ConnectionWakeups.shouldResubscribeAfterWakeup)),
   });
 
+  // A detail opened before the thread exists (a draft whose first send has not
+  // landed) gets a definitive HTTP miss and parks as deleted. The shell is the
+  // authority on existence, so once it lists the thread, drop the stale deletion
+  // and subscribe again. Only a change counts: a shell that lags a real delete
+  // must not revive the thread.
+  const listed = yield* Ref.make(false);
+  const reviveIfListed = Effect.gen(function* () {
+    if (!(yield* Ref.get(listed))) return false;
+    const revived = yield* SubscriptionRef.modify(
+      state,
+      (current): readonly [boolean, EnvironmentThreadState] =>
+        current.status === "deleted"
+          ? [
+              true,
+              {
+                data: Option.none(),
+                status: "synchronizing",
+                error: Option.none(),
+                history: EMPTY_THREAD_HISTORY_META,
+              },
+            ]
+          : [false, current],
+    );
+    if (!revived) return false;
+    yield* Ref.set(awaitingCompletion, false);
+    yield* SubscriptionRef.set(lastSequence, 0);
+    yield* remember;
+    return true;
+  });
+  const revivals =
+    listedByShell === undefined
+      ? Stream.never
+      : listedByShell.pipe(
+          Stream.changes,
+          Stream.mapEffect((isListed) =>
+            Ref.set(listed, isListed).pipe(Effect.andThen(reviveIfListed)),
+          ),
+          Stream.filter((revived) => revived),
+        );
+
   // Only the first subscription after a warm live resume keeps the retained
   // status. A replacement session or foreground resubscribe on the same scope
   // may have missed events, so those show sync progress until confirmed.
@@ -831,7 +873,10 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               break;
             }
             case "missing": {
+              // The shell already lists it, so this miss predates its creation.
+              if (yield* Ref.get(listed)) break;
               yield* setDeleted();
+              if (yield* reviveIfListed) break;
               return yield* Effect.never;
             }
             case "unavailable": {
@@ -864,7 +909,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         onDefect: () => setStreamError("Could not synchronize the thread."),
         onExpectedFailure: (cause) => setStreamError(formatThreadError(cause)),
         retryExpectedFailureAfter: "250 millis",
-        resubscribe: foregroundResubscriptions,
+        resubscribe: Stream.merge(foregroundResubscriptions, revivals),
       },
     ).pipe(Stream.runForEachArray(applyItems)),
   );
@@ -876,11 +921,14 @@ function threadStateChanges(
   environmentId: EnvironmentIdType,
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
+  listedByShell?: Stream.Stream<boolean>,
 ) {
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
-      makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
+      makeEnvironmentThreadState(threadId, resumeCache, listedByShell).pipe(
+        Effect.map(SubscriptionRef.changes),
+      ),
     ),
   );
 }
@@ -893,6 +941,13 @@ export function createEnvironmentThreadStateAtoms<R, E>(
     | R,
     E
   >,
+  options?: {
+    /** Lets a detail that latched a 404 recover once the shell lists the thread. */
+    readonly listedAtom?: (
+      environmentId: EnvironmentIdType,
+      threadId: ThreadIdType,
+    ) => Atom.Atom<boolean>;
+  },
 ) {
   // Cache definitions must outlive collectible live-atom definitions. The
   // registry retains these nodes without retaining environment or RPC scopes.
@@ -913,7 +968,14 @@ export function createEnvironmentThreadStateAtoms<R, E>(
         (get) => {
           get.mount(resumeAtom);
           const resume = get.once(resumeAtom);
-          const live = threadStateChanges(environmentId, threadId, resume);
+          const live = threadStateChanges(
+            environmentId,
+            threadId,
+            resume,
+            options?.listedAtom === undefined
+              ? undefined
+              : get.stream(options.listedAtom(environmentId, threadId)),
+          );
           return resume.snapshot === undefined
             ? live
             : Stream.concat(Stream.succeed(cachedThreadState(resume.snapshot.state)), live);
