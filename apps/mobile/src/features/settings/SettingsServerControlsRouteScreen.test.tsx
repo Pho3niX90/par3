@@ -40,6 +40,7 @@ vi.mock("./components/SettingsRow", () => ({ SettingsRow: () => null }));
 vi.mock("./components/SettingsProjectOverridesSection", () => ({
   SettingsProjectOverridesSection: () => null,
 }));
+vi.mock("./components/JiraSettings", () => ({ JiraSettings: () => null }));
 vi.mock("./components/BranchNamingSettings", () => ({
   BranchNamingSettings: (props: { onChange: (patch: ServerSettingsPatch) => void }) => {
     mocks.branchNaming.onChange = props.onChange;
