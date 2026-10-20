@@ -13,6 +13,7 @@ import {
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -106,6 +107,8 @@ const make = Effect.gen(function* () {
   const scope = yield* Scope.Scope;
   const changes = yield* PubSub.unbounded<void>();
   const invalidated = yield* PubSub.unbounded<readonly ThreadId[]>();
+  // Completed once any thread is bound to a spec; polling waits for it.
+  const firstBinding = yield* Deferred.make<void>();
   const locks = new Map<string, Semaphore.Semaphore>();
   const db = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(Effect.mapError(() => failure("io", "Could not access spec state.")));
@@ -789,6 +792,7 @@ const make = Effect.gen(function* () {
               yield* db(
                 sql`INSERT INTO spec_bindings (thread_id, project_id, workspace_path, slug, role) VALUES (${input.threadId}, ${input.projectId}, ${workspace}, ${input.slug}, ${input.role}) ON CONFLICT(thread_id) DO UPDATE SET workspace_path=excluded.workspace_path, slug=excluded.slug, role=excluded.role`,
               );
+              yield* Deferred.succeed(firstBinding, undefined);
               break;
             }
             case "unbind":
@@ -889,6 +893,7 @@ const make = Effect.gen(function* () {
     yield* db(
       sql`INSERT OR IGNORE INTO spec_bindings (thread_id, project_id, workspace_path, slug, role) VALUES (${child}, ${source.projectId}, ${workspace}, ${source.slug}, ${source.role})`,
     );
+    yield* Deferred.succeed(firstBinding, undefined);
   });
   const pending = yield* db(
     sql<{
@@ -914,7 +919,15 @@ const make = Effect.gen(function* () {
         Effect.catch(() => Effect.void),
       );
   }).pipe(Effect.catch(() => Effect.void));
-  yield* pollBound.pipe(Effect.repeat(Schedule.spaced("2 seconds")), Effect.forkIn(scope));
+  // Most servers never bind a spec, so they never poll.
+  const existingBindings = yield* db(sql`SELECT 1 FROM spec_bindings LIMIT 1`).pipe(
+    Effect.orElseSucceed(() => []),
+  );
+  if (existingBindings.length > 0) yield* Deferred.succeed(firstBinding, undefined);
+  yield* Deferred.await(firstBinding).pipe(
+    Effect.andThen(pollBound.pipe(Effect.repeat(Schedule.spaced("2 seconds")))),
+    Effect.forkIn(scope),
+  );
   return SpecService.of({
     query,
     mutate,
