@@ -27,6 +27,22 @@ Choose **Test connection** from a server's menu to start it and list its tools.
 Untick a tool to stop agents calling it. Turn a server off with its switch;
 agents then see it as disabled.
 
+### From the command line
+
+On the environment's machine, `par3 mcp` adds, lists and removes servers, much
+like `claude mcp add`. A running Par3 picks the change up without a restart.
+
+```sh
+par3 mcp add -e API_KEY=... everything -- npx -y @modelcontextprotocol/server-everything
+par3 mcp add -H "Authorization: Bearer ..." -d "Linear issues" linear https://mcp.linear.app/mcp
+par3 mcp list
+par3 mcp remove linear
+```
+
+A URL makes an HTTP server; anything else is a command. Every `-e` and `-H`
+value is stored as a secret. Use `--base-dir` to target an environment that
+does not use the default Par3 home.
+
 ## Using it from a thread
 
 Agents list the shared servers with `mcp_servers` and call a tool with
