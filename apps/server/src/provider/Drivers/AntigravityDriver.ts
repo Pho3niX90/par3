@@ -7,6 +7,7 @@ import {
   NodeRuntimeUnavailableError,
   nodeRuntimeUnavailableMessage,
 } from "@t3tools/shared/nodeRuntime";
+import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -54,7 +55,10 @@ import { makeAntigravityAdapterV2 } from "../../orchestration-v2/Adapters/Antigr
 import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeLogging";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeAntigravityProvider } from "../AntigravityProvider.ts";
-import { makeAntigravityUsageProbe } from "../antigravityUsageLimits.ts";
+import {
+  makeAntigravityUsageProbe,
+  parseAntigravityLimitReached,
+} from "../antigravityUsageLimits.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
 import {
@@ -420,6 +424,20 @@ export const AntigravityDriver: ProviderDriver<
       defaultModel,
       onSessionStarted: provider.onSessionStarted,
       onSessionEvent: (event) => {
+        if (event._tag === "ContentDelta") {
+          return Clock.currentTimeMillis.pipe(
+            Effect.flatMap((now) => {
+              const resetsAt = parseAntigravityLimitReached(event.text, now);
+              return resetsAt === undefined
+                ? Effect.void
+                : usage.reportLimitReached(resetsAt).pipe(
+                    // The quota read can take seconds; keep the session's events flowing.
+                    Effect.andThen(Effect.forkDetach(provider.refreshUsage)),
+                    Effect.asVoid,
+                  );
+            }),
+          );
+        }
         if (event._tag === "ConfigOptionsUpdated") {
           return provider.onConfigOptionsUpdated(event.configOptions);
         }
