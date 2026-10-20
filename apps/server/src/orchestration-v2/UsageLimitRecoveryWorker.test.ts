@@ -128,6 +128,22 @@ describe("usage-limit capacity recovery", () => {
     ).toBeNull();
   });
 
+  it("waits for the timer after an early continuation is limited again", () => {
+    const continuation = { ...thread, latestRunIsLimitContinuation: true };
+    expect(
+      UsageLimitRecoveryWorker.limitRecoveryCommand(continuation, true, nowMs, false, limits),
+    ).toBeNull();
+    expect(
+      UsageLimitRecoveryWorker.limitRecoveryCommand(
+        continuation,
+        true,
+        Date.parse(resetAt),
+        false,
+        limits,
+      ),
+    ).toMatchObject({ type: "message.dispatch" });
+  });
+
   it.effect("uses the destination provider snapshot in the recovery sweep", () =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;

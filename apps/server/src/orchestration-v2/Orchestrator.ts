@@ -4830,6 +4830,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const resetConfirmed =
         command.usageLimitResetConfirmedAt !== undefined &&
         run?.completedAt != null &&
+        !run.userMessageId.startsWith("limit-resume:") &&
         Date.parse(command.usageLimitResetConfirmedAt) > DateTime.toEpochMillis(run.completedAt) &&
         Date.parse(command.usageLimitResetConfirmedAt) <= DateTime.toEpochMillis(now);
       const recoverySnooze =

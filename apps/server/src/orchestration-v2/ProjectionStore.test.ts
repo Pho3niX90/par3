@@ -4281,6 +4281,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
             pendingRuntimeRequest: null,
             limitRecovery: sqlShell.limitRecovery,
             snoozedUntil: sqlShell.snoozedUntil,
+            latestRunIsLimitContinuation: false,
           });
         } else assert.isUndefined(candidate);
         assert.isUndefined(candidates.find((row) => row.id === otherThreadId));
@@ -4494,6 +4495,17 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           availableProviderInstanceIds: [ProviderInstanceId.make("other")],
         })).find((row) => row.id === threadId),
       );
+      yield* sql`UPDATE orchestration_v2_projection_runs
+        SET payload_json = json_set(payload_json, '$.userMessageId', 'limit-resume:earlier')
+        WHERE run_id = ${original.id}`;
+      assert.isUndefined(
+        (yield* store.getLimitRecoveryCandidates(availableOptions)).find(
+          (row) => row.id === threadId,
+        ),
+      );
+      yield* sql`UPDATE orchestration_v2_projection_runs
+        SET payload_json = json_set(payload_json, '$.userMessageId', ${original.userMessageId})
+        WHERE run_id = ${original.id}`;
       yield* sql`UPDATE orchestration_v2_projection_threads
         SET payload_json = json_set(payload_json, '$.snoozedUntil', ${recovery.resetAt}, '$.limitRecovery.snooze', json('true'))
         WHERE thread_id = ${threadId}`;

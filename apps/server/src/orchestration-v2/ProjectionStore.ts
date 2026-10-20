@@ -174,7 +174,9 @@ export type ProjectionLimitRecoveryCandidate = Pick<
   | "updatedAt"
   | "limitRecovery"
   | "snoozedUntil"
->;
+> & {
+  readonly latestRunIsLimitContinuation?: boolean;
+};
 
 export type ProjectionThreadPullRequests = Pick<
   OrchestrationV2AppThread,
@@ -3769,17 +3771,22 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
 
     const getLimitRecoveryCandidates = Effect.fn("ProjectionStore.getLimitRecoveryCandidates")(
       function* (options: Parameters<ProjectionStoreV2Shape["getLimitRecoveryCandidates"]>[0]) {
+        // A continuation that hit the limit again waits for the timer: the snapshot
+        // may not cover the limit that actually blocked it.
         const available = options.availableProviderInstanceIds?.length
-          ? sql`t.provider_instance_id IN ${sql.in(options.availableProviderInstanceIds)}`
+          ? sql`t.provider_instance_id IN ${sql.in(options.availableProviderInstanceIds)}
+              AND IFNULL(json_extract(r.payload_json, '$.userMessageId'), '') NOT LIKE 'limit-resume:%'`
           : sql`0`;
         const rows = yield* sql<{
           readonly payload_json: string;
           readonly run_id: string;
           readonly completed_at: string | null;
+          readonly user_message_id: string | null;
           readonly failure_payload_json: string;
           readonly last_error: string | null;
         }>`
           SELECT t.payload_json, r.run_id, r.completed_at,
+            json_extract(r.payload_json, '$.userMessageId') AS user_message_id,
             item.payload_json AS failure_payload_json,
             (
               SELECT json_extract(session.payload_json, '$.lastError')
@@ -3882,6 +3889,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             pendingRuntimeRequest: null,
             limitRecovery: thread.limitRecovery ?? null,
             snoozedUntil: thread.snoozedUntil ?? null,
+            latestRunIsLimitContinuation: row.user_message_id?.startsWith("limit-resume:") ?? false,
           });
         }
         return candidates;
@@ -6727,7 +6735,14 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   thread.archivedAt === null &&
                   thread.settledOverride !== "settled",
               )
-              .map(threadShellFromProjection)
+              .map((projection) => {
+                const thread = threadShellFromProjection(projection);
+                const latestRunIsLimitContinuation =
+                  projection.runs
+                    .find((run) => run.id === thread.latestRunId)
+                    ?.userMessageId.startsWith("limit-resume:") ?? false;
+                return { ...thread, latestRunIsLimitContinuation };
+              })
               .filter(
                 (thread) =>
                   thread.status === "failed" &&
@@ -6736,6 +6751,9 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   thread.pendingRuntimeRequest === null,
               )
               .filter((thread) => {
+                const available =
+                  !thread.latestRunIsLimitContinuation &&
+                  options.availableProviderInstanceIds?.includes(thread.providerInstanceId);
                 const resetMs = Date.parse(thread.usageLimitResetAt!);
                 const nowMs = DateTime.toEpochMillis(options.now);
                 if (
@@ -6751,11 +6769,10 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 }
                 return (
                   thread.limitRecovery.autoResume &&
-                  (resetMs <= nowMs ||
-                    options.availableProviderInstanceIds?.includes(thread.providerInstanceId)) &&
+                  (resetMs <= nowMs || available) &&
                   (thread.snoozedUntil == null ||
                     DateTime.toEpochMillis(thread.snoozedUntil) <= nowMs ||
-                    (options.availableProviderInstanceIds?.includes(thread.providerInstanceId) &&
+                    (available &&
                       thread.limitRecovery.snooze &&
                       DateTime.toEpochMillis(thread.snoozedUntil) === resetMs))
                 );

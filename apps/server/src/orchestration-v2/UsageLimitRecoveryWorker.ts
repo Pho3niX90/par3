@@ -60,8 +60,11 @@ export function limitRecoveryCommand(
     };
   }
   // A reset credit can restore capacity before the failed turn's original deadline.
-  // An older snapshot must never retry a newly limited turn.
+  // An older snapshot must never retry a newly limited turn, and a continuation that
+  // was limited again waits for the timer: the snapshot may not cover the limit that
+  // blocked it, so trusting it again would retry on every refresh.
   const resetConfirmed =
+    !thread.latestRunIsLimitContinuation &&
     limits !== undefined &&
     hasAvailableCapacity(limits) &&
     Date.parse(limits.checkedAt) >
