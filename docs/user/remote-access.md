@@ -331,26 +331,9 @@ screenshots, logs, or bug reports.
 
 ## Parity Connect troubleshooting
 
-Run `par3 connect status` on the host to inspect saved authorization and link
-configuration. It is not a live reachability check. If the environment appears
-offline, run `par3 service status` and read the displayed log. If it disappears
-when SSH closes, see [background-service troubleshooting](./background-service.md#troubleshooting).
-
-| Error                                                     | Recovery                                                                                                                                          |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `environment_link_limit_exceeded` or managed tunnel limit | Deregister an unused environment, then restart Par3 on the host.                                                                                  |
-| `auth_invalid` or `invalid_bearer`                        | Run `par3 connect login`. If credentials were revoked, run `par3 connect logout`, then `par3 connect` again. Restart the server after signing in. |
-| Expired or invalid link proof                             | Check the host's date and time, update Par3, then restart it.                                                                                     |
-| HTTP 403 without a recognized error                       | Check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report.                                                     |
-| HTTP 408, 429, or 5xx                                     | Check network and relay availability. Startup retries temporary failures for up to ten minutes.                                                   |
-
-After fixing a permanent rejection, restart the host's server. On Linux, use
-`systemctl --user restart t3code.service` for the background service. For a
-foreground server, stop it and run `par3 serve` again with your usual options.
-Include the diagnostic message and trace ID when reporting a persistent failure.
-
-For a connection that still fails after linking, check the date and time on both
-devices. For server version warnings, follow [Updating Par3](./updating.md).
+When a Parity Connect connection fails, see
+[Parity Connect troubleshooting](./t3-connect-troubleshooting.md). It explains each
+error, where the problem is, and how to fix it.
 
 ## Using the Desktop App as a Remote Only
 

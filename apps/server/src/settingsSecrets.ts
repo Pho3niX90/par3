@@ -2,6 +2,7 @@ import {
   AntigravitySettings,
   ClaudeSettings,
   CodexSettings,
+  EasDeviceHostConfig,
   JiraSettings,
   type ServerSettings,
   UsageLimitSourceConfig,
@@ -32,6 +33,7 @@ const providerSecretFields = new Map([
   ),
 ]);
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
+const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const jiraSecretFields = secretSettingsFields(JiraSettings);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
@@ -147,6 +149,17 @@ export function mapSettingsSecrets(
     ]),
   ) as ServerSettings["usageLimitSources"];
 
+  const easDeviceHosts = settings.easDeviceHosts.map(
+    (host) =>
+      mapFields(
+        host,
+        easDeviceHostSecretFields,
+        (field, serverHost) =>
+          `device-host-${encode(host.id)}-${encode(field)}` +
+          (serverHost === null ? "" : `-${encode(serverHost)}`),
+      ) as EasDeviceHostConfig,
+  );
+
   const jira = mapFields(
     settings.jira,
     jiraSecretFields,
@@ -193,6 +206,7 @@ export function mapSettingsSecrets(
     providerInstances,
     sourceControlHosts,
     usageLimitSources,
+    easDeviceHosts,
     jira,
     mcpServers,
   };
