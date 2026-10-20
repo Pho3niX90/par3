@@ -74,4 +74,19 @@ describe("compileClaudeModelSelection", () => {
         .settings,
     ).toEqual({ alwaysThinkingEnabled: false });
   });
+
+  it.each(["claude-sonnet-5-5", "claude-sonnet-4-6"])(
+    "compiles the thinking toggle for %s alongside effort",
+    (model) => {
+      const compiled = compileClaudeModelSelection(
+        selection(model, [
+          { id: "thinking", value: false },
+          { id: "effort", value: "low" },
+        ]),
+      );
+      expect(compiled.settings).toEqual({ alwaysThinkingEnabled: false });
+      expect(compiled.effort).toBe("low");
+      expect(compileClaudeModelSelection(selection(model, [])).settings).toEqual({});
+    },
+  );
 });

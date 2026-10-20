@@ -268,21 +268,24 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.notInclude(options.settings ?? {}, { showThinkingSummaries: true });
   });
 
-  it("does not enable thinking when the model option disables it", () => {
-    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
-      modelSelection: {
-        ...CLAUDE_TEST_MODEL_SELECTION,
-        model: "claude-haiku-4-5",
-        options: [{ id: "thinking", value: false }],
-      },
-      nativeThreadId: "thinking-thread",
-      resume: false,
-      cwd: "/workspace",
-    });
-    assert.isUndefined(options.thinking);
-    assert.isUndefined(options.extraArgs?.["thinking-display"]);
-    assert.include(options.settings, { alwaysThinkingEnabled: false });
-  });
+  it.each(["claude-haiku-4-5", "claude-sonnet-4-6", "claude-sonnet-5-5"])(
+    "does not enable thinking on %s when the model option disables it",
+    (model) => {
+      const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+        modelSelection: {
+          ...CLAUDE_TEST_MODEL_SELECTION,
+          model,
+          options: [{ id: "thinking", value: false }],
+        },
+        nativeThreadId: "thinking-thread",
+        resume: false,
+        cwd: "/workspace",
+      });
+      assert.isUndefined(options.thinking);
+      assert.isUndefined(options.extraArgs?.["thinking-display"]);
+      assert.include(options.settings, { alwaysThinkingEnabled: false });
+    },
+  );
 
   it.each([
     ["--permission-mode acceptEdits", "acceptEdits"],
