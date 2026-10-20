@@ -1,6 +1,7 @@
 import {
   CommandId,
   MessageId,
+  resolveProjectProviderInstanceEnabled,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   ScheduledTask,
   ScheduledTaskError,
@@ -46,6 +47,7 @@ import * as Metrics from "../observability/Metrics.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
 import {
   redactHeaders,
@@ -160,6 +162,7 @@ interface ScheduledTaskRow {
   readonly thread_id: string | null;
   readonly workspace_strategy_json: string;
   readonly model_selection_json: string;
+  readonly fallback_model_selection_json: string | null;
   readonly runtime_mode: string;
   readonly interaction_mode: string;
   readonly created_by: string;
@@ -304,6 +307,10 @@ const decodeRow = Effect.fnUntraced(
       threadId: row.thread_id,
       workspaceStrategy,
       modelSelection,
+      fallbackModelSelection:
+        row.fallback_model_selection_json == null
+          ? null
+          : yield* decodeModelSelectionJson(row.fallback_model_selection_json),
       runtimeMode: row.runtime_mode,
       interactionMode: row.interaction_mode,
       createdBy: row.created_by,
@@ -375,6 +382,7 @@ export const layer = Layer.effect(
     const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
     const secretRequests = yield* SecretRequests.SecretRequests;
     const scheduler = yield* Scheduler.Scheduler;
+    const settings = yield* ServerSettings.ServerSettingsService;
     const readWebhookOrigin = yield* ScheduledTaskWebhookOrigin;
     const webhookPermits = yield* Ref.make<ReadonlyMap<ScheduledTaskId, Semaphore.Semaphore>>(
       new Map(),
@@ -401,6 +409,7 @@ export const layer = Layer.effect(
         thread_id,
         workspace_strategy_json,
         model_selection_json,
+        fallback_model_selection_json,
         runtime_mode,
         interaction_mode,
         created_by,
@@ -435,6 +444,7 @@ export const layer = Layer.effect(
         thread_id,
         workspace_strategy_json,
         model_selection_json,
+        fallback_model_selection_json,
         runtime_mode,
         interaction_mode,
         created_by,
@@ -513,6 +523,7 @@ export const layer = Layer.effect(
           thread_id,
           workspace_strategy_json,
           model_selection_json,
+          fallback_model_selection_json,
           runtime_mode,
           interaction_mode,
           created_by,
@@ -537,6 +548,7 @@ export const layer = Layer.effect(
           ${task.threadId},
           ${JSON.stringify(task.workspaceStrategy)},
           ${JSON.stringify(task.modelSelection)},
+          ${task.fallbackModelSelection == null ? null : JSON.stringify(task.fallbackModelSelection)},
           ${task.runtimeMode},
           ${task.interactionMode},
           ${task.createdBy},
@@ -562,6 +574,7 @@ export const layer = Layer.effect(
           thread_id = excluded.thread_id,
           workspace_strategy_json = excluded.workspace_strategy_json,
           model_selection_json = excluded.model_selection_json,
+          fallback_model_selection_json = excluded.fallback_model_selection_json,
           runtime_mode = excluded.runtime_mode,
           interaction_mode = excluded.interaction_mode,
           creation_source = excluded.creation_source,
@@ -769,6 +782,9 @@ export const layer = Layer.effect(
                     initialMessage: {
                       messageId,
                       scheduledTaskId: active.id,
+                      ...(active.fallbackModelSelection == null
+                        ? {}
+                        : { scheduledTaskFallback: active.fallbackModelSelection }),
                       text: prompt,
                       attachments: [],
                     },
@@ -787,6 +803,11 @@ export const layer = Layer.effect(
                     threadId: ThreadId.make(active.threadId),
                     messageId,
                     scheduledTaskId: active.id,
+                    ...(active.fallbackModelSelection == null
+                      ? {}
+                      : {
+                          scheduledTaskFallback: active.fallbackModelSelection,
+                        }),
                     text: prompt,
                     attachments: [],
                     mode: "queue",
@@ -1049,6 +1070,10 @@ export const layer = Layer.effect(
         threadId: input.threadId ?? null,
         workspaceStrategy,
         modelSelection: input.modelSelection,
+        fallbackModelSelection:
+          input.fallbackModelSelection === undefined
+            ? (existingTask?.fallbackModelSelection ?? null)
+            : input.fallbackModelSelection,
         runtimeMode: input.runtimeMode,
         interactionMode: input.interactionMode,
         createdBy: existingTask?.createdBy ?? input.createdBy ?? "user",
@@ -1063,6 +1088,33 @@ export const layer = Layer.effect(
         lastRunError: existingTask?.lastRunError ?? null,
         runCount: existingTask?.runCount ?? 0,
       };
+      if (task.fallbackModelSelection != null) {
+        const current = yield* settings.getSettings.pipe(
+          Effect.mapError((cause) => taskError("Could not validate fallback model.", { cause })),
+        );
+        const primaryDriver =
+          current.providerInstances[task.modelSelection.instanceId]?.driver ??
+          task.modelSelection.instanceId;
+        const fallbackDriver =
+          current.providerInstances[task.fallbackModelSelection.instanceId]?.driver ??
+          task.fallbackModelSelection.instanceId;
+        if (primaryDriver === fallbackDriver) {
+          return yield* taskError("Choose a fallback model from another provider.", {
+            taskId: id,
+          });
+        }
+        if (
+          !resolveProjectProviderInstanceEnabled(
+            current,
+            task.projectId,
+            task.fallbackModelSelection.instanceId,
+          )
+        ) {
+          return yield* taskError("The fallback provider is disabled for this project.", {
+            taskId: id,
+          });
+        }
+      }
       yield* saveTask(task, input.requireExisting === true, webhook);
       yield* notifyChanged;
       return { task: (yield* findTask(id)) ?? task };

@@ -11,6 +11,7 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import { ServerActivation } from "../serverActivation.ts";
@@ -20,6 +21,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 const dependencies = Layer.mergeAll(
   NodeCrypto.layer,
+  ServerSettings.layerTest(),
   Scheduler.layer,
   Layer.mock(ThreadLaunchService.ThreadLaunchService)({
     launch: () => Effect.die("synthetic dispatch failure"),

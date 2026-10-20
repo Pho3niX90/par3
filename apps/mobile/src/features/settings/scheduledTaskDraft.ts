@@ -135,6 +135,7 @@ export type ScheduledTaskDraft = {
   readonly prompt: string;
   readonly projectId: ProjectId | null;
   readonly modelSelection: ModelSelection | null;
+  readonly fallbackModelSelection: ModelSelection | null;
   readonly modelSelectionIsExplicit: boolean;
   readonly schedule: ScheduleDraft;
   readonly workspace: Workspace;
@@ -152,6 +153,7 @@ function draftSignature(draft: ScheduledTaskDraft): string {
     draft.projectId,
     draft.modelSelection?.instanceId,
     draft.modelSelection?.model,
+    draft.fallbackModelSelection,
     [...(draft.modelSelection?.options ?? [])]
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((option) => [option.id, option.value]),
@@ -186,6 +188,7 @@ export function createDraft(
     prompt: "",
     projectId,
     modelSelection,
+    fallbackModelSelection: null,
     modelSelectionIsExplicit: false,
     schedule: DEFAULT_SCHEDULE,
     workspace: "worktree",
@@ -204,6 +207,7 @@ export function editDraft(task: ScheduledTask): ScheduledTaskDraft {
     prompt: task.prompt,
     projectId: task.projectId,
     modelSelection: task.modelSelection,
+    fallbackModelSelection: task.fallbackModelSelection ?? null,
     modelSelectionIsExplicit: true,
     schedule: scheduleDraftForTask(task),
     workspace: task.workspaceStrategy.type,

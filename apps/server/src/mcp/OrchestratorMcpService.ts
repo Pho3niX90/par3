@@ -267,6 +267,7 @@ function scheduledTaskWorkspaceStrategy(
 function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): OrchestratorMcpScheduledTask {
   return {
     scheduledTaskId: task.id,
+    fallbackModelSelection: task.fallbackModelSelection ?? null,
     title: task.title,
     prompt: task.prompt,
     enabled: task.enabled,
@@ -1782,6 +1783,7 @@ const make = Effect.gen(function* () {
         threadId: bindToCurrentThread && parent !== undefined ? parent.thread.id : null,
         workspaceStrategy: scheduledTaskWorkspaceStrategy(bindToCurrentThread),
         modelSelection,
+        fallbackModelSelection: input.fallbackModelSelection ?? null,
         runtimeMode: limits.runtimeMode,
         interactionMode: limits.interactionMode,
         createdBy: "agent",
@@ -1865,6 +1867,10 @@ const make = Effect.gen(function* () {
           threadId,
           workspaceStrategy,
           modelSelection: existing.modelSelection,
+          fallbackModelSelection:
+            input.fallbackModelSelection === undefined
+              ? (existing.fallbackModelSelection ?? null)
+              : input.fallbackModelSelection,
           runtimeMode: existing.runtimeMode,
           interactionMode: existing.interactionMode,
           createdBy: existing.createdBy,

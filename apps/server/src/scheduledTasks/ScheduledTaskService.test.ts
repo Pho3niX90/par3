@@ -1,3 +1,4 @@
+import * as ServerSettings from "../serverSettings.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as NodeUtil from "node:util";
 
@@ -41,6 +42,7 @@ const insertRow = (
     status: string;
     scheduleJson?: string;
     prompt?: string;
+    fallbackJson?: string;
   },
   now: string,
 ) =>
@@ -54,6 +56,7 @@ const insertRow = (
     thread_id: null,
     workspace_strategy_json: '{"type":"root"}',
     model_selection_json: '{"instanceId":"codex","model":"gpt-5"}',
+    fallback_model_selection_json: row.fallbackJson ?? null,
     runtime_mode: "full-access",
     interaction_mode: "default",
     created_by: "user",
@@ -176,7 +179,17 @@ it.effect(
         { id: "due-second", next: now, status: "never" },
         { id: "due-third", next: now, status: "never" },
       ]) {
-        yield* insertRow(sql, { ...row, enabled: 1 }, now);
+        yield* insertRow(
+          sql,
+          {
+            ...row,
+            enabled: 1,
+            ...(row.id === "due-healthy"
+              ? { fallbackJson: '{"instanceId":"claudeAgent","model":"backup"}' }
+              : {}),
+          },
+          now,
+        );
       }
 
       // it.effect freezes the clock; pin it just past the seeded due time so
@@ -192,8 +205,17 @@ it.effect(
               ScheduledTaskService.layer,
               Layer.mergeAll(
                 Layer.mock(ThreadLaunchService.ThreadLaunchService)({
-                  launch: () =>
+                  launch: (input) =>
                     Ref.updateAndGet(dispatched, (n) => n + 1).pipe(
+                      Effect.tap(() =>
+                        Effect.sync(() => {
+                          if (input.initialMessage?.scheduledTaskId === "due-healthy")
+                            assert.deepEqual(input.initialMessage.scheduledTaskFallback, {
+                              instanceId: ProviderInstanceId.make("claudeAgent"),
+                              model: "backup",
+                            });
+                        }),
+                      ),
                       Effect.andThen((n) =>
                         n === 4
                           ? Deferred.succeed(lastDispatched, undefined).pipe(
@@ -211,6 +233,7 @@ it.effect(
                 Layer.mock(ThreadManagementService.ThreadManagementService)({}),
                 Layer.mock(SecretRequests.SecretRequests)({}),
                 NodeCrypto.layer,
+                ServerSettings.layerTest(),
                 Scheduler.layer,
               ),
             ),
@@ -309,6 +332,7 @@ it.effect(
                 Layer.mock(ThreadManagementService.ThreadManagementService)({}),
                 Layer.mock(SecretRequests.SecretRequests)({}),
                 NodeCrypto.layer,
+                ServerSettings.layerTest(),
                 Scheduler.layer,
               ),
             ),
@@ -363,6 +387,7 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
             isScratchProject: () => Effect.succeed(false),
           }),
           NodeCrypto.layer,
+          ServerSettings.layerTest(),
           Scheduler.layer,
         ),
       ),

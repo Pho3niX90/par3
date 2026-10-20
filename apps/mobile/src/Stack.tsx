@@ -114,6 +114,7 @@ import {
 } from "./features/settings/SettingsScheduledTasksRouteScreen";
 import {
   ScheduledTaskModelPickerRouteScreen,
+  ScheduledTaskFallbackModelPickerRouteScreen,
   ScheduledTaskBranchPickerRouteScreen,
 } from "./features/settings/ScheduledTaskPickerScreens";
 import { ScheduledTaskEditorProvider } from "./features/settings/scheduled-task-editor";
@@ -362,6 +363,19 @@ const SettingsContentStack = createV5SheetStackNavigator({
     }),
     SettingsScheduledTaskModel: createNativeStackScreen({
       screen: ScheduledTaskModelPickerRouteScreen,
+      options: {
+        headerShown: false,
+        ...(Platform.OS === "android"
+          ? { presentation: "card" as const }
+          : {
+              ...FORM_SHEET_PRESENTATION_OPTIONS,
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: true,
+            }),
+      },
+    }),
+    SettingsScheduledTaskFallbackModel: createNativeStackScreen({
+      screen: ScheduledTaskFallbackModelPickerRouteScreen,
       options: {
         headerShown: false,
         ...(Platform.OS === "android"

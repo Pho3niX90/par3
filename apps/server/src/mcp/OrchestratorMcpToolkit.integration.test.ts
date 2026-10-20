@@ -488,6 +488,7 @@ function scheduledTaskFromUpsert(input: ScheduledTaskUpsertInput): ScheduledTask
     threadId: input.threadId ?? null,
     workspaceStrategy: input.workspaceStrategy,
     modelSelection: input.modelSelection,
+    fallbackModelSelection: input.fallbackModelSelection ?? null,
     runtimeMode: input.runtimeMode,
     interactionMode: input.interactionMode,
     createdBy: input.createdBy ?? "user",
@@ -1522,6 +1523,7 @@ describe("orchestrator MCP toolkit", () => {
               prompt: "wake up in this thread and say hello",
               schedule: { type: "interval", everyMs: 60_000 },
               clientRequestId: "schedule-hello-1",
+              fallbackModelSelection: { instanceId: "claudeAgent", model: "custom-fallback" },
             });
             expect(scheduleCall.isError).toBe(false);
             expect(scheduleCall.structuredContent).toMatchObject({
@@ -1530,6 +1532,7 @@ describe("orchestrator MCP toolkit", () => {
               enabled: true,
               schedule: { type: "interval", everyMs: 60_000 },
               title: "wake up in this thread and say hello",
+              fallbackModelSelection: { instanceId: "claudeAgent", model: "custom-fallback" },
             });
             const scheduledTaskId = (scheduleCall.structuredContent as { scheduledTaskId: string })
               .scheduledTaskId;
@@ -1546,7 +1549,13 @@ describe("orchestrator MCP toolkit", () => {
             const scheduledListCall = yield* invoke("list_scheduled_tasks", {});
             expect(scheduledListCall.isError).toBe(false);
             expect(scheduledListCall.structuredContent).toMatchObject({
-              tasks: [{ scheduledTaskId, boundThreadId: parentThreadId }],
+              tasks: [
+                {
+                  scheduledTaskId,
+                  boundThreadId: parentThreadId,
+                  fallbackModelSelection: { instanceId: "claudeAgent", model: "custom-fallback" },
+                },
+              ],
             });
 
             const scheduledUpdateCall = yield* invoke("update_scheduled_task", {
@@ -1559,6 +1568,16 @@ describe("orchestrator MCP toolkit", () => {
               enabled: false,
             });
 
+            expect((yield* Ref.get(scheduledStore))[0]?.fallbackModelSelection).toEqual({
+              instanceId: "claudeAgent",
+              model: "custom-fallback",
+            });
+            const clearedFallback = yield* invoke("update_scheduled_task", {
+              scheduledTaskId,
+              fallbackModelSelection: null,
+            });
+            expect(clearedFallback.isError).toBe(false);
+            expect((yield* Ref.get(scheduledStore))[0]?.fallbackModelSelection).toBeNull();
             const scheduledDeleteCall = yield* invoke("delete_scheduled_task", { scheduledTaskId });
             expect(scheduledDeleteCall.isError).toBe(false);
             expect(scheduledDeleteCall.structuredContent).toMatchObject({

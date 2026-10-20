@@ -272,25 +272,28 @@ const moveProject = (projectId: ProjectId, workspaceRoot: string, updatedAt: str
     }),
   );
 
-const layerTest = Layer.mergeAll(
-  RuntimeLayer.layer,
-  RuntimeLayer.layerEventSink,
-  ProjectStore.layer,
-  ProjectionStore.layer,
-  EffectOutbox.layer,
-  ThreadCommandExecutor.layer,
-).pipe(
-  Layer.provide(McpSessionRegistryTestkit.layer),
-  Layer.provide(McpProviderSessions.layer),
-  Layer.provide(SqlitePersistence.layerMemory),
-  Layer.provide(layerCheckpointStoreTest),
-  Layer.provide(layerServerConfig),
-  Layer.provide(ServerSettings.layerTest()),
-  Layer.provide(layerTestProviderInstanceRegistry),
-  Layer.provide(layerGitWorkflowTest),
-  Layer.provide(layerProjectServiceTest),
-  Layer.provide(layerPlatformTest),
-);
+const makeLayerTest = (providerInstances = layerTestProviderInstanceRegistry) =>
+  Layer.mergeAll(
+    RuntimeLayer.layer,
+    RuntimeLayer.layerEventSink,
+    ProjectStore.layer,
+    ProjectionStore.layer,
+    EffectOutbox.layer,
+    ThreadCommandExecutor.layer,
+  ).pipe(
+    Layer.provide(McpSessionRegistryTestkit.layer),
+    Layer.provide(McpProviderSessions.layer),
+    Layer.provideMerge(SqlitePersistence.layerMemory),
+    Layer.provide(layerCheckpointStoreTest),
+    Layer.provide(layerServerConfig),
+    Layer.provideMerge(ServerSettings.layerTest()),
+    Layer.provide(providerInstances),
+    Layer.provide(layerGitWorkflowTest),
+    Layer.provide(layerProjectServiceTest),
+    Layer.provide(layerPlatformTest),
+  );
+
+const layerTest = makeLayerTest();
 
 const layerLegacyImportTest = RuntimeLayer.layer.pipe(
   Layer.provide(McpSessionRegistryTestkit.layer),
@@ -7282,3 +7285,312 @@ it.layer(layerQueueResumeDisabledInstanceTest)(
     );
   },
 );
+
+const fallbackSelection = {
+  instanceId: ProviderInstanceId.make("claudeAgent"),
+  model: "claude-test",
+} satisfies ModelSelection;
+const fallbackProviderInstance = {
+  ...providerInstance,
+  instanceId: fallbackSelection.instanceId,
+  driverKind: ProviderDriverKind.make("claudeAgent"),
+  orchestrationAdapter: {
+    ...orchestrationAdapter,
+    instanceId: fallbackSelection.instanceId,
+    driver: ProviderDriverKind.make("claudeAgent"),
+  },
+  continuationIdentity: {
+    driverKind: ProviderDriverKind.make("claudeAgent"),
+    continuationKey: "claude:test",
+  },
+} satisfies ProviderInstance;
+const limitedFallbackProviderInstance = {
+  ...fallbackProviderInstance,
+  instanceId: ProviderInstanceId.make("claude_limited"),
+  orchestrationAdapter: {
+    ...fallbackProviderInstance.orchestrationAdapter,
+    instanceId: ProviderInstanceId.make("claude_limited"),
+  },
+  snapshot: {
+    getSnapshot: Effect.succeed({ supportedRuntimeModes: ["approval-required"] }),
+  } as unknown as ProviderInstance["snapshot"],
+} satisfies ProviderInstance;
+const layerFallbackTests = makeLayerTest(
+  Layer.succeed(ProviderInstanceRegistry.ProviderInstanceRegistry, {
+    getInstance: (id) =>
+      Effect.succeed(
+        [
+          providerInstance,
+          alternateProviderInstance,
+          fallbackProviderInstance,
+          limitedFallbackProviderInstance,
+        ].find((instance) => instance.instanceId === id),
+      ),
+    listInstances: Effect.succeed([
+      providerInstance,
+      alternateProviderInstance,
+      fallbackProviderInstance,
+      limitedFallbackProviderInstance,
+    ]),
+    listUnavailable: Effect.succeed([]),
+    streamChanges: Stream.empty,
+    subscribeChanges: Effect.never,
+  }),
+);
+
+it.layer(layerFallbackTests)("automation fallback", (it) => {
+  it.effect.each([
+    "continue",
+    "queued",
+    "ordinary-error",
+    "paused",
+    "deleted",
+    "stopped",
+    "archived",
+    "superseded",
+    "same-provider",
+    "disabled",
+    "pending-input",
+    "incompatible",
+    "unavailable",
+    "edited",
+    "no-fallback",
+    "cancelled",
+  ] as const)("guards fallback: %s", (scenario) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const events = yield* EventSink.EventSinkV2;
+      const sql = yield* SqlClient.SqlClient;
+      const settings = yield* ServerSettings.ServerSettingsService;
+      const now = yield* DateTime.now;
+      const at = DateTime.formatIso(now);
+      const threadId = ThreadId.make(`fallback:${scenario}`);
+      const projectId = ProjectId.make(`fallback-project:${scenario}`);
+      const taskId = `fallback-task:${scenario}`;
+      const fallback =
+        scenario === "same-provider"
+          ? { ...modelSelection, instanceId: alternateInstanceId }
+          : scenario === "incompatible"
+            ? { ...fallbackSelection, instanceId: limitedFallbackProviderInstance.instanceId }
+            : scenario === "unavailable"
+              ? { ...fallbackSelection, instanceId: ProviderInstanceId.make("missing") }
+              : fallbackSelection;
+      yield* settings.updateProviderInstance({
+        operation: "upsert",
+        instanceId: fallback.instanceId,
+        instance: { driver: ProviderDriverKind.make("claudeAgent"), enabled: true },
+      });
+      yield* seedProject({
+        projectId,
+        title: "Fallback",
+        workspaceRoot: process.cwd(),
+        defaultModelSelection: modelSelection,
+        createdAt: at,
+      });
+      yield* sql`INSERT INTO scheduled_tasks (
+        task_id, title, prompt, enabled, schedule_json, project_id, workspace_strategy_json,
+        model_selection_json, fallback_model_selection_json, runtime_mode, interaction_mode,
+        created_by, creation_source, created_at, updated_at, last_run_status, run_count
+      ) VALUES (${taskId}, 'Fallback', 'Do work', 1, '{"type":"interval","everyMs":60000}', ${projectId}, '{"type":"root"}',
+        ${JSON.stringify(modelSelection)}, ${JSON.stringify(fallback)}, 'full-access', 'default', 'user', 'web', ${at}, ${at}, 'never', 0)`;
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(`fallback:create:${scenario}`),
+        threadId,
+        projectId,
+        title: "Fallback",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: process.cwd(),
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const send = (suffix: string, queue = false) =>
+        orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`fallback:${suffix}:${scenario}`),
+          threadId,
+          messageId: MessageId.make(`fallback:${suffix}:${scenario}`),
+          text: "Do work",
+          attachments: [],
+          scheduledTaskId: ScheduledTaskId.make(taskId),
+          ...(scenario === "no-fallback" ? {} : { scheduledTaskFallback: fallback }),
+          dispatchMode: { type: queue ? "queue_after_active" : "defer_start" },
+          createdBy: "user",
+          creationSource: "web",
+        });
+      yield* send("primary");
+      if (scenario === "queued") {
+        yield* send("queued", true);
+        const before = yield* orchestrator.getThreadProjection(threadId);
+        assert.deepEqual(
+          before.messages.find((message) => message.id === `fallback:queued:${scenario}`)
+            ?.scheduledTaskFallback,
+          fallback,
+        );
+      }
+      const source = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+      const failRun = (
+        run: OrchestrationV2Run,
+        suffix: string,
+        failureClass: "usage_limit" | "provider_error",
+      ) =>
+        events.write({
+          events: [
+            {
+              id: EventId.make(`fallback:error:${scenario}:${suffix}`),
+              type: "turn-item.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: TurnItemId.make(`fallback:error:${scenario}:${suffix}`),
+                type: "error",
+                threadId,
+                runId: run.id,
+                nodeId: run.rootNodeId,
+                providerThreadId: run.providerThreadId,
+                providerTurnId: null,
+                nativeItemRef: null,
+                parentItemId: null,
+                ordinal: suffix === "primary" ? 2 : 20,
+                status: "failed",
+                title: "Provider failure",
+                startedAt: now,
+                completedAt: now,
+                updatedAt: now,
+                failure: { class: failureClass, message: "Stopped", code: null, retryable: null },
+              },
+            },
+            {
+              id: EventId.make(`fallback:failed:${scenario}:${suffix}`),
+              type: "run.updated",
+              threadId,
+              occurredAt: now,
+              payload: { ...run, status: "failed", startedAt: now, completedAt: now },
+            },
+          ],
+        });
+      yield* failRun(
+        source,
+        "primary",
+        scenario === "ordinary-error" ? "provider_error" : "usage_limit",
+      );
+      if (scenario === "edited")
+        yield* sql`UPDATE scheduled_tasks SET fallback_model_selection_json = NULL WHERE task_id = ${taskId}`;
+      if (scenario === "cancelled")
+        yield* events.write({
+          events: [
+            {
+              id: EventId.make("fallback:cancelled"),
+              type: "run.updated",
+              threadId,
+              occurredAt: now,
+              payload: { ...source, status: "cancelled", startedAt: now, completedAt: now },
+            },
+          ],
+        });
+      if (scenario === "paused")
+        yield* sql`UPDATE scheduled_tasks SET enabled = 0 WHERE task_id = ${taskId}`;
+      if (scenario === "deleted") yield* sql`DELETE FROM scheduled_tasks WHERE task_id = ${taskId}`;
+      if (scenario === "archived")
+        yield* orchestrator.dispatch({
+          type: "thread.archive",
+          threadId,
+          commandId: CommandId.make(`fallback:archive:${scenario}`),
+        });
+      if (scenario === "stopped")
+        yield* orchestrator.dispatch({
+          type: "thread.stop",
+          threadId,
+          commandId: CommandId.make(`fallback:stop:${scenario}`),
+        });
+      if (scenario === "superseded") yield* send("newer");
+      if (scenario === "disabled")
+        yield* settings.updateProviderInstance({
+          operation: "upsert",
+          instanceId: fallbackSelection.instanceId,
+          instance: { driver: ProviderDriverKind.make("claudeAgent"), enabled: false },
+        });
+      if (scenario === "pending-input")
+        yield* events.write({
+          events: [
+            {
+              id: EventId.make("fallback:pending-input"),
+              type: "runtime-request.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: RuntimeRequestId.make("fallback:input"),
+                nodeId: source.rootNodeId!,
+                providerTurnId: null,
+                nativeRequestRef: null,
+                kind: "user_input",
+                status: "pending",
+                responseCapability: { type: "message" },
+                createdAt: now,
+                resolvedAt: null,
+              },
+            },
+          ],
+        });
+      const candidates = yield* store.getLimitRecoveryCandidates({
+        now,
+        autoResume: true,
+        snooze: false,
+      });
+      const eligible = scenario === "continue" || scenario === "queued" || scenario === "edited";
+      const candidate = candidates.find((entry) => entry.id === threadId);
+      if (eligible) assert.isDefined(candidate);
+      const command = limitRecoveryCommand(
+        candidate ?? {
+          ...(yield* store.getThreadShell(threadId))!,
+          scheduledTaskFallback: fallback,
+          latestRunId: source.id,
+          status: "failed",
+          lastErrorClass: "usage_limit",
+          pendingRuntimeRequest: null,
+        },
+        false,
+        DateTime.toEpochMillis(now),
+      );
+      if (!command) {
+        assert.isFalse(eligible);
+        return;
+      }
+      const result = yield* Effect.result(orchestrator.dispatch(command));
+      if (!eligible) {
+        assert.equal(result._tag, "Failure");
+        return;
+      }
+      assert.equal(result._tag, "Success");
+      yield* orchestrator.dispatch(command);
+      const projection = yield* orchestrator.getThreadProjection(threadId);
+      const continued = projection.messages.filter(
+        (message) => message.scheduledTaskFallbackOfRunId === source.id,
+      );
+      assert.lengthOf(continued, 1);
+      assert.deepEqual(projection.thread.modelSelection, fallback);
+      assert.equal(projection.thread.worktreePath, process.cwd());
+      assert.equal(projection.thread.runtimeMode, "full-access");
+      assert.equal(projection.thread.interactionMode, "default");
+      assert.isTrue(projection.runs.some((run) => run.id === source.id && run.status === "failed"));
+      assert.isTrue(projection.contextTransfers.length > 0);
+      const fallbackRun = projection.runs.find((run) => run.userMessageId === continued[0]!.id)!;
+      yield* failRun(fallbackRun, "fallback", "usage_limit");
+      const afterRestart = yield* Effect.gen(function* () {
+        const restored = yield* ProjectionStore.ProjectionStoreV2;
+        return yield* restored.getLimitRecoveryCandidates({ now, autoResume: true, snooze: true });
+      }).pipe(Effect.provide(ProjectionStore.layer));
+      assert.isFalse(afterRestart.some((entry) => entry.id === threadId));
+      const storedTask = yield* sql<{
+        run_count: number;
+        model_selection_json: string;
+      }>`SELECT run_count, model_selection_json FROM scheduled_tasks WHERE task_id = ${taskId}`;
+      assert.equal(storedTask[0]?.run_count, 0);
+      assert.deepEqual(JSON.parse(storedTask[0]!.model_selection_json), modelSelection);
+    }),
+  );
+});

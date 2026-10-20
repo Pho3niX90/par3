@@ -174,7 +174,9 @@ export type ProjectionLimitRecoveryCandidate = Pick<
   | "updatedAt"
   | "limitRecovery"
   | "snoozedUntil"
->;
+> & {
+  readonly scheduledTaskFallback?: OrchestrationV2ConversationMessage["scheduledTaskFallback"];
+};
 
 export type ProjectionThreadPullRequests = Pick<
   OrchestrationV2AppThread,
@@ -441,6 +443,10 @@ export interface ProjectionStoreV2Shape {
   readonly getThread: (
     threadId: ThreadId,
   ) => Effect.Effect<OrchestrationV2AppThread, ProjectionStoreV2Error>;
+  readonly getScheduledTaskFallback: (
+    threadId: ThreadId,
+    runId: RunId,
+  ) => Effect.Effect<OrchestrationV2ConversationMessage | undefined, ProjectionStoreV2Error>;
   readonly getLimitRecoveryCandidates: (options: {
     readonly now: DateTime.Utc;
     readonly autoResume: boolean;
@@ -3767,6 +3773,31 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         ),
     );
 
+    const getScheduledTaskFallback: ProjectionStoreV2Shape["getScheduledTaskFallback"] = (
+      threadId,
+      runId,
+    ) =>
+      sql<PayloadRow>`
+        SELECT message.payload_json FROM orchestration_v2_projection_runs run
+        JOIN orchestration_v2_projection_messages message
+          ON message.message_id = json_extract(run.payload_json, '$.userMessageId')
+          AND message.thread_id = run.thread_id
+        JOIN orchestration_v2_projection_threads thread ON thread.thread_id = run.thread_id
+        JOIN scheduled_tasks task ON task.task_id = json_extract(message.payload_json, '$.scheduledTaskId')
+          AND task.project_id = thread.project_id AND task.enabled = 1
+          AND julianday(task.created_at) <= julianday(json_extract(message.payload_json, '$.createdAt'))
+        WHERE run.thread_id = ${threadId} AND run.run_id = ${runId}
+          AND json_type(message.payload_json, '$.scheduledTaskFallback') = 'object'
+          AND json_extract(message.payload_json, '$.scheduledTaskFallbackOfRunId') IS NULL
+      `.pipe(
+        Effect.flatMap((rows) =>
+          rows[0] === undefined
+            ? Effect.succeed(undefined)
+            : decodeMessagePayload(rows[0].payload_json),
+        ),
+        Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+      );
+
     const getLimitRecoveryCandidates = Effect.fn("ProjectionStore.getLimitRecoveryCandidates")(
       function* (options: Parameters<ProjectionStoreV2Shape["getLimitRecoveryCandidates"]>[0]) {
         const available = options.availableProviderInstanceIds?.length
@@ -3777,10 +3808,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           readonly run_id: string;
           readonly completed_at: string | null;
           readonly failure_payload_json: string;
+          readonly message_payload_json: string | null;
           readonly last_error: string | null;
         }>`
           SELECT t.payload_json, r.run_id, r.completed_at,
             item.payload_json AS failure_payload_json,
+            message.payload_json AS message_payload_json,
             (
               SELECT json_extract(session.payload_json, '$.lastError')
               -- Keep bindings outermost: one provider instance can hold every session.
@@ -3814,6 +3847,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ORDER BY error.updated_at DESC, error.ordinal DESC, error.turn_item_id DESC
             LIMIT 1
           )
+          LEFT JOIN orchestration_v2_projection_messages message
+            ON message.message_id = json_extract(r.payload_json, '$.userMessageId')
+            AND message.thread_id = t.thread_id
           WHERE t.deleted_at IS NULL
             -- The sweep runs every scheduler tick. Without this list the latest-run
             -- lookup above sorts every run of every thread, tens of milliseconds
@@ -3826,29 +3862,48 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             AND json_extract(t.payload_json, '$.archivedAt') IS NULL
             AND json_extract(t.payload_json, '$.settledOverride') IS NOT 'settled'
             AND json_extract(item.payload_json, '$.failure.class') = 'usage_limit'
-            AND json_extract(item.payload_json, '$.failure.resetAt') IS NOT NULL
-            AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(COALESCE(r.completed_at, json_extract(t.payload_json, '$.updatedAt')))
+            AND json_extract(message.payload_json, '$.scheduledTaskFallbackOfRunId') IS NULL
             AND (
               (
-                json_extract(t.payload_json, '$.limitRecovery.runId') IS r.run_id
-                AND json_extract(t.payload_json, '$.limitRecovery.resetAt') IS json_extract(item.payload_json, '$.failure.resetAt')
-                AND json_extract(t.payload_json, '$.limitRecovery.autoResume') = 1
-                AND (julianday(json_extract(item.payload_json, '$.failure.resetAt')) <= julianday(${DateTime.formatIso(options.now)}) OR (${available}))
-                AND (
-                  json_extract(t.payload_json, '$.snoozedUntil') IS NULL
-                  OR julianday(json_extract(t.payload_json, '$.snoozedUntil')) <= julianday(${DateTime.formatIso(options.now)})
-                  OR ((${available}) AND json_extract(t.payload_json, '$.limitRecovery.snooze') = 1
-                    AND julianday(json_extract(t.payload_json, '$.snoozedUntil')) = julianday(json_extract(item.payload_json, '$.failure.resetAt')))
+                json_type(message.payload_json, '$.scheduledTaskFallback') = 'object'
+                AND EXISTS (
+                  SELECT 1 FROM scheduled_tasks task
+                  WHERE task.task_id = json_extract(message.payload_json, '$.scheduledTaskId')
+                    AND task.enabled = 1 AND task.project_id = t.project_id
+                    AND julianday(task.created_at) <= julianday(json_extract(message.payload_json, '$.createdAt'))
+                )
+                AND NOT EXISTS (
+                  SELECT 1 FROM orchestration_command_receipts receipt
+                  WHERE receipt.command_id = 'scheduled-task-fallback:' || r.run_id
                 )
               )
               OR (
-                (
-                  json_extract(t.payload_json, '$.limitRecovery.runId') IS NOT r.run_id
-                  OR json_extract(t.payload_json, '$.limitRecovery.resetAt') IS NOT json_extract(item.payload_json, '$.failure.resetAt')
-                )
+                json_extract(message.payload_json, '$.scheduledTaskFallback') IS NULL
+                AND json_extract(item.payload_json, '$.failure.resetAt') IS NOT NULL
+                AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(COALESCE(r.completed_at, json_extract(t.payload_json, '$.updatedAt')))
                 AND (
-                  ${booleanInt(options.autoResume)}
-                  OR (${booleanInt(options.snooze)} AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(${DateTime.formatIso(options.now)}))
+                  (
+                    json_extract(t.payload_json, '$.limitRecovery.runId') IS r.run_id
+                    AND json_extract(t.payload_json, '$.limitRecovery.resetAt') IS json_extract(item.payload_json, '$.failure.resetAt')
+                    AND json_extract(t.payload_json, '$.limitRecovery.autoResume') = 1
+                    AND (julianday(json_extract(item.payload_json, '$.failure.resetAt')) <= julianday(${DateTime.formatIso(options.now)}) OR (${available}))
+                    AND (
+                      json_extract(t.payload_json, '$.snoozedUntil') IS NULL
+                      OR julianday(json_extract(t.payload_json, '$.snoozedUntil')) <= julianday(${DateTime.formatIso(options.now)})
+                      OR ((${available}) AND json_extract(t.payload_json, '$.limitRecovery.snooze') = 1
+                        AND julianday(json_extract(t.payload_json, '$.snoozedUntil')) = julianday(json_extract(item.payload_json, '$.failure.resetAt')))
+                    )
+                  )
+                  OR (
+                    (
+                      json_extract(t.payload_json, '$.limitRecovery.runId') IS NOT r.run_id
+                      OR json_extract(t.payload_json, '$.limitRecovery.resetAt') IS NOT json_extract(item.payload_json, '$.failure.resetAt')
+                    )
+                    AND (
+                      ${booleanInt(options.autoResume)}
+                      OR (${booleanInt(options.snooze)} AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) > julianday(${DateTime.formatIso(options.now)}))
+                    )
+                  )
                 )
               )
             )
@@ -3867,7 +3922,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             row.last_error,
           );
           if (summary.lastErrorClass !== "usage_limit") continue;
+          const message =
+            row.message_payload_json === null
+              ? undefined
+              : yield* decodeMessagePayload(row.message_payload_json);
           candidates.push({
+            ...(message?.scheduledTaskFallback === undefined
+              ? {}
+              : { scheduledTaskFallback: message.scheduledTaskFallback }),
             id: thread.id,
             status: "failed",
             providerInstanceId: thread.providerInstanceId,
@@ -6551,6 +6613,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getPlan,
       getProviderControlContext,
       getLimitRecoveryCandidates,
+      getScheduledTaskFallback,
       getRecoveryThreadIds,
       getUnreadableThreadIds,
       getThreadSnapshot,
@@ -6717,6 +6780,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               })),
           ),
         ),
+      getScheduledTaskFallback: () => Effect.succeed(undefined),
       getLimitRecoveryCandidates: (options) =>
         Ref.get(replayState).pipe(
           Effect.map((state) =>

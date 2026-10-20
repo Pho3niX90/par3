@@ -30,12 +30,29 @@ export function limitRecoveryCommand(
     thread.status !== "failed" ||
     thread.lastErrorClass !== "usage_limit" ||
     !thread.latestRunId ||
-    !thread.usageLimitResetAt ||
     thread.archivedAt !== null ||
     thread.settledOverride === "settled" ||
     thread.pendingRuntimeRequest !== null
   )
     return null;
+  if (thread.scheduledTaskFallback !== undefined) {
+    if (thread.snoozedUntil != null && DateTime.toEpochMillis(thread.snoozedUntil) > nowMs)
+      return null;
+    return {
+      type: "message.dispatch",
+      commandId: CommandId.make(`scheduled-task-fallback:${thread.latestRunId}`),
+      messageId: MessageId.make(`scheduled-task-fallback:${thread.latestRunId}`),
+      threadId: thread.id,
+      scheduledTaskFallbackOfRunId: thread.latestRunId,
+      modelSelection: thread.scheduledTaskFallback,
+      text: "The automation's primary provider reached its usage limit. Continue where it left off using the configured fallback model. Preserve completed work and check existing results before repeating actions.",
+      attachments: [],
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "user",
+      creationSource: "server",
+    };
+  }
+  if (!thread.usageLimitResetAt) return null;
   const resetMs = Date.parse(thread.usageLimitResetAt);
   // An already-expired window reported with a fresh failure cannot start a retry loop.
   if (

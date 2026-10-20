@@ -137,6 +137,7 @@ const EMPTY_DRAFT: DraftState = {
   startFromOrigin: true,
   existingWorktreePath: "",
   modelKey: "",
+  fallbackModelSelection: null,
   runtimeMode: "full-access",
   interactionMode: "default",
   baseModelSelection: null,
@@ -1028,6 +1029,23 @@ function ScheduledTaskEditorForm({
     activeModel,
   );
 
+  const primaryEntry = instanceEntries.find((entry) => entry.instanceId === activeInstanceId);
+  const fallbackEntries = instanceEntries.filter(
+    (entry) => entry.enabled && entry.driverKind !== primaryEntry?.driverKind,
+  );
+  const fallbackSelection = draft.fallbackModelSelection;
+  const fallbackInstanceId =
+    fallbackSelection?.instanceId ?? fallbackEntries[0]?.instanceId ?? activeInstanceId;
+  const fallbackModelOptions = getCustomModelOptionsByInstance(
+    settings,
+    providers,
+    fallbackInstanceId,
+    fallbackSelection?.model ?? "",
+  );
+  const fallbackInvalid =
+    fallbackSelection !== null &&
+    !fallbackEntries.some((entry) => entry.instanceId === fallbackSelection.instanceId);
+
   const reportFailure = (title: string, error: unknown) => {
     toastManager.add(
       stackedThreadToast({
@@ -1056,6 +1074,13 @@ function ScheduledTaskEditorForm({
       selection === null
     ) {
       reportFailure("Scheduled task is incomplete", "Add a title, prompt, project, and model.");
+      return;
+    }
+    if (fallbackInvalid) {
+      reportFailure(
+        "Invalid fallback model",
+        "Choose an available model from another provider, or select None.",
+      );
       return;
     }
     const schedule = scheduleFromDraft(draft);
@@ -1113,6 +1138,7 @@ function ScheduledTaskEditorForm({
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
       workspaceStrategy,
       modelSelection,
+      fallbackModelSelection: draft.fallbackModelSelection,
       runtimeMode: draft.runtimeMode,
       interactionMode: draft.interactionMode,
       creationSource: "web",
@@ -1159,6 +1185,7 @@ function ScheduledTaskEditorForm({
                   projectId: "",
                   modelKey: "",
                   baseModelSelection: null,
+                  fallbackModelSelection: null,
                   baseRef: "main",
                   startFromOrigin: true,
                   existingWorktreePath: "",
@@ -1341,6 +1368,55 @@ function ScheduledTaskEditorForm({
                 }
               />
             </div>
+          </Field>
+
+          <Field label="Fallback model (optional)">
+            <div className="flex items-center gap-2">
+              <ProviderModelPicker
+                environmentId={environmentId}
+                disabled={saving || !connected || fallbackEntries.length === 0}
+                activeInstanceId={fallbackInstanceId}
+                model={fallbackSelection?.model ?? ""}
+                lockedProvider={null}
+                instanceEntries={fallbackEntries}
+                modelOptionsByInstance={fallbackModelOptions}
+                isComposerOwned={false}
+                triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
+                {...(fallbackSelection === null ? { triggerLabel: "None" } : {})}
+                triggerAriaLabel="Fallback model"
+                onInstanceModelChange={(instanceId, model) =>
+                  setDraft((current) => ({
+                    ...current,
+                    fallbackModelSelection: { instanceId, model },
+                  }))
+                }
+              />
+              {fallbackSelection !== null ? (
+                <Button
+                  variant="ghost-muted"
+                  size="xs"
+                  disabled={saving || !connected}
+                  onClick={() =>
+                    setDraft((current) => ({ ...current, fallbackModelSelection: null }))
+                  }
+                >
+                  None
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Continue with this model if the primary reaches its usage limit.
+            </p>
+            {fallbackInvalid ? (
+              <p role="alert" className="text-xs text-destructive">
+                Choose an available model from another provider, or select None.
+              </p>
+            ) : null}
+            {fallbackEntries.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Enable another provider to choose a fallback.
+              </p>
+            ) : null}
           </Field>
 
           <div className="space-y-3">
