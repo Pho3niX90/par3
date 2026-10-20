@@ -451,6 +451,7 @@ export interface ProjectionStoreV2Shape {
     readonly now: DateTime.Utc;
     readonly autoResume: boolean;
     readonly snooze: boolean;
+    readonly availableProviderInstanceIds?: ReadonlyArray<ProviderInstanceId>;
   }) => Effect.Effect<ReadonlyArray<ProjectionLimitRecoveryCandidate>, ProjectionStoreV2Error>;
   readonly getSettlementCandidates: (
     threadId?: ThreadId,
@@ -3799,6 +3800,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
 
     const getLimitRecoveryCandidates = Effect.fn("ProjectionStore.getLimitRecoveryCandidates")(
       function* (options: Parameters<ProjectionStoreV2Shape["getLimitRecoveryCandidates"]>[0]) {
+        const available = options.availableProviderInstanceIds?.length
+          ? sql`t.provider_instance_id IN ${sql.in(options.availableProviderInstanceIds)}`
+          : sql`0`;
         const rows = yield* sql<{
           readonly payload_json: string;
           readonly run_id: string;
@@ -3882,10 +3886,12 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     json_extract(t.payload_json, '$.limitRecovery.runId') IS r.run_id
                     AND json_extract(t.payload_json, '$.limitRecovery.resetAt') IS json_extract(item.payload_json, '$.failure.resetAt')
                     AND json_extract(t.payload_json, '$.limitRecovery.autoResume') = 1
-                    AND julianday(json_extract(item.payload_json, '$.failure.resetAt')) <= julianday(${DateTime.formatIso(options.now)})
+                    AND (julianday(json_extract(item.payload_json, '$.failure.resetAt')) <= julianday(${DateTime.formatIso(options.now)}) OR (${available}))
                     AND (
                       json_extract(t.payload_json, '$.snoozedUntil') IS NULL
                       OR julianday(json_extract(t.payload_json, '$.snoozedUntil')) <= julianday(${DateTime.formatIso(options.now)})
+                      OR ((${available}) AND json_extract(t.payload_json, '$.limitRecovery.snooze') = 1
+                        AND julianday(json_extract(t.payload_json, '$.snoozedUntil')) = julianday(json_extract(item.payload_json, '$.failure.resetAt')))
                     )
                   )
                   OR (
@@ -6809,9 +6815,13 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 }
                 return (
                   thread.limitRecovery.autoResume &&
-                  resetMs <= nowMs &&
+                  (resetMs <= nowMs ||
+                    options.availableProviderInstanceIds?.includes(thread.providerInstanceId)) &&
                   (thread.snoozedUntil == null ||
-                    DateTime.toEpochMillis(thread.snoozedUntil) <= nowMs)
+                    DateTime.toEpochMillis(thread.snoozedUntil) <= nowMs ||
+                    (options.availableProviderInstanceIds?.includes(thread.providerInstanceId) &&
+                      thread.limitRecovery.snooze &&
+                      DateTime.toEpochMillis(thread.snoozedUntil) === resetMs))
                 );
               })
               .toSorted((left, right) => left.id.localeCompare(right.id)),

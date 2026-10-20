@@ -1,4 +1,9 @@
-import { CommandId, MessageId, type OrchestrationV2Command } from "@t3tools/contracts";
+import {
+  CommandId,
+  MessageId,
+  type OrchestrationV2Command,
+  type ServerProviderUsageLimits,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -7,12 +12,19 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
+import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+
+const hasAvailableCapacity = (limits: ServerProviderUsageLimits) =>
+  limits.unavailable === undefined &&
+  limits.windows.length > 0 &&
+  limits.windows.every((window) => window.usedPercent < 100);
 
 export function limitRecoveryCommand(
   thread: ProjectionStore.ProjectionLimitRecoveryCandidate,
   autoResume: boolean,
   nowMs: number,
   snooze = false,
+  limits?: ServerProviderUsageLimits,
 ): OrchestrationV2Command | null {
   if (
     thread.status !== "failed" ||
@@ -64,10 +76,24 @@ export function limitRecoveryCommand(
       },
     };
   }
+  // A reset credit can restore capacity before the failed turn's original deadline.
+  // An older snapshot must never retry a newly limited turn.
+  const resetConfirmed =
+    limits !== undefined &&
+    hasAvailableCapacity(limits) &&
+    Date.parse(limits.checkedAt) >
+      DateTime.toEpochMillis(thread.latestRunCompletedAt ?? thread.updatedAt) &&
+    Date.parse(limits.checkedAt) <= nowMs;
+  const recoverySnooze =
+    recovery.snooze &&
+    thread.snoozedUntil != null &&
+    DateTime.toEpochMillis(thread.snoozedUntil) === resetMs;
   if (
     !recovery.autoResume ||
-    resetMs > nowMs ||
-    (thread.snoozedUntil != null && DateTime.toEpochMillis(thread.snoozedUntil) > nowMs)
+    (resetMs > nowMs && !resetConfirmed) ||
+    (thread.snoozedUntil != null &&
+      DateTime.toEpochMillis(thread.snoozedUntil) > nowMs &&
+      !(resetConfirmed && recoverySnooze))
   )
     return null;
   const deliveryIdentity = `${identity}:${recovery.requestId ?? "legacy"}`;
@@ -77,6 +103,7 @@ export function limitRecoveryCommand(
     messageId: MessageId.make(`limit-resume:${deliveryIdentity}`),
     threadId: thread.id,
     usageLimitContinuationOfRunId: thread.latestRunId,
+    ...(resetConfirmed ? { usageLimitResetConfirmedAt: limits.checkedAt } : {}),
     ...(recovery.requestId === undefined
       ? {}
       : { usageLimitRecoveryRequestId: recovery.requestId }),
@@ -93,13 +120,27 @@ const makeSweep = Effect.gen(function* () {
   const threads = yield* ThreadManagement.ThreadManagementService;
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const providers = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
   return Effect.fn("UsageLimitRecoveryWorker.sweep")(function* () {
     const preferences = yield* settings.getSettings;
     const now = yield* DateTime.now;
+    const availableLimits = new Map(
+      yield* Effect.forEach(yield* providers.listInstances, (instance) =>
+        instance.snapshot.getSnapshot.pipe(
+          Effect.map(
+            (snapshot) =>
+              [instance.instanceId, instance.enabled ? snapshot.usageLimits : undefined] as const,
+          ),
+        ),
+      ),
+    );
     const candidates = yield* projections.getLimitRecoveryCandidates({
       now,
       autoResume: preferences.autoResumeLimitedThreads,
       snooze: preferences.snoozeLimitedThreads,
+      availableProviderInstanceIds: [...availableLimits]
+        .filter(([, limits]) => limits !== undefined && hasAvailableCapacity(limits))
+        .map(([id]) => id),
     });
     const nowMs = DateTime.toEpochMillis(now);
     for (const thread of candidates) {
@@ -108,6 +149,7 @@ const makeSweep = Effect.gen(function* () {
         preferences.autoResumeLimitedThreads,
         nowMs,
         preferences.snoozeLimitedThreads,
+        availableLimits.get(thread.providerInstanceId),
       );
       if (command === null) continue;
       yield* Effect.gen(function* () {

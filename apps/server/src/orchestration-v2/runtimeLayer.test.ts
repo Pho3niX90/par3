@@ -6523,6 +6523,10 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
     "stop",
     "stop-before-arm",
     "stop-before-arm-mismatched-recovery",
+    "reset-credit",
+    "reset-credit-snooze",
+    "reset-credit-cancel",
+    "reset-credit-manual-snooze",
   ] as const)("guards a scheduled usage-limit continuation against %s", (scenario) =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -6676,6 +6680,7 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
         "wake",
         "cancel-resume-keep-snooze",
         "wake-preserve-resume",
+        "reset-credit-snooze",
       ].includes(scenario);
       const autoResume = scenario !== "snooze-only" && scenario !== "wake";
       const arm = limitRecoveryCommand(shell, autoResume, DateTime.toEpochMillis(now), snooze);
@@ -6753,6 +6758,58 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
       });
       if (snooze)
         assert.equal(DateTime.toEpochMillis(armedShell.snoozedUntil!), Date.parse(resetAt));
+      if (scenario.startsWith("reset-credit")) {
+        yield* TestClock.adjust("1 second");
+        const checkedAt = DateTime.formatIso(yield* DateTime.now);
+        const limits = {
+          checkedAt,
+          windows: [{ id: "primary", label: "Session", kind: "session" as const, usedPercent: 0 }],
+        };
+        assert.isNull(
+          limitRecoveryCommand(armedShell, true, Date.parse(checkedAt), false, {
+            ...limits,
+            checkedAt: DateTime.formatIso(now),
+          }),
+        );
+        const resume = limitRecoveryCommand(armedShell, true, Date.parse(checkedAt), false, limits);
+        assert.isNotNull(resume);
+        if (scenario === "reset-credit" && resume?.type === "message.dispatch") {
+          for (const confirmation of [DateTime.formatIso(now), resetAt]) {
+            yield* orchestrator.dispatch({
+              ...resume,
+              commandId: CommandId.make(`recovery:invalid-confirmation:${confirmation}`),
+              messageId: MessageId.make(`recovery:invalid-confirmation:${confirmation}`),
+              usageLimitResetConfirmedAt: confirmation,
+            });
+            assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 1);
+          }
+        }
+        if (scenario === "reset-credit-cancel") {
+          yield* orchestrator.dispatch({
+            type: "thread.metadata.update",
+            commandId: CommandId.make(`recovery:reset-cancel:${scenario}`),
+            threadId,
+            limitRecovery: { runId: run.id, resetAt, autoResume: false },
+          });
+        }
+        if (scenario === "reset-credit-manual-snooze") {
+          yield* orchestrator.dispatch({
+            type: "thread.snooze",
+            commandId: CommandId.make(`recovery:reset-snooze:${scenario}`),
+            threadId,
+            snoozedUntil: resetAt,
+          });
+        }
+        yield* orchestrator.dispatch(resume!);
+        yield* orchestrator.dispatch(resume!);
+        const current = yield* orchestrator.getThreadProjection(threadId);
+        assert.lengthOf(
+          current.runs,
+          scenario === "reset-credit" || scenario === "reset-credit-snooze" ? 2 : 1,
+        );
+        if (scenario === "reset-credit-snooze") assert.isNull(current.thread.snoozedUntil);
+        return;
+      }
       if (scenario === "cancel-resume-keep-snooze" || scenario === "wake-preserve-resume") {
         yield* TestClock.adjust("10 seconds");
         yield* orchestrator.dispatch({

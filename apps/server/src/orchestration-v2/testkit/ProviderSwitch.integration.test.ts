@@ -3956,7 +3956,7 @@ describe("automation fallback handoff", () => {
               (yield* Ref.get(capturedTurns)).map((turn) => turn.driver),
               [CODEX_DRIVER, CLAUDE_DRIVER, CODEX_DRIVER],
             );
-          }).pipe(Effect.provide(layer), Effect.provide(NodeServices.layer));
+          }).pipe(Effect.provide(Layer.provideMerge(layer, NodeServices.layer)));
         }),
       ),
   );
