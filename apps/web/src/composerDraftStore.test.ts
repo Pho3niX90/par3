@@ -3881,12 +3881,12 @@ describe("composerDraftStore last-used thread selection", () => {
   it("remembers the latest selection per logical project", () => {
     const { setLastUsedThreadSelection } = useComposerDraftStore.getState();
     setLastUsedThreadSelection("project-a", {
-      modelSelection: modelSelection("codex", "gpt-5"),
+      modelSelection: modelSelection(CODEX_DRIVER, "gpt-5"),
       runtimeMode: "approval-required",
       interactionMode: "plan",
     });
     setLastUsedThreadSelection("project-b", {
-      modelSelection: modelSelection("claudeAgent", "claude-opus-4-6"),
+      modelSelection: modelSelection(CLAUDE_AGENT_DRIVER, "claude-opus-4-6"),
       runtimeMode: "full-access",
       interactionMode: "default",
     });
