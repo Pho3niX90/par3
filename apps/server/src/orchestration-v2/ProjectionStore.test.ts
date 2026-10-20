@@ -4270,6 +4270,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           assert.deepEqual(candidate, {
             id: sqlShell.id,
             status: sqlShell.status,
+            providerInstanceId: sqlShell.providerInstanceId,
             lastErrorClass: sqlShell.lastErrorClass,
             usageLimitResetAt: sqlShell.usageLimitResetAt,
             latestRunId: sqlShell.latestRunId,
@@ -4477,6 +4478,42 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         now: reset,
       })).find((row) => row.id === threadId)!;
       assert.deepEqual(due.limitRecovery, recovery);
+      const availableOptions = {
+        ...recoveryOptions,
+        availableProviderInstanceIds: [providerInstanceId],
+      };
+      assert.equal(
+        (yield* store.getLimitRecoveryCandidates(availableOptions)).find(
+          (row) => row.id === threadId,
+        )?.id,
+        threadId,
+      );
+      assert.isUndefined(
+        (yield* store.getLimitRecoveryCandidates({
+          ...availableOptions,
+          availableProviderInstanceIds: [ProviderInstanceId.make("other")],
+        })).find((row) => row.id === threadId),
+      );
+      yield* sql`UPDATE orchestration_v2_projection_threads
+        SET payload_json = json_set(payload_json, '$.snoozedUntil', ${recovery.resetAt}, '$.limitRecovery.snooze', json('true'))
+        WHERE thread_id = ${threadId}`;
+      assert.equal(
+        (yield* store.getLimitRecoveryCandidates(availableOptions)).find(
+          (row) => row.id === threadId,
+        )?.id,
+        threadId,
+      );
+      yield* sql`UPDATE orchestration_v2_projection_threads
+        SET payload_json = json_set(payload_json, '$.limitRecovery.snooze', json('false'))
+        WHERE thread_id = ${threadId}`;
+      assert.isUndefined(
+        (yield* store.getLimitRecoveryCandidates(availableOptions)).find(
+          (row) => row.id === threadId,
+        ),
+      );
+      yield* sql`UPDATE orchestration_v2_projection_threads
+        SET payload_json = json_set(payload_json, '$.snoozedUntil', NULL)
+        WHERE thread_id = ${threadId}`;
       yield* sql`INSERT INTO orchestration_v2_projection_runtime_requests
         (runtime_request_id, thread_id, node_id, kind, status, created_at, payload_json)
         VALUES ('limit-shell:pending-request', ${threadId}, ${original.rootNodeId}, 'approval', 'pending', ${DateTime.formatIso(now)}, '{}')`;
@@ -4497,6 +4534,11 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       yield* sql`UPDATE orchestration_v2_projection_threads
         SET payload_json = json_set(payload_json, '$.snoozedUntil', NULL, '$.limitRecovery.autoResume', json('false'))
         WHERE thread_id = ${threadId}`;
+      assert.isUndefined(
+        (yield* store.getLimitRecoveryCandidates(availableOptions)).find(
+          (row) => row.id === threadId,
+        ),
+      );
       assert.isUndefined(
         (yield* store.getLimitRecoveryCandidates({
           ...recoveryOptions,
