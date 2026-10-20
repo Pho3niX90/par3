@@ -82,6 +82,7 @@ import {
   CLOUD_ENDPOINT_CONFIRMED_ORIGIN,
   CLOUD_ENDPOINT_RUNTIME_CONFIG,
   CLOUD_LINK_REVOKED,
+  CLOUD_LINK_SECRETS,
   CLOUD_LINKED_USER_ID,
   CLOUD_MINT_PUBLIC_KEY,
   decodeConfirmedOrigin,
@@ -99,6 +100,7 @@ import { getOrCreateEnvironmentKeyPairFromSecretStore } from "./environmentKeys.
 import * as ConnectReachability from "./ConnectReachability.ts";
 import * as ManagedEndpointRuntime from "./ManagedEndpointRuntime.ts";
 import { relayUrlConfig } from "./publicConfig.ts";
+import { dropUpstreamRelayLink } from "./upstreamRelayLink.ts";
 import {
   filterRelayResponse,
   relayRequestError,
@@ -542,6 +544,8 @@ const make = Effect.gen(function* () {
   const path = yield* Path.Path;
 
   const withSecrets = Effect.provideService(ServerSecretStore.ServerSecretStore, secrets);
+  // Before anything reads the link: startup recovery would respawn its tunnel.
+  yield* dropUpstreamRelayLink.pipe(withSecrets);
   const withRuntimeFiles = <A, E>(
     effect: Effect.Effect<A, E, ServerConfig.ServerConfig | FileSystem.FileSystem | Path.Path>,
   ) =>
@@ -1358,21 +1362,10 @@ const make = Effect.gen(function* () {
       return yield* endpointRuntime.withLinkStateLock(
         Effect.gen(function* () {
           const endpointRuntimeStatus = yield* endpointRuntime.applyConfig(null);
-          yield* Effect.all(
-            [
-              secrets.remove(CLOUD_LINKED_USER_ID),
-              secrets.remove(RELAY_URL_SECRET),
-              secrets.remove(RELAY_ISSUER_SECRET),
-              secrets.remove(RELAY_ENVIRONMENT_CREDENTIAL_SECRET),
-              secrets.remove(CLOUD_MINT_PUBLIC_KEY),
-              secrets.remove(CLOUD_ENDPOINT_RUNTIME_CONFIG),
-              secrets.remove(CLOUD_ENDPOINT_CONFIRMED_ORIGIN),
-              secrets.remove(PUBLISH_AGENT_ACTIVITY_SECRET),
-              secrets.remove(HOLD_WEBHOOKS_WHILE_OFFLINE_SECRET),
-              secrets.remove(CLOUD_LINK_REVOKED),
-            ],
-            { concurrency: 10 },
-          );
+          yield* Effect.forEach(CLOUD_LINK_SECRETS, (name) => secrets.remove(name), {
+            concurrency: "unbounded",
+            discard: true,
+          });
           yield* setCliDesiredCloudLink(false).pipe(withSecrets);
           return { ok: true, endpointRuntimeStatus } satisfies EnvironmentCloudRelayConfigResult;
         }),
