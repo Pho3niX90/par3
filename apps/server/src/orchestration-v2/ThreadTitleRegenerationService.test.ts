@@ -107,7 +107,11 @@ function makeHarness(
   };
 }
 
-function createThread(input: { readonly command: string; readonly thread: string }) {
+function createThread(input: {
+  readonly command: string;
+  readonly thread: string;
+  readonly title?: string;
+}) {
   return Effect.gen(function* () {
     const threads = yield* ThreadManagement.ThreadManagementService;
     const threadId = ThreadId.make(input.thread);
@@ -116,7 +120,7 @@ function createThread(input: { readonly command: string; readonly thread: string
       commandId: CommandId.make(input.command),
       threadId,
       projectId,
-      title: "Seed title",
+      title: input.title ?? "Seed title",
       modelSelection,
       runtimeMode: "full-access",
       interactionMode: "default",
@@ -420,6 +424,58 @@ describe("ThreadTitleRegenerationService", () => {
         assert.isNotOk(projection.thread.titleRegeneration);
       }).pipe(Effect.provide(harness.layer));
     }),
+  );
+
+  it.effect.each(["placeholder", "seeded"] as const)(
+    "initial title failure fallback: %s thread",
+    (kind) =>
+      Effect.gen(function* () {
+        const harness = makeHarness({
+          generateTitle: () =>
+            new TextGenerationError({
+              operation: "generateThreadTitle",
+              detail: "provider unhealthy",
+            }),
+        });
+        yield* Effect.gen(function* () {
+          const threads = yield* ThreadManagement.ThreadManagementService;
+          const titleRegeneration = yield* ThreadTitleRegeneration.ThreadTitleRegenerationService;
+          const threadId = yield* createThread({
+            command: `command:title:fallback-${kind}:create`,
+            thread: `thread:title:fallback-${kind}`,
+            title: kind === "placeholder" ? "New thread" : "Seeded title",
+          });
+          const messageCommand = `command:title:fallback-${kind}:message`;
+          yield* dispatchUserMessage({
+            command: messageCommand,
+            threadId,
+            text: `  Please   fix the flaky login test that fails on CI every other run\nthanks  `,
+          });
+          const requestId = yield* armRegeneration({
+            command: `command:title:fallback-${kind}:1`,
+            threadId,
+          });
+          const fiber = yield* titleRegeneration
+            .execute({
+              threadId,
+              requestId,
+              kind: { type: "initial", messageId: MessageId.make(`${messageCommand}:message`) },
+            })
+            .pipe(Effect.forkChild);
+          yield* TestClock.adjust("2 seconds");
+          yield* TestClock.adjust("4 seconds");
+          yield* Fiber.join(fiber);
+
+          const projection = yield* threads.getThreadProjection(threadId);
+          assert.equal(
+            projection.thread.title,
+            kind === "placeholder"
+              ? "Please fix the flaky login test that fails on CI e..."
+              : "Seeded title",
+          );
+          assert.isNotOk(projection.thread.titleRegeneration);
+        }).pipe(Effect.provide(harness.layer));
+      }),
   );
 
   it.effect("completes without generating when the initial message is unavailable", () =>

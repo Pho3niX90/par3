@@ -1,4 +1,6 @@
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { truncate } from "@t3tools/shared/String";
 import {
   CommandId,
   type ChatAttachment,
@@ -41,6 +43,17 @@ export class ThreadTitleRegenerationService extends Context.Service<
   }
 >()("t3/orchestration-v2/ThreadTitleRegenerationService") {}
 
+const PLACEHOLDER_TITLE = "New thread";
+
+function titleFromFirstMessage(text: string): string | undefined {
+  const prose = replaceComposerContextReferences(text, (reference) =>
+    reference.kind === "image" ? "" : reference.label,
+  )
+    .replace(/\s+/gu, " ")
+    .trim();
+  return prose.length === 0 ? undefined : truncate(prose);
+}
+
 const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const projects = yield* ProjectStore.ProjectStoreV2;
@@ -65,6 +78,9 @@ const make = Effect.gen(function* () {
   const execute: ThreadTitleRegenerationService["Service"]["execute"] = Effect.fn(
     "ThreadTitleRegenerationService.execute",
   )(function* (input) {
+    // Set as the attempt learns them, so a failure can name the provider and fall back.
+    let providerInstanceId: string | undefined;
+    let fallbackTitle: string | undefined;
     const outcome:
       | { readonly type: "stale" }
       | { readonly type: "complete"; readonly title?: string } = yield* Effect.gen(function* () {
@@ -106,10 +122,17 @@ const make = Effect.gen(function* () {
         return { type: "complete" as const };
       }
 
+      // A seeded or renamed thread already has a usable title; only a placeholder needs one.
+      fallbackTitle =
+        input.kind.type === "initial" && projection.thread.title.trim() === PLACEHOLDER_TITLE
+          ? titleFromFirstMessage(context.message)
+          : undefined;
+
       const settings = resolveProjectSettings(
         yield* serverSettings.getSettings,
         projection.thread.projectId,
       ).settings;
+      providerInstanceId = settings.textGenerationModelSelection.instanceId;
       const result = yield* textGeneration.generateThreadTitle({
         cwd: projection.thread.worktreePath ?? project.value.workspaceRoot,
         message: context.message,
@@ -133,8 +156,16 @@ const make = Effect.gen(function* () {
           : Effect.logWarning("Thread title generation failed", {
               threadId: input.threadId,
               requestId: input.requestId,
+              provider: providerInstanceId,
+              fallbackTitle,
               cause,
-            }).pipe(Effect.as({ type: "complete" as const })),
+            }).pipe(
+              Effect.as(
+                fallbackTitle === undefined
+                  ? { type: "complete" as const }
+                  : { type: "complete" as const, title: fallbackTitle },
+              ),
+            ),
       ),
     );
 
