@@ -9,6 +9,7 @@ import * as Ref from "effect/Ref";
 import * as Struct from "effect/Struct";
 import type * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
+import * as SpecService from "../specs/SpecService.ts";
 import type { Tool, Toolkit } from "effect/ai";
 
 import {
@@ -89,12 +90,34 @@ const refuseReadOnlyClient = McpInvocationContext.McpInvocationContext.pipe(
 const writingCaller = refuseReadOnlyClient.pipe(
   Effect.andThen(loadCaller()),
   Effect.tap(assertLiveCaller),
+  Effect.tap((caller) => assertSpecWriteAllowed(caller)),
 );
 
 const orchestratingCaller = refuseReadOnlyClient.pipe(
   Effect.andThen(readCaller()),
   Effect.tap(assertLiveCaller),
+  Effect.tap((caller) => assertSpecWriteAllowed(caller)),
 );
+
+const assertSpecWriteAllowed = Effect.fn("McpToolAccess.assertSpecWriteAllowed")(function* (
+  caller: Caller,
+) {
+  const role = caller.scope.thread?.specRole;
+  if (role !== undefined && SpecService.isReadOnlyRole(role))
+    return yield* new OrchestratorMcpFailure({
+      code: "capability_denied",
+      message: "This Spec role is read-only. Use its scoped spec tools for requirements changes.",
+    });
+});
+
+export const writesSpec = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
+  declare((params: P) =>
+    refuseReadOnlyClient.pipe(
+      Effect.andThen(loadCaller()),
+      Effect.tap(assertLiveCaller),
+      Effect.flatMap(() => handle(params)),
+    ),
+  );
 
 const requireThreadCaller = McpInvocationContext.McpInvocationContext.pipe(
   Effect.flatMap((scope) => McpInvocationContext.requireThreadScope(scope, "This tool")),
@@ -167,11 +190,18 @@ export const writesThreads = <P, A, E, R>(
   declare((params: P) =>
     Effect.gen(function* () {
       const caller = yield* writingCaller;
+      const specBound = caller.scope.thread?.specRole !== undefined;
       for (const threadId of threads(params)) {
         if (threadId === undefined || threadId === caller.scope.thread?.threadId) continue;
         const target = yield* caller.threads
           .getThreadShell(threadId)
           .pipe(Effect.mapError(unavailable));
+        // Delegated children inherit the caller's spec binding; any other thread is out of bounds.
+        if (specBound && target?.lineage.parentThreadId !== caller.scope.thread?.threadId)
+          return yield* new OrchestratorMcpFailure({
+            code: "capability_denied",
+            message: "Spec-linked agents can only change their own delegated tasks.",
+          });
         if (target !== null && target.deletedAt === null) {
           yield* assertTargetWithinLimits(caller.limits, target);
         }
@@ -216,7 +246,9 @@ export const startsThreads = <P, A, E, R>(
 ) =>
   declare((params: P) =>
     Effect.gen(function* () {
-      const { limits } = yield* writingCaller;
+      const caller = yield* writingCaller;
+      yield* assertNoSpecBinding(caller);
+      const { limits } = caller;
       const requested = modes(params);
       const started: StartedModes = {
         runtimeMode: yield* resolveRuntimeMode(limits.runtimeMode, requested.runtimeMode),
@@ -243,12 +275,24 @@ export const writesEnvironment = <P, A, E, R>(
   ) => Effect.Effect<A, E, R>,
 ) => {
   const check = orchestratingCaller.pipe(
+    Effect.tap(assertNoSpecBinding),
     Effect.tap((caller) => assertFullAccess(caller, fullAccessRequired)),
   );
   return declare((params: P) => check.pipe(Effect.flatMap(() => handle(params, check))));
 };
 
 type CheckServices = Effect.Services<typeof orchestratingCaller>;
+
+const assertNoSpecBinding = Effect.fn("McpToolAccess.assertNoSpecBinding")(function* (
+  caller: Caller,
+) {
+  if (caller.scope.thread?.specRole !== undefined)
+    return yield* new OrchestratorMcpFailure({
+      code: "capability_denied",
+      message:
+        "Spec-linked work cannot start unrelated work or change environment permissions. Use a bound delegated task or a human client action.",
+    });
+});
 
 type Declarations<Handlers> = {
   readonly [Name in keyof Handlers]: Declaration<Handlers[Name]> & NotCallable;

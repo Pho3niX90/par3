@@ -97,6 +97,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   otlpEndpointCheck: Schema.optionalKey(Schema.Boolean),
   /** Server shares the MCP servers in `mcpServers` with agents and reports their status. */
   mcpGateway: Schema.optionalKey(Schema.Boolean),
+  /** Server exposes the project-local Spec workspace RPCs. */
+  specMode: Schema.optionalKey(Schema.Boolean),
   projectWorktreeCleanup: Schema.optionalKey(Schema.Boolean),
   settledWorktreeCleanup: Schema.optionalKey(Schema.Boolean),
   worktreesDirectory: Schema.optionalKey(Schema.Boolean),

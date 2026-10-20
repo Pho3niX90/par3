@@ -7,16 +7,25 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { useState } from "react";
 import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 
 import { projectEnvironment } from "../../state/projects";
+import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
+import { SettingsRow } from "./components/SettingsRow";
+import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import {
   AndroidSettingsEnvironmentFilter,
   SettingsEnvironmentFilterHeader,
 } from "./components/SettingsEnvironmentFilterHeader";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
+import {
+  planMobileScopedSettingsPatch,
+  resolveMobileSettingsTargets,
+  uniformMobileSetting,
+} from "./settings-scoped-server";
 
 export function SettingsProjectOverviewRouteScreen() {
   const insets = useSafeAreaInsets();
@@ -61,6 +70,7 @@ function ProjectOverviewContent(props: {
   readonly members: readonly EnvironmentProject[];
   readonly environments: readonly SettingsTarget[];
 }) {
+  const navigation = useNavigation();
   const representative = props.members[0]!;
   const displayName = deriveProjectGroupLabel({ representative, members: props.members });
   const [draftName, setDraftName] = useState<string | null>(null);
@@ -69,6 +79,29 @@ function ProjectOverviewContent(props: {
     label: "project name update",
     reportFailure: true,
   });
+  const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "project specModeEnabled update",
+    reportFailure: true,
+  });
+
+  const targets = resolveMobileSettingsTargets(props.environments, props.members);
+  const hasSpecModeCapability = props.environments.some(
+    (e) => e.serverConfig.environment.capabilities.specMode === true,
+  );
+  const specModeEnabled = uniformMobileSetting(targets, "specModeEnabled") ?? false;
+
+  const onToggleSpecMode = (nextValue: boolean) => {
+    const patches = planMobileScopedSettingsPatch(targets, true, { specModeEnabled: nextValue });
+    void Promise.all(
+      patches.map((p) =>
+        updateSettings({
+          environmentId: p.environmentId,
+          input: { patch: p.patch },
+        }),
+      ),
+    );
+  };
+
   const nextName = (draftName ?? displayName).trim();
   const canSave = !isSaving && nextName.length > 0 && nextName !== displayName;
 
@@ -134,6 +167,27 @@ function ProjectOverviewContent(props: {
           </View>
         </View>
       </SettingsSection>
+
+      {hasSpecModeCapability ? (
+        <SettingsSection title="Specs">
+          <SettingsRow
+            icon="doc.text"
+            label="Project Specs"
+            onPress={() =>
+              navigation.navigate("ProjectSpecs", {
+                environmentId: representative.environmentId,
+                projectId: representative.id,
+              })
+            }
+          />
+          <SettingsSwitchRow
+            label="Spec mode"
+            subtitle="Agents implement only requirements a person has approved"
+            value={specModeEnabled}
+            onValueChange={onToggleSpecMode}
+          />
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection title="Checkouts">
         {props.members.map((member, index) => {

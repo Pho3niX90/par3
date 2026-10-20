@@ -11,6 +11,7 @@ import {
   type OrchestrationV2TurnItem,
   RunId,
   ThreadId,
+  specRoleSupported,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
@@ -53,6 +54,8 @@ import {
 } from "@t3tools/provider-core/server/failure";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
+import * as SpecService from "../specs/SpecService.ts";
+import { specInstructions } from "../specs/specInstructions.ts";
 import {
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
@@ -96,6 +99,9 @@ export class ProviderTurnStartServiceV2 extends Context.Service<
   ProviderTurnStartServiceV2Shape
 >()("t3/orchestration-v2/ProviderTurnStartService/ProviderTurnStartServiceV2") {}
 
+const withTurnPreamble = (preamble: string, userText: string) =>
+  preamble === "" ? userText : `${preamble}\n\nUser message:\n${userText}`;
+
 export const layer: Layer.Layer<
   ProviderTurnStartServiceV2,
   never,
@@ -113,6 +119,7 @@ export const layer: Layer.Layer<
   | ProviderSessionManager.ProviderSessionManagerV2
   | RunExecutionService.RunExecutionServiceV2
   | RuntimePolicy.RuntimePolicyV2
+  | SpecService.SpecService
 > = Layer.effect(
   ProviderTurnStartServiceV2,
   Effect.gen(function* () {
@@ -130,6 +137,7 @@ export const layer: Layer.Layer<
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
+    const specs = yield* SpecService.SpecService;
     const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
 
     // These callbacks outlive startup while a run drains background work. Build
@@ -533,10 +541,50 @@ export const layer: Layer.Layer<
       });
       const { isCurrentAttemptInStatus } = runControls;
 
-      const resolvedRuntimePolicy = yield* runtimePolicy.resolve({
+      if (projection.thread.lineage.parentThreadId)
+        yield* specs
+          .inherit(projection.thread.lineage.parentThreadId, projection.thread.id)
+          .pipe(Effect.mapError((cause) => new ProviderTurnStartError({ runId, cause })));
+      const specCheck = yield* Effect.result(
+        specs.beforeRun({ threadId: projection.thread.id, runId }),
+      );
+      if (specCheck._tag === "Failure") {
+        yield* settleRunBeforeStart({
+          signal: "spec-gate",
+          status: "failed",
+          now: yield* DateTime.now,
+          providerInstanceId: run.providerInstanceId,
+          itemProviderThreadId: providerThread.id,
+          item: {
+            type: "error",
+            title: "Spec approval required",
+            failure: makeProviderFailure({
+              class: "permission_error",
+              message: specCheck.failure.message,
+            }),
+          },
+        });
+        return;
+      }
+      const specRun = specCheck.success;
+      const baseRuntimePolicy = yield* runtimePolicy.resolve({
         thread: projection.thread,
         modelSelection: run.modelSelection,
       });
+      const resolvedRuntimePolicy =
+        specRun === undefined
+          ? baseRuntimePolicy
+          : {
+              ...baseRuntimePolicy,
+              specRole: specRun.role,
+              ...(SpecService.isReadOnlyRole(specRun.role)
+                ? {
+                    interactionMode: "default" as const,
+                    approvalPolicy: "never",
+                    sandboxPolicy: { type: "readOnly" },
+                  }
+                : {}),
+            };
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;
       const existingSessionProjection = projection.providerSessions.find(
         (candidate) => candidate.id === providerSessionId,
@@ -602,6 +650,24 @@ export const layer: Layer.Layer<
         return;
       }
       const session = sessionResult.success;
+      if (specRun !== undefined && !specRoleSupported(session.driver, specRun.role)) {
+        yield* settleRunBeforeStart({
+          signal: "spec-gate",
+          status: "failed",
+          now: yield* DateTime.now,
+          providerInstanceId: run.providerInstanceId,
+          itemProviderThreadId: providerThread.id,
+          item: {
+            type: "error",
+            title: "Provider can't run this Spec role",
+            failure: makeProviderFailure({
+              class: "permission_error",
+              message: `This provider can't run the ${specRun.role} role in Spec mode. Choose another model.`,
+            }),
+          },
+        });
+        return;
+      }
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;
       const loadFromProvider = Effect.fn("ProviderTurnStartService.loadFromProvider")(function* (
         load: Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapter.ProviderAdapterV2Error>,
@@ -1165,6 +1231,12 @@ export const layer: Layer.Layer<
             }),
           });
           if (!(yield* isCurrentAttemptInStatus("running"))) return;
+          // Approval can be revoked while the session opens; recheck right before the turn.
+          if (specRun !== undefined) {
+            yield* specs
+              .beforeRun({ threadId: projection.thread.id })
+              .pipe(Effect.mapError((cause) => new ProviderTurnStartError({ runId, cause })));
+          }
           const start = compact ? session.compactThread! : session.startTurn;
           const context = [delivery.context, restartNote]
             .filter((part) => part !== "")
@@ -1174,7 +1246,12 @@ export const layer: Layer.Layer<
             ...(noteContinuation ? promptedInput : turnInput),
             message: {
               ...turnInput.message,
-              text: context === "" ? userText : `${context}\n\nUser message:\n${userText}`,
+              text: withTurnPreamble(
+                [specRun ? specInstructions(specRun.document, specRun.role) : "", context]
+                  .filter((part) => part !== "")
+                  .join("\n\n"),
+                userText,
+              ),
             },
           }).pipe(
             // A pending marker would make the next turn abandon this native

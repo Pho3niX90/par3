@@ -36,6 +36,7 @@ import {
   MAX_REPORTED_DEPTH,
   toolOutcome,
 } from "../telemetry/ProviderDimensions.ts";
+import * as SpecService from "../specs/SpecService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
@@ -73,6 +74,8 @@ import {
 } from "./toolkits/device/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import * as GatewayHandlers from "./toolkits/gateway/handlers.ts";
+import * as SpecsHandlers from "./toolkits/specs/handlers.ts";
+import { SpecsToolkit } from "./toolkits/specs/tools.ts";
 import { McpCallTool, McpCallToolkit, McpServersToolkit } from "./toolkits/gateway/tools.ts";
 import * as McpGateway from "../mcpGateway/McpGateway.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
@@ -159,6 +162,7 @@ const looksLikeProviderToken = (token: string) => token.length > 0 && !token.inc
 
 const makeMcpAuthMiddleware = Effect.gen(function* () {
   const registry = yield* McpSessionRegistry.McpSessionRegistry;
+  const specs = yield* SpecService.SpecService;
   const clients = yield* Effect.serviceOption(McpClientAuthenticator);
   return Effect.fn("McpHttpServer.authenticateRequest")(function* (httpEffect) {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -182,8 +186,21 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
         offerOAuth: Option.isSome(clients) && !looksLikeProviderToken(token),
       });
     }
+    // Looked up per request: a person can bind or unbind the thread between calls.
+    const specBinding = invocation.thread
+      ? yield* specs.binding(invocation.thread.threadId).pipe(Effect.orElseSucceed(() => null))
+      : undefined;
+    if (specBinding === null) {
+      return HttpServerResponse.text("Could not resolve this thread's Spec restrictions.", {
+        status: 503,
+      });
+    }
+    const scoped =
+      invocation.thread && specBinding
+        ? { ...invocation, thread: { ...invocation.thread, specRole: specBinding.role } }
+        : invocation;
     return yield* httpEffect.pipe(
-      Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+      Effect.provideService(McpInvocationContext.McpInvocationContext, scoped),
       Effect.map(normalizeMcpHttpResponse),
     );
   }) satisfies McpAuthMiddleware;
@@ -1143,6 +1160,7 @@ export const layerMcpTransport = McpServer.layerHttp({
 }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
 export const layer = Layer.mergeAll(
+  toolkitRegistration(SpecsToolkit, SpecsHandlers.layer),
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,

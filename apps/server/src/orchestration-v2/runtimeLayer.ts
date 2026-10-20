@@ -1,6 +1,10 @@
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
+import * as Crypto from "effect/Crypto";
+import { CommandId } from "@t3tools/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
@@ -54,6 +58,11 @@ import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as SpecService from "../specs/SpecService.ts";
+
+const layerSpecService = SpecService.layer.pipe(
+  Layer.provide(Layer.merge(ProjectStore.layer, ProjectionStore.layer)),
+);
 
 export const layerEventInfrastructure = Layer.mergeAll(
   OrchestrationEventStore.layer,
@@ -172,6 +181,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
       layerProviderAuthServiceProvided,
       layerRunExecutionServiceProvided,
       layerRuntimePolicyProvided,
+      layerSpecService,
     ),
   ),
 );
@@ -306,6 +316,40 @@ const layerThreadTitleRegenerationProvided = ThreadTitleRegenerationService.laye
     Layer.mergeAll(layerThreadManagementProvided, ProjectStore.layer, TextGeneration.layer),
   ),
 );
+const layerSpecInvalidation = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const specs = yield* SpecService.SpecService;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    const crypto = yield* Crypto.Crypto;
+    yield* specs.invalidations.pipe(
+      Stream.runForEach((threadIds) =>
+        Effect.forEach(threadIds, (threadId) =>
+          Effect.gen(function* () {
+            yield* threads
+              .dispatch({
+                type: "thread.stop",
+                commandId: CommandId.make(
+                  `spec-invalidated:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
+                ),
+                threadId,
+                reason:
+                  "Spec approval was invalidated. Review the changed requirements before resuming.",
+              })
+              .pipe(
+                Effect.catch(() =>
+                  Effect.logWarning(
+                    "Failed to interrupt a spec-linked thread after approval invalidation",
+                    { threadId },
+                  ),
+                ),
+              );
+          }),
+        ),
+      ),
+      Effect.forkScoped,
+    );
+  }),
+).pipe(Layer.provide(Layer.merge(layerSpecService, layerThreadManagementProvided)));
 const layerEffectExecutorProvided = EffectWorker.layerExecutor.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -360,6 +404,8 @@ export const layer = Layer.mergeAll(
 );
 
 export const layerProduction = Layer.mergeAll(
+  layerSpecService,
+  layerSpecInvalidation,
   layer.pipe(Layer.provide(layerProjectService)),
   layerProjectService,
   layerManagedProjectFoldersProvided,

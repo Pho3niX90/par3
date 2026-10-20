@@ -386,6 +386,13 @@ import {
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
+import {
+  SpecDocument,
+  SpecError,
+  SpecMutationInput,
+  SpecQueryInput,
+  SpecQueryResult,
+} from "./specs.ts";
 
 export const WS_METHODS = {
   projectsList: "projects.list",
@@ -546,6 +553,9 @@ export const WS_METHODS = {
   jiraIssue: "jira.issue",
   mcpGatewayStatus: "mcpGateway.status",
   mcpGatewayTest: "mcpGateway.test",
+  specsQuery: "specs.query",
+  specsMutate: "specs.mutate",
+  specsSubscribe: "specs.subscribe",
   pullRequestsPreview: "pullRequests.preview",
   pullRequestsChecks: "pullRequests.checks",
   pullRequestsActivity: "pullRequests.activity",
@@ -1024,6 +1034,25 @@ const WsMcpGatewayTestRpc = Rpc.make(WS_METHODS.mcpGatewayTest, {
   payload: McpGatewayTestInput,
   success: McpGatewayTestResult,
   error: Schema.Union([EnvironmentAuthorizationError, McpGatewayError]),
+});
+
+const WsSpecsQueryRpc = Rpc.make(WS_METHODS.specsQuery, {
+  payload: SpecQueryInput,
+  success: SpecQueryResult,
+  error: SpecError,
+});
+
+const WsSpecsMutateRpc = Rpc.make(WS_METHODS.specsMutate, {
+  payload: SpecMutationInput,
+  success: SpecDocument,
+  error: SpecError,
+});
+
+const WsSpecsSubscribeRpc = Rpc.make(WS_METHODS.specsSubscribe, {
+  payload: SpecQueryInput,
+  success: SpecQueryResult,
+  error: SpecError,
+  stream: true,
 });
 
 const WsJiraIssueRpc = Rpc.make(WS_METHODS.jiraIssue, {
@@ -1996,6 +2025,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsJiraIssueRpc,
   WsMcpGatewayStatusRpc,
   WsMcpGatewayTestRpc,
+  WsSpecsQueryRpc,
+  WsSpecsMutateRpc,
+  WsSpecsSubscribeRpc,
   WsPullRequestsPreviewRpc,
   WsPullRequestsChecksRpc,
   WsPullRequestsActivityRpc,

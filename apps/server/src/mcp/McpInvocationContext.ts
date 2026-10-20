@@ -6,6 +6,7 @@ import {
   PreviewAutomationUnavailableError,
   type ProviderInstanceId,
   type RuntimeMode,
+  type SpecRole,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -25,6 +26,8 @@ export interface McpThreadCaller {
   readonly threadId: ThreadId;
   readonly providerSessionId: string;
   readonly providerInstanceId: ProviderInstanceId;
+  /** Set per request by the MCP auth middleware when the thread is bound to a spec. */
+  readonly specRole?: SpecRole;
 }
 
 export interface McpClientCaller {

@@ -29,6 +29,7 @@ import {
 import * as ProjectService from "../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../pullRequest/PullRequestReviewGuideService.ts";
 import * as ServerConfig from "../config.ts";
+import * as SpecService from "../specs/SpecService.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as McpToolAccessTestkit from "./McpToolAccess.testkit.ts";
@@ -851,6 +852,7 @@ it.effect("terminates HTTP MCP sessions with DELETE", () =>
         issuedAt: 1,
       };
       const layerServer = McpHttpServer.layerMcpTransport.pipe(
+        Layer.provide(SpecService.layerDisabled),
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
             resolve: (presented) =>
@@ -1105,6 +1107,7 @@ it.effect("admits provider and OAuth client credentials and points only clients 
         }),
       ).pipe(
         Layer.provideMerge(McpHttpServer.layerMcpTransport),
+        Layer.provide(SpecService.layerDisabled),
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
             resolve: (token) =>

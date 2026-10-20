@@ -2563,6 +2563,11 @@ const make = Effect.gen(function* () {
     createThreads: Effect.fn("OrchestratorMcpService.createThreads")(
       function* (callerScope, input) {
         const { scope, parent } = yield* loadThreadCaller(callerScope, "create_threads");
+        if (scope.thread.specRole !== undefined)
+          return yield* failure(
+            "capability_denied",
+            "Spec-linked agents must use bound delegated tasks rather than unrelated top-level threads.",
+          );
         const parentRun = ThreadManagementService.latestActiveRun(parent);
         if (
           parentRun === undefined ||

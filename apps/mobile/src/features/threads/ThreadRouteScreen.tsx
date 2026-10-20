@@ -90,6 +90,7 @@ import {
 import { threadRouteIsHydrating } from "./thread-route-hydration";
 import { useThreadPromptLink } from "../prompt-links/useThreadPromptLink";
 import { ThreadHeader } from "./ThreadHeader";
+import { ThreadBoundSpecBadge } from "../specs/ThreadBoundSpecBadge";
 import {
   useAndroidWorkspaceBack,
   useWorkspaceBackNavigation,
@@ -1000,6 +1001,11 @@ function ThreadRouteContent(
         onOpenGitInspector={handleOpenGitInspector}
         onOpenFilesInspector={handleOpenFilesInspector}
         onReturnToThread={props.onReturnToThread}
+      />
+      <ThreadBoundSpecBadge
+        environmentId={selectedThread.environmentId}
+        projectId={selectedThreadProject?.id ?? null}
+        threadId={selectedThread.id}
       />
 
       {renderThreadRouteBody()}

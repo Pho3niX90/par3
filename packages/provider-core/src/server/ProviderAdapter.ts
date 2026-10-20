@@ -28,6 +28,7 @@ import {
   ProviderThreadId,
   ProviderTurnId,
   RuntimeMode,
+  SpecRole,
   RuntimeRequestId,
   RunAttemptId,
   RunId,
@@ -53,6 +54,7 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
   approvalPolicy: Schema.optional(Schema.Unknown),
   sandboxPolicy: Schema.optional(Schema.Unknown),
   reasoningEffort: Schema.optional(Schema.String),
+  specRole: Schema.optional(SpecRole),
 });
 export type ProviderAdapterV2RuntimePolicy = typeof ProviderAdapterV2RuntimePolicy.Type;
 
