@@ -8,6 +8,8 @@ import { ChatGptUsageButton } from "../settings/ChatGptUsageButton";
 import { getReadableProviderErrorMessage } from "../../providerErrorMessage";
 import { ExpandableText } from "../settings/ExpandableText";
 
+export const getThreadErrorBannerMessage = getReadableProviderErrorMessage;
+
 export function getThreadErrorBannerKey(threadKey: string, error: string | null): string | null {
   return error === null ? null : `${threadKey}\u0000${error}`;
 }
@@ -60,7 +62,7 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
               <p>Review your usage settings in ChatGPT to continue.</p>
             </div>
           ) : (
-            <ExpandableText text={getReadableProviderErrorMessage(error)} />
+            <ExpandableText text={error} collapsedText={getThreadErrorBannerMessage(error)} />
           )}
         </AlertDescription>
         {(chatGptUsageLimit || onDismiss) && (
