@@ -43,6 +43,10 @@ import { describe } from "vite-plus/test";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
+import {
+  sidekickInstructions,
+  T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import {
@@ -3473,6 +3477,69 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       for (let index = 0; index < 2; index++) {
         const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
         yield* runtime.startTurn(turnInput(thread));
+        assert.equal((yield* Fiber.join(terminal))?.status, "completed");
+      }
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("puts the sidekick playbook in the instructions entry only while it is on", () =>
+    Effect.gen(function* () {
+      const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
+      yield* mcpSessions.set({
+        environmentId: EnvironmentId.make("environment:opencode2-adapter"),
+        threadId,
+        providerSessionId: "mcp:opencode2-adapter",
+        providerInstanceId: instanceId,
+        endpoint: "http://127.0.0.1:3773/mcp",
+        authorizationHeader: "Bearer thread-credential",
+        browserToolsAvailable: false,
+      });
+      yield* Effect.addFinalizer(() => mcpSessions.clear(threadId));
+      const server = "t3-code-thread_opencode2-adapter";
+      const added = [
+        out("mcp.add", {
+          server,
+          "location[directory]": WORK,
+          config: {
+            type: "remote",
+            url: "http://127.0.0.1:3773/mcp",
+            headers: { Authorization: "Bearer thread-credential" },
+            oauth: false,
+          },
+        }),
+        reply("mcp.add", null),
+      ];
+      const turn = [
+        out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+        promptAccepted,
+        event("session.execution.succeeded", { sessionID: SESSION }),
+      ];
+      const sidekick = { label: "Luna · Codex", billingModel: "per_token" } as const;
+      const base = [
+        buildRuntimeInstructions({ harness: "OpenCode", model: bigPickle.model }),
+        T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+      ];
+      const put = (value: string) => [
+        out("session.instructions.entry.put", { sessionID: SESSION, key: "t3-code", value }),
+        reply("session.instructions.entry.put", null),
+      ];
+      const { runtime, thread } = yield* resumed([
+        ...added,
+        ...turn,
+        ...added,
+        ...put([...base, sidekickInstructions(sidekick)].join("\n\n")),
+        ...turn,
+        ...added,
+        ...turn,
+        ...added,
+        ...put(base.join("\n\n")),
+        ...turn,
+        out("mcp.remove", { server, "location[directory]": WORK }),
+        reply("mcp.remove", null),
+      ]);
+      for (const state of [null, sidekick, sidekick, null]) {
+        const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+        yield* runtime.startTurn({ ...turnInput(thread), sidekick: state });
         assert.equal((yield* Fiber.join(terminal))?.status, "completed");
       }
     }).pipe(Effect.scoped),

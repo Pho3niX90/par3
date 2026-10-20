@@ -27,6 +27,7 @@ import * as VcsProcess from "../../../vcs/VcsProcess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as ProjectHandlers from "./handlers.ts";
+import * as ThreadSidekick from "../../../orchestration-v2/ThreadSidekick.ts";
 import { ProjectToolkit } from "./tools.ts";
 
 it.effect("attributes a launched thread's first message to the calling thread", () =>
@@ -80,6 +81,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       }),
       Layer.mock(Project.ProjectService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
+      Layer.mock(ThreadSidekick.ThreadSidekick)({}),
       Layer.mock(GitVcsDriver.GitVcsDriver)({}),
       NodeServices.layer,
       ServerConfig.layerTest(process.cwd(), { prefix: "t3-source-link-" }).pipe(
@@ -155,6 +157,7 @@ it.effect("launches a scratch thread into the Scratch project", () =>
         namedProjectsRoot: "/projects",
         ensureScratchProject: Effect.succeed({ projectId: scratchProjectId }),
       }),
+      Layer.mock(ThreadSidekick.ThreadSidekick)({}),
       Layer.mock(GitVcsDriver.GitVcsDriver)({}),
       NodeServices.layer,
       ServerConfig.layerTest(process.cwd(), { prefix: "t3-scratch-launch-" }).pipe(
@@ -357,6 +360,7 @@ const clientLaunchHarness = (input: {
         ),
     }),
     Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
+    Layer.mock(ThreadSidekick.ThreadSidekick)({}),
     NodeServices.layer,
   ).pipe(
     Layer.provideMerge(GitVcsDriver.layer),

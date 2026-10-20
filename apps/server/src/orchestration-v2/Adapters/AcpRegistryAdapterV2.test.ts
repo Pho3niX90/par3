@@ -292,6 +292,7 @@ const openClaudeReplaySession = Effect.fn("openClaudeReplaySession")(function* (
     options: { readonly continuation?: boolean } = {},
   ): ProviderAdapter.ProviderAdapterV2TurnInput => ({
     appThread: {
+      sidekickModelSelection: null,
       createdBy: "user",
       creationSource: "web",
       id: threadId,

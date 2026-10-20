@@ -41,6 +41,10 @@ import * as Stream from "effect/Stream";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import {
+  t3OrchestrationInstructionUpdate,
+  type T3PromptInstructionState,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import { museModelCapabilities, resolveMuseReasoningEffort } from "./modelCatalog.ts";
 import {
@@ -328,6 +332,10 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
       // Only idle host failures can be retried on this runtime.
       let relaunchable = false;
       let nativeSessionId: string | undefined;
+      // Muse fixes its MCP servers when a session is started or resumed.
+      let sessionHasT3Mcp = false;
+      // What the native session has seen; undefined after attach or compaction.
+      let sentInstructions: T3PromptInstructionState | undefined;
       let thread: OrchestrationV2ProviderThread | undefined;
       let active: ActiveTurn | undefined;
       let lastProviderTurn: OrchestrationV2ProviderTurn | undefined;
@@ -1398,6 +1406,12 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
             turn.items.set(item.itemId, item);
             turn.dirty.delete(item.itemId);
             yield* publishItem(turn, item);
+            if (
+              item.kind === "compaction" &&
+              item.status === "completed" &&
+              (!item.outcome || item.outcome === "compacted")
+            )
+              sentInstructions = undefined;
             if (turn.compact && item.kind === "compaction" && item.status !== "inProgress") {
               yield* finish(
                 turn,
@@ -1796,7 +1810,9 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
         let missingNativeSession = false;
         return yield* Effect.gen(function* () {
           nativeSessionId = requestedId ?? host.connection.mintCommandId();
+          sentInstructions = undefined;
           const mcpSession = yield* mcpSessions.read(args.threadId);
+          sessionHasT3Mcp = mcpSession !== undefined;
           if (mcpSession && !host.initializeResult.grantedCapabilities.includes("sessionMcp"))
             return yield* protocolError(
               "Update Muse Code to a version that supports session MCP servers",
@@ -2036,6 +2052,16 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
                 `Muse returned an unsupported compaction status: ${result.status}`,
               );
           } else {
+            const instructionState = {
+              hasT3Mcp: sessionHasT3Mcp,
+              sidekick: turnInput.sidekick ?? null,
+            } satisfies T3PromptInstructionState;
+            const instructionUpdate = t3OrchestrationInstructionUpdate(
+              instructionState,
+              sentInstructions,
+            );
+            // Recorded before the request so a compaction during the turn can clear it.
+            sentInstructions = instructionState;
             const result = yield* request(
               "turn/start",
               {
@@ -2048,6 +2074,9 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
                       reasoningEffort: effort,
                     }),
                   },
+                  ...(instructionUpdate === null
+                    ? []
+                    : [{ type: "text" as const, text: instructionUpdate }]),
                   ...parts,
                 ],
                 displayText: turnInput.message.text || "Image attachment",
@@ -2059,7 +2088,14 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
               },
               true,
               nativeId,
-            ).pipe(Effect.flatMap((value) => decode(MuseTurnStartResult, value)));
+            ).pipe(
+              Effect.flatMap((value) => decode(MuseTurnStartResult, value)),
+              Effect.tapError(() =>
+                Effect.sync(() => {
+                  sentInstructions = undefined;
+                }),
+              ),
+            );
             if (result.turnId !== nativeId) {
               yield* eventPermit.withPermits(1)(
                 failHost(new Error("Muse admitted an unowned turn")),

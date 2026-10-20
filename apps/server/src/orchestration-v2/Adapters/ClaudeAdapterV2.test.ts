@@ -80,6 +80,10 @@ import { WorkflowAgentTranscriptReadObserver } from "../workflowAgentTranscript.
 import * as ServerConfig from "../../config.ts";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import {
+  SIDEKICK_OFF_INSTRUCTIONS,
+  sidekickInstructions,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
 import { PreviewControlsToolkit } from "../../mcp/toolkits/previewControls/tools.ts";
 import { HtmlToolkit } from "../../mcp/toolkits/html/tools.ts";
 import { GatewayToolkit } from "../../mcp/toolkits/gateway/tools.ts";
@@ -171,6 +175,7 @@ function makeClaudeTestAppThread(input: {
   readonly now: DateTime.Utc;
 }): OrchestrationV2AppThread {
   return {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: input.threadId,
@@ -2271,6 +2276,7 @@ describe("ClaudeAdapterV2 native fork", () => {
 
         yield* runtime.startTurn({
           appThread: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: targetThreadId,
@@ -17811,6 +17817,110 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           ),
         ),
       ),
+  );
+
+  it.effect("delivers sidekick playbook updates in prompts and resends after compaction", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      yield* (yield* McpProviderSessions.McpProviderSessions).set({
+        environmentId: EnvironmentId.make("test"),
+        threadId: harness.threadId,
+        providerSessionId: "sidekick-session",
+        providerInstanceId: ProviderInstanceId.make(ClaudeAdapterV2.CLAUDE_PROVIDER),
+        endpoint: "http://127.0.0.1:43123/mcp",
+        authorizationHeader: "Bearer test",
+        browserToolsAvailable: true,
+      });
+      const luna = { label: "Luna · Codex", billingModel: "per_token" } as const;
+      const haiku = { label: "Haiku · Claude", billingModel: "per_request" } as const;
+      const wrapped = (update: string, text: string) =>
+        `<t3_code_instructions>\n${update}\n</t3_code_instructions>\n\n<user_request>\n${text}\n</user_request>`;
+      let ordinal = 0;
+      const runTurn = (
+        text: string,
+        sidekick: NonNullable<ProviderAdapter.ProviderAdapterV2TurnInput["sidekick"]> | null,
+        midTurn: ReadonlyArray<SDKMessage> = [],
+      ) =>
+        Effect.gen(function* () {
+          ordinal += 1;
+          yield* harness.runtime.startTurn({
+            ...makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make(`attempt-claude-sidekick-${ordinal}`),
+              text,
+              attachments: [],
+              providerTurnOrdinal: ordinal,
+              // Without an effort prefix, so the prompt text stays as typed.
+              modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, options: [] },
+            }),
+            sidekick,
+          });
+          for (const frame of midTurn) yield* Queue.offer(harness.sdkMessages, frame);
+          yield* Queue.offer(
+            harness.sdkMessages,
+            makeResultFrame({
+              uuid: `00000000-0000-4000-8000-0000000019${String(ordinal).padStart(2, "0")}`,
+              result: "Done.",
+            }),
+          );
+          yield* Queue.take(harness.terminalReceipts);
+          return harness.offeredMessages.at(-1)?.message.content;
+        });
+
+      assert.equal(yield* runTurn("first", luna), wrapped(sidekickInstructions(luna), "first"));
+      assert.equal(yield* runTurn("second", luna), "second");
+      // A slash command must stay first, so the change waits for the next prompt.
+      assert.equal(yield* runTurn("/review", haiku), "/review");
+      assert.equal(yield* runTurn("third", haiku), wrapped(sidekickInstructions(haiku), "third"));
+      assert.equal(yield* runTurn("fourth", null), wrapped(SIDEKICK_OFF_INSTRUCTIONS, "fourth"));
+      assert.equal(yield* runTurn("fifth", null), "fifth");
+      assert.equal(
+        yield* runTurn("sixth", luna, [
+          claudeSdkFrame({
+            type: "system",
+            subtype: "compact_boundary",
+            compact_metadata: { trigger: "auto", pre_tokens: 1_000, post_tokens: 100 },
+            uuid: "00000000-0000-4000-8000-000000001999",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        ]),
+        wrapped(sidekickInstructions(luna), "sixth"),
+      );
+      // Compaction summarized the playbook away, so the next prompt carries it again.
+      assert.equal(yield* runTurn("seventh", luna), wrapped(sidekickInstructions(luna), "seventh"));
+      assert.equal(yield* runTurn("eighth", luna), "eighth");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("leaves prompts alone without T3 tools", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      yield* harness.runtime.startTurn({
+        ...makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("attempt-claude-sidekick-no-mcp"),
+          text: "first",
+          attachments: [],
+          modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, options: [] },
+        }),
+        sidekick: { label: "Luna · Codex", billingModel: "per_token" },
+      });
+      assert.equal(harness.offeredMessages.at(-1)?.message.content, "first");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
   );
 
   describe("native goals", () => {

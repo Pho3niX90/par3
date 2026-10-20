@@ -455,6 +455,7 @@ layer("OrchestrationEventStore", (it) => {
             providerInstanceId,
             occurredAt,
             payload: {
+              sidekickModelSelection: null,
               id: threadId,
               projectId,
               title: "Thread",

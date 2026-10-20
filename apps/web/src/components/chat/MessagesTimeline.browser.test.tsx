@@ -1330,7 +1330,7 @@ describe("MessagesTimeline subagents", () => {
                 origin: "provider_native",
                 driver: "claudeAgent",
                 providerInstanceId: "claudeAgent",
-                childThreadId: "thread-subagent-1",
+                childThreadId: `thread-subagent-${index + 1}`,
                 prompt: "Inspect the package",
                 progress,
                 result,

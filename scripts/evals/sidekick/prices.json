@@ -1,0 +1,36 @@
+{
+  "currency": "USD",
+  "unit": "per 1M tokens",
+  "notes": [
+    "cachedInput is the cache-read (hit) price; cacheWrite is the cache-creation price. Both are charged separately from uncached input.",
+    "reasoning null means reasoning tokens are billed as output tokens and are already counted inside outputTokens (true for both providers here). Set a number only if a provider bills reasoning at a different rate.",
+    "cacheWrite uses the 5-minute TTL rate. Turn usage does not record the cache TTL; if a provider writes 1-hour caches, switch to cacheWrite1h and say so in the report.",
+    "Entries with verify: true must be checked against the provider's public price page before the scored run. report.ts marks every cost as provisional while any priced model is unverified."
+  ],
+  "models": {
+    "claude-opus-5-5": {
+      "provider": "anthropic",
+      "input": 4,
+      "cachedInput": 0.2,
+      "cacheWrite": 5,
+      "cacheWrite1h": 8,
+      "output": 20,
+      "reasoning": null,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing (Claude Opus 5.5 row; cache hits are 0.05x base input)",
+      "asOf": "2026-10-20",
+      "verify": false
+    },
+    "gpt-6-luna": {
+      "provider": "openai",
+      "input": 0.1,
+      "cachedInput": 0.01,
+      "cacheWrite": 0.125,
+      "cacheWrite1h": null,
+      "output": 0.5,
+      "reasoning": null,
+      "source": "https://developers.openai.com/api/docs/pricing (GPT-6 Luna, Standard, short context)",
+      "asOf": "2026-10-20",
+      "verify": false
+    }
+  }
+}

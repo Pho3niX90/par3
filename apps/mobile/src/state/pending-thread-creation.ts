@@ -125,6 +125,7 @@ export function pendingThreadCreationShell(
   }
   const timestamp = DateTime.makeUnsafe(message.createdAt);
   return presentThreadShell(message.environmentId, {
+    sidekickModelSelection: null,
     id: message.threadId,
     projectId: creation.projectId,
     title: deriveThreadTitleFromPrompt(message.text),

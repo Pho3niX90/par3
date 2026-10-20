@@ -841,7 +841,7 @@ export function createEnvironmentRpcCommand<
   R,
   ER,
   TTag extends EnvironmentUnaryRpcTag,
-  Input extends EnvironmentRpcInput<TTag> = EnvironmentRpcInput<TTag>,
+  Input = EnvironmentRpcInput<TTag>,
 >(
   runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | R, ER>,
   options: {
@@ -852,7 +852,7 @@ export function createEnvironmentRpcCommand<
     ) => Effect.Effect<
       EnvironmentRpcSuccess<TTag>,
       EnvironmentRpcFailure<TTag> | EnvironmentRpcUnavailableError,
-      EnvironmentSupervisor.EnvironmentSupervisor | EnvironmentRegistry.EnvironmentRegistry
+      EnvironmentSupervisor.EnvironmentSupervisor | EnvironmentRegistry.EnvironmentRegistry | R
     >;
     readonly scheduler?: AtomCommandScheduler;
     readonly concurrency?: AtomCommandConcurrency<{
@@ -874,7 +874,17 @@ export function createEnvironmentRpcCommand<
       },
       registry: AtomRegistry.AtomRegistry,
     ) => Effect.Effect<void, never, R>;
-  },
+  } & ([Input] extends [EnvironmentRpcInput<TTag>]
+    ? unknown
+    : {
+        readonly execute: (
+          input: Input,
+        ) => Effect.Effect<
+          EnvironmentRpcSuccess<TTag>,
+          EnvironmentRpcFailure<TTag> | EnvironmentRpcUnavailableError,
+          EnvironmentSupervisor.EnvironmentSupervisor | EnvironmentRegistry.EnvironmentRegistry | R
+        >;
+      }),
 ) {
   const permissions = createCommandPermissions(runtime, options.tag);
   const command = createEnvironmentCommand(runtime, {
@@ -889,7 +899,12 @@ export function createEnvironmentRpcCommand<
       // Routing requires consent on the origin as well as the actual destination.
       // The transport check below deliberately checks the destination again.
       return permissions.authorize(registry, environmentId, input).pipe(
-        Effect.andThen(() => options.execute?.(input) ?? requestGuarded(options.tag, input)),
+        // Mapped inputs require execute; without it Input is the RPC's payload type.
+        Effect.andThen(
+          () =>
+            options.execute?.(input) ??
+            requestGuarded(options.tag, input as EnvironmentRpcInput<TTag>),
+        ),
         Effect.provideService(RpcPermissionGuard, {
           authorize: (id, method, payload) =>
             createCommandPermissions(runtime, method).authorize(registry, id, payload),

@@ -92,6 +92,7 @@ const seedScenario = Effect.fn(function* (scenario: Scenario) {
       type: "thread.created",
       threadId: id,
       payload: {
+        sidekickModelSelection: null,
         createdBy: "user",
         creationSource: "web",
         id,

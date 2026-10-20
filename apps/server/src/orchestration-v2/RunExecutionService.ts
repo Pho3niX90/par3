@@ -32,6 +32,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -51,6 +52,7 @@ import {
   makeProviderFailureTurnItem,
 } from "@t3tools/provider-core/server/failure";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
+import * as ThreadSidekick from "./ThreadSidekick.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 
 export interface ProviderEventRoutingState {
@@ -609,6 +611,7 @@ export const layer: Layer.Layer<
     const providerEventIngestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const mcpAppModelContext = yield* McpAppModelContext.McpAppModelContext;
+    const threadSidekick = yield* Effect.serviceOption(ThreadSidekick.ThreadSidekick);
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
 
@@ -1523,6 +1526,17 @@ export const layer: Layer.Layer<
           key: `mcp_app_${entry.itemId.replace(/[^\w.-]/g, "_")}`,
           text: entry.text,
         }));
+        const sidekick = Option.isNone(threadSidekick)
+          ? null
+          : yield* threadSidekick.value
+              .leadStateForTurn(input.appThread)
+              .pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Failed to resolve the thread's sidekick.", { cause }).pipe(
+                    Effect.as(null),
+                  ),
+                ),
+              );
         const turnInput = {
           appThread: input.appThread,
           threadId: input.run.threadId,
@@ -1544,6 +1558,7 @@ export const layer: Layer.Layer<
           modelSelection: input.modelSelection,
           runtimePolicy: input.runtimePolicy,
           ...(appContext.length === 0 ? {} : { appContext }),
+          sidekick,
         };
         // Check after the context read: ingestion can settle the run while
         // it awaits. A failed ownership read fails the start below.

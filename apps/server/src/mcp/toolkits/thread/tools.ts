@@ -24,6 +24,7 @@ import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
+import * as ThreadSidekick from "../../../orchestration-v2/ThreadSidekick.ts";
 import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -178,11 +179,12 @@ const PendingRequestRespondTool = Tool.make("t3_pending_request_respond", {
 const ThreadConfigurationTool = Tool.make("t3_thread_configuration", {
   ...commandTool,
   description:
-    "Read a thread's provider/model selection and modes. Omit threadId for this thread. orchestrator_capabilities lists available providers and models.",
+    "Read a thread's provider/model selection, sidekick, and modes. Omit threadId for this thread. orchestrator_capabilities lists available providers and models.",
   parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
   success: Schema.Struct({
     threadId: ThreadId,
     modelSelection: ModelSelection,
+    sidekickModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
   }),
@@ -192,11 +194,18 @@ const ThreadConfigurationTool = Tool.make("t3_thread_configuration", {
 const ThreadConfigureTool = Tool.make("t3_thread_configure", {
   ...commandTool,
   description:
-    "Set a thread's provider, model and options with the existing selection command. Omit threadId for this thread. This does not change permission modes. Use orchestrator_capabilities to choose a selection.",
+    "Set a thread's provider, model and options, its sidekick, or both. Omit threadId for this thread. This does not change permission modes. Use orchestrator_capabilities to choose a selection.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
-    modelSelection: ModelSelection,
+    modelSelection: Schema.optional(ModelSelection),
+    sidekickModelSelection: Schema.optional(
+      Schema.NullOr(ModelSelection).annotate({
+        description:
+          "The cheaper model delegate_task uses when its target is omitted; null turns sidekick mode off. It must differ from the thread's own model. Changes apply to future delegations only.",
+      }),
+    ),
   }),
+  dependencies: [...commandTool.dependencies, ThreadSidekick.ThreadSidekick],
 }).annotate(Tool.Destructive, true);
 
 const transferResult = Schema.Struct({ sequence: NonNegativeInt, targetThreadId: ThreadId });

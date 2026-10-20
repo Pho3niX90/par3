@@ -132,6 +132,7 @@ export interface ThreadManagementSendInput {
   readonly mode: ThreadManagementSendMode;
   readonly createdBy: OrchestrationV2Actor;
   readonly creationSource: OrchestrationV2CreationSource;
+  readonly followupCompletionWake?: "always" | "settled_only";
 }
 
 export interface ThreadManagementSendResult {
@@ -796,6 +797,9 @@ const make = Effect.gen(function* () {
       text: input.text,
       attachments: input.attachments,
       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+      ...(input.followupCompletionWake === undefined
+        ? {}
+        : { followupCompletionWake: input.followupCompletionWake }),
       dispatchMode,
       createdBy: input.createdBy,
       creationSource: input.creationSource,

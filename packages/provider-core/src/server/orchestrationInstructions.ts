@@ -12,7 +12,7 @@ The \`t3-code\` MCP server provides app-owned orchestration. Treat these concept
 
 - A delegated task/subagent is child work owned by the current thread. Use \`orchestrator_capabilities\` to discover the current provider/model IDs from the same live catalog as the composer, including configured custom models. Do not treat a native tool's model list as the full list of available subagent models. Prefer native subagent tools for same-provider work only when they support the chosen model and no model options are requested or inherited. Use \`delegate_task\` with that provider instance and model when native tools cannot, including for same-provider work. Also use \`delegate_task\` for cross-provider or explicitly T3-owned child tasks. For a child task that needs a separate checkout, use \`delegate_task\` with \`isolation:"worktree"\` across any provider or model. It starts from the parent local commit and runs project setup; uncommitted edits are not copied. Retain each returned \`taskId\`, and use \`task_status\` or \`task_cancel\` to manage it. The returned \`childThreadId\` is backing storage for the subagent, not the target for starting another delegated review round.
 - \`t3_thread_launch\` and \`create_threads\` create ordinary top-level T3 conversations. Use them only when the user explicitly asks for separate/new/top-level threads or conversations. Never use them merely because the user said "subagent" or requested parallel delegated work.
-- For every T3 delegated review round, call \`delegate_task\` again. Include the original brief, prior findings, responses, and unresolved objections in each new task prompt. Track each round by its own \`taskId\`. Use a distinct \`clientRequestId\` per round, stable across retries of that round. Do not use \`t3_thread_send\` on \`childThreadId\` to continue a delegated review.`,
+- To follow up on a finished delegated task in the same child, with its context intact, call \`delegate_task\` with \`continueTaskId\` set to that task's \`taskId\` once its result has arrived; it returns a new \`taskId\` tracked like any delegation. Use \`t3_thread_send\` on \`childThreadId\` only to steer a child that is still running. For every independent review round, call \`delegate_task\` again without \`continueTaskId\`, so the reviewer starts fresh. Include the original brief, prior findings, responses, and unresolved objections in each new task prompt. Track each round by its own \`taskId\`. Use a distinct \`clientRequestId\` per round, stable across retries of that round.`,
   `- \`schedule_task\` creates persistent recurring work in the app scheduler. Pass \`schedule\` as a structured object, never as JSON text: \`{"type":"interval","everyMs":3600000}\` for an interval, or \`{"type":"fixed_time","timeOfDay":"09:00","weekdays":[1,2,3,4,5]}\` for a wall-clock schedule, or \`{"type":"webhook"}\` to run on each request to the returned \`webhookUrl\` (the run sees the request only through \`{{body.path}}\`-style placeholders in the prompt). By default runs return to the current thread, which suits orchestrating: each trigger arrives here and you delegate or dedupe; set \`bindToCurrentThread=false\` only when the user wants a fresh thread for every run. After scheduling a timer, report the returned cadence and next run time; for a webhook, report its \`webhookUrl\`, or say Parity Connect remote access is needed if it is missing.
 - When you need a secret from the user (a token, API key, or webhook signing secret), call \`request_secret\` so they enter it privately, then pass the returned \`secretRef\` to the tool that needs it, e.g. \`signature.secretRef\` on a webhook task for a sender that signs requests such as GitHub. A \`secretRef\` works once. Never ask for a secret in chat, never invent one, and never repeat one.
 - Par3 can share third-party MCP servers (such as Linear, Sentry, or internal tools) with every agent. When the user asks about a service you have no native tool for, call \`mcp_servers\` to list them and their tools, then call one with \`mcp_call\`.
@@ -39,6 +39,79 @@ ACP fallback: some ACP agents accept the injected MCP server but fail to expose 
 When a chart, table, diagram, image collage, or mockup would say more than prose, build a self-contained HTML page, check it with \`html_preview\`, then publish it with \`html_render\` before your final reply. The reader sees the page above that reply, so don't announce or restate it; add only what it doesn't say.`,
   `- When model options are requested or the child keeps the parent's provider instance and model with nonempty \`inheritedOptions\` from \`orchestrator_capabilities\`, use \`delegate_task\` even for native-supported models. Native subagents cannot reliably apply T3 model options. Read the selected model's descriptors from \`orchestrator_capabilities\` and put settings in \`target.options\`, not only in the prompt. Claude commonly uses {"effort":"max","fastMode":true}; Codex uses {"reasoningEffort":"max","serviceTier":"priority"}. Do not translate max to high or ignore unsupported settings: report a capability mismatch. Options inherit only for the same provider instance and model; explicit entries override individual values, and [] or {} clears them. Check the returned providerInstanceId, model, and options against the requested selection.`,
 ];
+
+/** What a lead needs to know about its sidekick; null when sidekick mode is off or inactive. */
+export interface T3SidekickLeadState {
+  /** Model and provider, e.g. "GPT-6 Luna · Codex". */
+  readonly label: string;
+  readonly billingModel: "per_token" | "per_request";
+}
+
+function sidekickStatesEqual(
+  left: T3SidekickLeadState | null | undefined,
+  right: T3SidekickLeadState | null | undefined,
+): boolean {
+  return (
+    (left ?? null) === (right ?? null) ||
+    (left != null &&
+      right != null &&
+      left.label === right.label &&
+      left.billingModel === right.billingModel)
+  );
+}
+
+/**
+ * The lead playbook. Kept under 4,000 bytes so Codex delivers it whole as one
+ * instruction entry.
+ */
+export function sidekickInstructions(state: T3SidekickLeadState): string {
+  return `## Par3 sidekick mode
+
+This thread has a sidekick: ${state.label}. You are the lead. You plan, brief, review and decide; the sidekick explores, implements and tests. Each of you keeps its own context, so you exchange only briefs and reports. The user's explicit instructions always override this playbook, and it does not apply in plan mode.
+
+1. Delegate exploration, multi-file edits, and build/test/lint loops with \`delegate_task\`, leaving \`target\` unset so it runs on the sidekick. Write spec-quality briefs: goal, constraints, relevant files, success criteria, and the report you need back. Small, surgical edits are fine to make yourself when the exact lines are already in your context and no test loop is needed.
+2. Keep planning, ambiguity and final review yourself. Review the sidekick's work with \`git diff\`. Commit yourself, unless the user said otherwise.
+3. Use \`mode:"async"\` and end your turn; the sidekick's completion wakes you. Use \`mode:"wait"\` only for short checks this turn needs.
+4. Follow up, don't re-delegate: for related work, call \`delegate_task\` with \`continueTaskId\` on the same task once its result has arrived. Use a fresh \`delegate_task\` for unrelated work.
+5. While a shared-checkout sidekick task is unfinished, do not edit files or run git commands that change state. Parallel tasks that write files must use \`isolation:"worktree"\`; parallel tasks in the shared checkout must be read-only. A worktree task reports its workspace: inspect it, then apply or integrate the changes before committing.
+6. When the sidekick reports \`Status: blocked\` or fails twice, take over. If its task is still running, call \`task_cancel\` and wait for it to settle before you edit.
+7. Answer the sidekick's pending questions with the \`t3_pending_request_*\` tools. Approvals and anything that needs the user go to the user. On a usage limit, take over or tell the user; do not retry in a loop.
+8. For an independent review, set \`target\` explicitly (for example your own model from \`orchestrator_capabilities\`); an omitted target goes to the sidekick.
+9. Do not use your native subagent or task tool for sidekick work: it would go untracked and may run on the wrong model.
+10. The user can type into the sidekick's thread, so expect results you did not request; they wake you too.${
+    state.billingModel === "per_request"
+      ? "\n11. The sidekick is billed per request: batch work into fewer, larger briefs."
+      : ""
+  }`;
+}
+
+export const SIDEKICK_OFF_INSTRUCTIONS = `## Par3 sidekick mode is now off
+
+This thread no longer has a sidekick. Ignore the earlier sidekick playbook: \`delegate_task\` without a target now runs on your own model, and you choose again when to delegate.`;
+
+/**
+ * What a provider must send after the sidekick state it last sent. Undefined
+ * `previous` means a fresh native context that has seen nothing yet.
+ */
+export function sidekickInstructionUpdate(
+  previous: T3SidekickLeadState | null | undefined,
+  next: T3SidekickLeadState | null,
+): string | null {
+  if (previous !== undefined && sidekickStatesEqual(previous, next)) return null;
+  if (next !== null) return sidekickInstructions(next);
+  return previous == null ? null : SIDEKICK_OFF_INSTRUCTIONS;
+}
+
+/** Prepended to a brief that runs on the thread's sidekick. Instructions, not a permission boundary. */
+export const SIDEKICK_CHILD_PREAMBLE = `You are the sidekick on this task: a lead agent wrote this brief and will review your work.
+- Stay in the brief's scope. If the brief is wrong or unsafe, say so in your report instead of working around it.
+- Do not commit, and do not delegate the work further.
+- End every turn with a report in this shape:
+  Status: done | blocked | needs_decision
+  Changed: what you changed, by file
+  Commands: what you ran and the result
+  Open issues: anything left or uncertain
+  Workspace: the checkout path, when you work in a separate worktree`;
 
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
 
@@ -72,11 +145,13 @@ Investigate with read-only actions and do not edit files or otherwise execute th
 export interface T3AcpInstructionState {
   readonly interactionMode: ProviderInteractionMode;
   readonly hasT3Mcp: boolean;
+  readonly sidekick?: T3SidekickLeadState | null;
 }
 
 /**
  * ACP has no system/developer prompt field, so send T3-owned context in the
- * first user prompt and whenever the available tools or interaction mode change.
+ * first user prompt and whenever the available tools, interaction mode, or
+ * sidekick change.
  */
 export function t3AcpPromptWithInstructions(input: {
   readonly prompt: string;
@@ -85,38 +160,82 @@ export function t3AcpPromptWithInstructions(input: {
 }): string {
   // Native slash commands must remain at the start of the prompt.
   if (input.prompt.trimStart().startsWith("/")) return input.prompt;
-  if (
+  // The playbook drives T3 tools, so it only counts while they are available.
+  const sidekickOf = (state: T3AcpInstructionState) =>
+    state.hasT3Mcp ? (state.sidekick ?? null) : null;
+  const sidekickUpdate = sidekickInstructionUpdate(
+    input.previousState === undefined ? undefined : sidekickOf(input.previousState),
+    sidekickOf(input.state),
+  );
+  const baseUnchanged =
     input.previousState?.interactionMode === input.state.interactionMode &&
-    input.previousState.hasT3Mcp === input.state.hasT3Mcp
-  ) {
-    return input.prompt;
-  }
+    input.previousState.hasT3Mcp === input.state.hasT3Mcp;
+  if (baseUnchanged && sidekickUpdate === null) return input.prompt;
   const instructions = [
-    input.state.interactionMode === "plan"
-      ? T3_CODE_ACP_PLAN_MODE_INSTRUCTIONS
-      : T3_CODE_ACP_DEFAULT_MODE_INSTRUCTIONS,
-    ...(input.state.hasT3Mcp
-      ? [T3_CODE_BROWSER_TOOL_INSTRUCTIONS.trim(), T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim()]
-      : []),
+    ...(baseUnchanged
+      ? []
+      : [
+          input.state.interactionMode === "plan"
+            ? T3_CODE_ACP_PLAN_MODE_INSTRUCTIONS
+            : T3_CODE_ACP_DEFAULT_MODE_INSTRUCTIONS,
+          ...(input.state.hasT3Mcp
+            ? [T3_CODE_BROWSER_TOOL_INSTRUCTIONS.trim(), T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim()]
+            : []),
+        ]),
+    ...(sidekickUpdate === null ? [] : [sidekickUpdate]),
   ];
   return `<t3_code_instructions>\n${instructions.join("\n\n")}\n</t3_code_instructions>\n\n<user_request>\n${input.prompt}\n</user_request>`;
 }
 
-/**
- * Keep the wrapper explicit so it cannot be mistaken for text authored by the user.
- */
-function prependT3OrchestrationInstructions(prompt: string): string {
-  return `<t3_code_orchestration_instructions>${T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim()}</t3_code_orchestration_instructions>\n\n<user_request>\n${prompt}\n</user_request>`;
+/** What a provider without a system prompt field last sent into one native session. */
+export interface T3PromptInstructionState {
+  readonly hasT3Mcp: boolean;
+  readonly sidekick: T3SidekickLeadState | null;
 }
 
-export function t3OrchestrationPromptForFirstRun(input: {
+/**
+ * For providers whose only channel is the user prompt: the wrapped block to
+ * send, or null when the native session already has it. Orchestration goes on
+ * the first prompt of each native session (or once T3 tools appear), and the
+ * sidekick playbook whenever it changes. Undefined `previousState` means a
+ * fresh native context.
+ */
+export function t3OrchestrationInstructionUpdate(
+  state: T3PromptInstructionState,
+  previousState: T3PromptInstructionState | undefined,
+): string | null {
+  // The playbook drives T3 tools, so it only counts while they are available.
+  const sidekickOf = (value: T3PromptInstructionState) => (value.hasT3Mcp ? value.sidekick : null);
+  const sidekickUpdate = sidekickInstructionUpdate(
+    previousState === undefined ? undefined : sidekickOf(previousState),
+    sidekickOf(state),
+  );
+  const instructions = [
+    ...(state.hasT3Mcp && previousState?.hasT3Mcp !== true
+      ? [T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim()]
+      : []),
+    ...(sidekickUpdate === null ? [] : [sidekickUpdate]),
+  ];
+  if (instructions.length === 0) return null;
+  // The explicit wrapper keeps T3 context from reading as text the user wrote.
+  return `<t3_code_orchestration_instructions>\n${instructions.join("\n\n")}\n</t3_code_orchestration_instructions>`;
+}
+
+/**
+ * Prepends `t3OrchestrationInstructionUpdate` to a user prompt. Callers record
+ * `state` only when the returned text differs from `prompt`.
+ */
+export function t3PromptWithOrchestrationInstructions(input: {
   readonly prompt: string;
-  readonly runOrdinal: number;
-  readonly hasT3Mcp: boolean;
+  readonly state: T3PromptInstructionState;
+  readonly previousState: T3PromptInstructionState | undefined;
 }): string {
-  return input.runOrdinal === 1 && input.hasT3Mcp
-    ? prependT3OrchestrationInstructions(input.prompt)
-    : input.prompt;
+  // Native slash commands must remain at the start of the prompt.
+  if (input.prompt.trimStart().startsWith("/")) return input.prompt;
+  const update = t3OrchestrationInstructionUpdate(input.state, input.previousState);
+  return update === null
+    ? input.prompt
+    : `${update}\n\n<user_request>\n${input.prompt}\n</user_request>`;
 }
 
 export function t3OrchestrationSystemPrompt(hasT3Mcp: boolean): string | undefined {

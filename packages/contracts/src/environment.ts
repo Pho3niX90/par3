@@ -154,6 +154,9 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       "server"`) and streams them over `/api/preview-stream`. Clients
       without a local browser runtime open server tabs here. */
   serverBrowser: Schema.optionalKey(Schema.Boolean),
+  /** Server accepts `thread.sidekick.set` and routes delegations to the thread's sidekick.
+      Older servers drop the field, so clients hide sidekick controls without it. */
+  threadSidekick: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

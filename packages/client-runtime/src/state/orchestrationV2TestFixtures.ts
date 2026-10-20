@@ -26,6 +26,7 @@ export const v2Project: OrchestrationProjectShell = {
 };
 
 export const v2ThreadShell: OrchestrationV2ThreadShell = {
+  sidekickModelSelection: null,
   id: v2ThreadId,
   projectId: v2ProjectId,
   title: "Thread",
@@ -60,6 +61,7 @@ export const v2ThreadShell: OrchestrationV2ThreadShell = {
 
 export const v2Projection: OrchestrationV2ThreadProjection = {
   thread: {
+    sidekickModelSelection: null,
     id: v2ThreadShell.id,
     projectId: v2ThreadShell.projectId,
     title: v2ThreadShell.title,

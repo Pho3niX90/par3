@@ -94,7 +94,7 @@ export function ThreadSubagentGroup(props: {
       completedAt: live?.completedAt ?? item.completedAt,
       result: live?.result ?? item.result,
       progress: live?.progress ?? item.progress,
-      model: live?.model ?? live?.modelSelection?.model ?? null,
+      model: live?.model ?? live?.modelSelection?.model ?? item.model ?? null,
     };
   });
   const grouped = agents.length > 1;

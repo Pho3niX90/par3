@@ -59,6 +59,8 @@ import {
   useComposerDraft,
 } from "../../state/use-composer-drafts";
 import { appAtomRegistry } from "../../state/atom-registry";
+import { threadEnvironment } from "../../state/threads";
+import { useAtomCommand } from "../../state/use-atom-command";
 import type { ComposerDocumentAttachment } from "../../lib/composerContext";
 import { useProject, useThreadShells } from "../../state/entities";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -361,6 +363,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   });
   const settingsRoutePresentation = useExistingThreadSettingsRoutePresentation();
   const settingsRoutePresentedRef = useRef(false);
+  const setThreadSidekick = useAtomCommand(threadEnvironment.setSidekick, "set sidekick");
+  const canSetSidekick = useAtomValue(
+    threadEnvironment.setSidekick.permissionAtom(props.environmentId),
+  );
   const wasExpandedBeforePreviewRef = useRef(false);
   const inFlightThreadIdsRef = useRef(new Set<string>());
   const { onExpandedChange } = props;
@@ -636,6 +642,16 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     },
     runtimeMode: currentRuntimeMode,
     onUpdateRuntimeMode: props.onUpdateRuntimeMode,
+    sidekick: canSetSidekick
+      ? {
+          selection: props.selectedThread.sidekickModelSelection ?? null,
+          onChange: (sidekickModelSelection) =>
+            void setThreadSidekick({
+              environmentId: props.environmentId,
+              input: { threadId: props.selectedThread.id, sidekickModelSelection },
+            }),
+        }
+      : undefined,
   } satisfies ExistingThreadSettingsRouteSession;
   const openSettings = () => {
     settingsRoutePresentation.present(settingsRouteSession);

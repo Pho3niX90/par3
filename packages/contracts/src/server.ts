@@ -214,6 +214,9 @@ export const ServerProviderUpdateState = Schema.Struct({
 });
 export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
+export const ProviderBillingModel = Schema.Literals(["per_token", "per_request"]);
+export type ProviderBillingModel = typeof ProviderBillingModel.Type;
+
 export const ServerProvider = Schema.Struct({
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.
@@ -232,6 +235,10 @@ export const ServerProvider = Schema.Struct({
   requiresNewThreadForModelChange: Schema.optional(Schema.Boolean),
   supportsConversationRollback: Schema.optional(Schema.Boolean),
   supportsTextGeneration: Schema.optional(Schema.Boolean),
+  /** Whether this provider can lead a thread with a sidekick. When absent, use `sidekickDriverTraits`. */
+  sidekickLead: Schema.optional(Schema.Boolean),
+  /** How the provider bills its models. When absent, use `sidekickDriverTraits`. */
+  billingModel: Schema.optional(ProviderBillingModel),
   setup: Schema.optional(
     Schema.Struct({
       canAuthenticate: Schema.Boolean,

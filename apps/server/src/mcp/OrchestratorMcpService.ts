@@ -6,6 +6,7 @@ import {
   type ModelSelection,
   NodeId,
   TurnItemId,
+  type OrchestrationV2AppThread,
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
@@ -52,15 +53,15 @@ import {
   type OrchestratorMcpThreadWaitResult,
   type ProviderInteractionMode,
   type ProviderInstanceId,
-  type ProviderOptionDescriptor,
-  type ProviderOptionSelection,
   ProviderRequestKind,
   type RuntimeMode,
   type ScheduledTask,
   type ScheduledTaskUpsertInput,
   type ServerProvider,
   ThreadId,
+  sameModelSelection,
 } from "@t3tools/contracts";
+import { SIDEKICK_CHILD_PREAMBLE } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import {
   normalizeThreadPullRequestKey,
@@ -95,7 +96,9 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { isSnoozed } from "../orchestration-v2/ThreadSettlementService.ts";
 import { userFacingDispatchErrorMessage } from "../orchestration-v2/UserFacingErrors.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import { invalidOptionSelections } from "../provider/providerOptionSelections.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import * as ThreadSidekick from "../orchestration-v2/ThreadSidekick.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
@@ -317,45 +320,6 @@ function providerConstraints(
     constraints.push("Provider is not authenticated.");
   }
   return constraints;
-}
-
-/**
- * Models without descriptors skip the descriptor checks (mirroring how model slugs are only
- * validated when the provider advertises models), but duplicate ids always fail: downstream
- * consumers disagree on whether the first or last value of a duplicated id wins.
- */
-function invalidOptionSelections(
-  selections: ReadonlyArray<ProviderOptionSelection>,
-  descriptors: ReadonlyArray<ProviderOptionDescriptor> | undefined,
-): ReadonlyArray<string> {
-  const problems: Array<string> = [];
-  const seen = new Set<string>();
-  for (const selection of selections) {
-    if (seen.has(selection.id)) {
-      problems.push(`Option ${selection.id} was specified more than once.`);
-      continue;
-    }
-    seen.add(selection.id);
-    if (descriptors === undefined) continue;
-    const descriptor = descriptors.find((candidate) => candidate.id === selection.id);
-    if (descriptor === undefined) {
-      const known = descriptors.map((candidate) => candidate.id).join(", ");
-      problems.push(`Unknown option ${selection.id}; supported options: ${known || "none"}.`);
-      continue;
-    }
-    if (descriptor.type === "boolean" && typeof selection.value !== "boolean") {
-      problems.push(`Option ${selection.id} expects a boolean value.`);
-      continue;
-    }
-    if (
-      descriptor.type === "select" &&
-      !descriptor.options.some((choice) => choice.id === selection.value)
-    ) {
-      const choices = descriptor.options.map((choice) => choice.id).join(", ");
-      problems.push(`Option ${selection.id} must be one of: ${choices}.`);
-    }
-  }
-  return problems;
 }
 
 function taskStatusForRun(
@@ -743,10 +707,27 @@ function threadTitle(input: {
   return detail.length > 80 ? `${detail.slice(0, 77)}...` : detail;
 }
 
-function taskPrompt(input: OrchestratorMcpDelegateTaskInput): string {
-  return input.role === undefined || input.role === "general"
-    ? input.task
-    : `Act as the ${input.role} sub-agent for this task.\n\n${input.task}`;
+function taskPrompt(input: OrchestratorMcpDelegateTaskInput, preamble?: string): string {
+  return [
+    ...(input.role === undefined || input.role === "general"
+      ? []
+      : [`Act as the ${input.role} sub-agent for this task.`]),
+    ...(preamble === undefined ? [] : [preamble]),
+    input.task,
+  ].join("\n\n");
+}
+
+function sidekickTarget(
+  thread: Pick<OrchestrationV2AppThread, "sidekickModelSelection">,
+): OrchestratorMcpTarget | undefined {
+  const sidekick = thread.sidekickModelSelection;
+  return sidekick == null
+    ? undefined
+    : {
+        providerInstanceId: sidekick.instanceId,
+        model: sidekick.model,
+        ...(sidekick.options === undefined ? {} : { options: sidekick.options }),
+      };
 }
 
 function threadSettlement(
@@ -785,6 +766,18 @@ function threadPullRequests(
   }));
 }
 
+function mcpSidekick(
+  selection: ModelSelection | null | undefined,
+): OrchestratorMcpThreadListItem["sidekick"] {
+  return selection == null
+    ? null
+    : {
+        providerInstanceId: selection.instanceId,
+        model: selection.model,
+        ...(selection.options === undefined ? {} : { options: selection.options }),
+      };
+}
+
 function listItemFromShell(
   shell: OrchestrationV2ThreadShell,
   nowMs: number,
@@ -802,6 +795,7 @@ function listItemFromShell(
     interactionMode: shell.interactionMode,
     linkedPullRequest: shell.linkedPullRequest ?? null,
     pullRequests: threadPullRequests(shell.pullRequests),
+    sidekick: mcpSidekick(shell.sidekickModelSelection),
     ...threadSettlement(shell),
     ...threadSnooze(shell, nowMs),
     parentThreadId: shell.lineage.parentThreadId,
@@ -835,6 +829,7 @@ function threadDetail(
     interactionMode: projection.thread.interactionMode,
     linkedPullRequest: projection.thread.linkedPullRequest ?? null,
     pullRequests: threadPullRequests(projection.thread.pullRequests),
+    sidekick: mcpSidekick(projection.thread.sidekickModelSelection),
     titleRegeneration:
       projection.thread.titleRegeneration === undefined ||
       projection.thread.titleRegeneration === null
@@ -988,6 +983,7 @@ const make = Effect.gen(function* () {
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const providerAdapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
+  const threadSidekick = yield* Effect.serviceOption(ThreadSidekick.ThreadSidekick);
   const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
   const projects = yield* ProjectService.ProjectService;
   const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
@@ -1670,6 +1666,134 @@ const make = Effect.gen(function* () {
       effect.pipe(Effect.timeoutOption(Duration.millis(timeoutMs)), Effect.map(Option.flatten)),
   );
 
+  /** Returns at once for async delegations; a blocking one waits for the task to end. */
+  const finishDelegation = Effect.fn("OrchestratorMcpService.finishDelegation")(function* (
+    scope: McpThreadInvocationScope,
+    key: string,
+    taskId: NodeId,
+    input: Pick<OrchestratorMcpDelegateTaskInput, "mode" | "timeoutMs">,
+  ) {
+    if (input.mode !== "wait") {
+      return yield* readTask(scope, taskId, false, true);
+    }
+    const timeoutMs = Math.min(
+      MAX_WAIT_TIMEOUT_MS,
+      Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
+    );
+    const waited = yield* waitForTask(scope, taskId, timeoutMs);
+    if (Option.isSome(waited) && isTerminalTaskStatus(waited.value.status)) {
+      return waited.value;
+    }
+    // An incomplete wait gives up delivery: upgrade so a later terminal
+    // wakes the parent even mid-turn.
+    yield* threadManagement
+      .dispatch({
+        type: "delegated_task.wake-policy",
+        commandId: stableCommandId({
+          scope,
+          requestKey: key,
+          operation: "delegate-task-wake-policy",
+        }),
+        parentThreadId: scope.thread.threadId,
+        taskId,
+        completionWake: "always",
+      })
+      .pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("orchestrator-mcp.delegate-task.wake-policy-failed", {
+            taskId,
+            outcome:
+              error._tag === "OrchestratorCommandPreviouslyRejectedError"
+                ? "previously_rejected"
+                : "dispatch_failed",
+            error,
+          }),
+        ),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("orchestrator-mcp.delegate-task.wake-policy-failed", {
+            taskId,
+            outcome: "defect",
+            cause,
+          }),
+        ),
+      );
+    return yield* readTask(scope, taskId, Option.isNone(waited), true);
+  });
+
+  const continueDelegatedTask = Effect.fn("OrchestratorMcpService.continueDelegatedTask")(
+    function* (
+      scope: McpThreadInvocationScope,
+      parent: Pick<OrchestrationV2ThreadProjection, "thread" | "subagents">,
+      taskId: NodeId,
+      input: OrchestratorMcpDelegateTaskInput,
+    ) {
+      if (input.target !== undefined || input.isolation !== undefined) {
+        return yield* failure(
+          "invalid_request",
+          "continueTaskId keeps the child's model and checkout, so target and isolation are not allowed. Start a fresh delegate_task to use another model or checkout.",
+        );
+      }
+      const current = yield* readTask(scope, taskId);
+      const key = yield* requestKey(input.clientRequestId);
+      const commandId = stableCommandId({
+        scope,
+        requestKey: key,
+        operation: "delegate-task-continue",
+      });
+      const accepted = yield* threadManagement.hasReceipt(commandId);
+      // A follow-up sent while the child still works would join its turn and
+      // get no task of its own, so nothing would report back.
+      if (
+        !accepted &&
+        (current.workState !== "result_available" ||
+          current.hasPendingChildRuns ||
+          parent.subagents.find((task) => task.id === taskId)?.result == null)
+      ) {
+        return yield* failure(
+          "task_still_running",
+          `Task ${taskId} has not finished. Wait for its result (its completion wakes you, or check task_status), or steer it with t3_thread_send on childThreadId ${current.childThreadId}.`,
+        );
+      }
+      const sent = yield* threadManagement
+        .sendToThread({
+          projectId: parent.thread.projectId,
+          commandId,
+          threadId: current.childThreadId,
+          senderThreadId: scope.thread.threadId,
+          messageId: stableOperationMessageId({
+            scope,
+            requestKey: key,
+            operation: "delegate-task-continue",
+          }),
+          text: taskPrompt(input),
+          attachments: [],
+          // Queueing never steers a run the user may have started in the child.
+          mode: "queue",
+          createdBy: "agent",
+          creationSource: "mcp",
+          // A blocking follow-up delivers through this call, like a fresh wait delegation.
+          followupCompletionWake: input.mode === "wait" ? "settled_only" : "always",
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            isThreadManagementError(error)
+              ? threadManagementFailure(error)
+              : failure(
+                  "orchestration_error",
+                  `Unable to continue task ${taskId}: ${userFacingDispatchErrorMessage(error) ?? errorMessage(error)}`,
+                ),
+          ),
+        );
+      if (sent.run.delegatedTaskId === undefined) {
+        return yield* failure(
+          "orchestration_error",
+          `The follow-up to task ${taskId} was queued behind other work in its child, so it is not tracked as a task. Read childThreadId ${current.childThreadId} for its result.`,
+        );
+      }
+      return yield* finishDelegation(scope, key, sent.run.delegatedTaskId, input);
+    },
+  );
+
   const scheduledTaskRunModes = Effect.fn("OrchestratorMcpService.scheduledTaskRunModes")(
     function* (task: ScheduledTask) {
       const modes = [{ runtimeMode: task.runtimeMode, interactionMode: task.interactionMode }];
@@ -2030,6 +2154,13 @@ const make = Effect.gen(function* () {
       const providers = yield* loadProviders;
       const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
       const modelPreferences = yield* loadModelPreferences;
+      const sidekick =
+        parent === undefined || Option.isNone(threadSidekick)
+          ? null
+          : yield* threadSidekick.value.status(parent.thread);
+      // Mirrors delegateTask, which routes on the stored selection whatever its status.
+      const storedSidekick = parent?.thread.sidekickModelSelection ?? null;
+      const defaultSelection = storedSidekick ?? parent?.thread.modelSelection;
       return {
         parentThreadId: parent?.thread.id ?? null,
         inheritedProviderInstanceId: parent?.thread.modelSelection.instanceId ?? null,
@@ -2037,6 +2168,32 @@ const make = Effect.gen(function* () {
         inheritedOptions: parent?.thread.modelSelection.options ?? [],
         runtimeMode: limits.runtimeMode,
         interactionMode: limits.interactionMode,
+        sidekick:
+          sidekick === null
+            ? null
+            : {
+                providerInstanceId: sidekick.selection.instanceId,
+                model: sidekick.selection.model,
+                ...(sidekick.selection.options === undefined
+                  ? {}
+                  : { options: sidekick.selection.options }),
+                label: sidekick.label,
+                billingModel: sidekick.billingModel,
+                active: sidekick.inactiveReason === null,
+                inactiveReason: sidekick.inactiveReason,
+              },
+        ...(defaultSelection === undefined
+          ? {}
+          : {
+              defaultDelegationSelection: {
+                providerInstanceId: defaultSelection.instanceId,
+                model: defaultSelection.model,
+                ...(defaultSelection.options === undefined
+                  ? {}
+                  : { options: defaultSelection.options }),
+                source: storedSidekick === null ? ("lead" as const) : ("sidekick" as const),
+              },
+            }),
         providers: providers.map((provider) => {
           const constraints = providerConstraints(
             provider,
@@ -2081,6 +2238,9 @@ const make = Effect.gen(function* () {
     }),
     delegateTask: Effect.fn("OrchestratorMcpService.delegateTask")(function* (callerScope, input) {
       const { scope, parent } = yield* loadThreadCaller(callerScope, "delegate_task");
+      if (input.continueTaskId !== undefined) {
+        return yield* continueDelegatedTask(scope, parent, input.continueTaskId, input);
+      }
       const parentRun = parent.runs
         .filter(ThreadManagementService.isActiveRun)
         .toSorted((left, right) => right.ordinal - left.ordinal)[0];
@@ -2102,12 +2262,27 @@ const make = Effect.gen(function* () {
         operation: "delegate-task",
       });
       const isRetryOfAcceptedDelegation = yield* threadManagement.hasReceipt(commandId);
+      // Only an omitted target means the sidekick; {} or a partial target
+      // still inherits from this thread.
+      const defaultTarget = input.target === undefined ? sidekickTarget(parent.thread) : undefined;
       const target = yield* resolveTargetRechecking({
         parent,
-        target: input.target,
+        target: input.target ?? defaultTarget,
         providers,
         skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
-      });
+      }).pipe(
+        Effect.mapError((error) =>
+          defaultTarget === undefined
+            ? error
+            : failure(
+                error.code,
+                `This thread's sidekick (${defaultTarget.model} on ${defaultTarget.providerInstanceId}) cannot run this task: ${error.message} Change or clear the sidekick in the composer, or with t3_thread_configure, or pass an explicit target.`,
+              ),
+        ),
+      );
+      const runsOnSidekick =
+        parent.thread.sidekickModelSelection != null &&
+        sameModelSelection(target.modelSelection, parent.thread.sidekickModelSelection);
       const runtimeMode = yield* resolveRuntimeMode(
         parent.thread.runtimeMode,
         input.runtimeMode,
@@ -2160,6 +2335,7 @@ const make = Effect.gen(function* () {
           parentRunId: parentRun.id,
           parentNodeId: parentRun.rootNodeId,
           task: taskPrompt(input),
+          ...(runsOnSidekick ? { messageText: taskPrompt(input, SIDEKICK_CHILD_PREAMBLE) } : {}),
           ...(input.title === undefined ? {} : { title: input.title }),
           modelSelection: target.modelSelection,
           runtimeMode,
@@ -2207,51 +2383,7 @@ const make = Effect.gen(function* () {
         });
       }
 
-      if (input.mode !== "wait") {
-        return yield* readTask(scope, taskId, false, true);
-      }
-      const timeoutMs = Math.min(
-        MAX_WAIT_TIMEOUT_MS,
-        Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
-      );
-      const waited = yield* waitForTask(scope, taskId, timeoutMs);
-      if (Option.isSome(waited) && isTerminalTaskStatus(waited.value.status)) {
-        return waited.value;
-      }
-      // An incomplete wait gives up delivery: upgrade so a later terminal
-      // wakes the parent even mid-turn.
-      yield* threadManagement
-        .dispatch({
-          type: "delegated_task.wake-policy",
-          commandId: stableCommandId({
-            scope,
-            requestKey: key,
-            operation: "delegate-task-wake-policy",
-          }),
-          parentThreadId: scope.thread.threadId,
-          taskId,
-          completionWake: "always",
-        })
-        .pipe(
-          Effect.catch((error) =>
-            Effect.logWarning("orchestrator-mcp.delegate-task.wake-policy-failed", {
-              taskId,
-              outcome:
-                error._tag === "OrchestratorCommandPreviouslyRejectedError"
-                  ? "previously_rejected"
-                  : "dispatch_failed",
-              error,
-            }),
-          ),
-          Effect.catchCause((cause) =>
-            Effect.logWarning("orchestrator-mcp.delegate-task.wake-policy-failed", {
-              taskId,
-              outcome: "defect",
-              cause,
-            }),
-          ),
-        );
-      return yield* readTask(scope, taskId, Option.isNone(waited), true);
+      return yield* finishDelegation(scope, key, taskId, input);
     }),
     taskStatus: Effect.fn("OrchestratorMcpService.taskStatus")(function* (callerScope, taskId) {
       const scope = yield* requireThreadScope(callerScope, "task_status");

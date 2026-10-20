@@ -54,7 +54,10 @@ import {
   rewriteCursorSkillMentions,
 } from "./skills.ts";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { t3OrchestrationPromptForFirstRun } from "@t3tools/provider-core/server/orchestrationInstructions";
+import {
+  t3PromptWithOrchestrationInstructions,
+  type T3PromptInstructionState,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
@@ -918,6 +921,8 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         const liveAgent = yield* Ref.make<CursorLiveAgent | null>(null);
         const warnedUnsupportedSandbox = yield* Ref.make(false);
         const activeTurn = yield* Ref.make<ActiveCursorTurn | null>(null);
+        // Keyed by Cursor agent id: each native agent needs its own copy of T3 instructions.
+        const instructionStates = yield* Ref.make(new Map<string, T3PromptInstructionState>());
         const planIds = yield* Ref.make(new Map<string, OrchestrationV2PlanArtifact["id"]>());
 
         const emitProviderEvent = (event: ProviderAdapter.ProviderAdapterV2Event) =>
@@ -2173,10 +2178,11 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         const resolveUserMessage = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           mcpServers: Record<string, McpServerConfig> | undefined,
+          agentId: string,
         ) {
           const rawText = turnInput.message.text;
           if (rawText.trim() === "/compress" && turnInput.message.attachments.length === 0) {
-            return "/compress";
+            return { message: "/compress", compacts: true, instructionState: undefined } as const;
           }
           if (hasCursorSkillMention(rawText) && cursorSkillNames === undefined) {
             const skills = yield* discoverCursorSkills(
@@ -2192,17 +2198,22 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 .map((skill) => skill.name),
             );
           }
-          const userText = t3OrchestrationPromptForFirstRun({
-            prompt: providerMessageTextWithAttachmentPaths({
-              text:
-                cursorSkillNames === undefined
-                  ? rawText
-                  : rewriteCursorSkillMentions(rawText, cursorSkillNames),
-              attachments: turnInput.message.attachments,
-              resolveAttachmentPath: host.resolveAttachmentPath,
-            }),
-            runOrdinal: turnInput.runOrdinal,
+          const plainText = providerMessageTextWithAttachmentPaths({
+            text:
+              cursorSkillNames === undefined
+                ? rawText
+                : rewriteCursorSkillMentions(rawText, cursorSkillNames),
+            attachments: turnInput.message.attachments,
+            resolveAttachmentPath: host.resolveAttachmentPath,
+          });
+          const instructionState = {
             hasT3Mcp: mcpServers !== undefined,
+            sidekick: turnInput.sidekick ?? null,
+          } satisfies T3PromptInstructionState;
+          const userText = t3PromptWithOrchestrationInstructions({
+            prompt: plainText,
+            state: instructionState,
+            previousState: (yield* Ref.get(instructionStates)).get(agentId),
           });
           const images = yield* Effect.forEach(
             turnInput.message.attachments.filter(isProviderNativeImageAttachment),
@@ -2233,19 +2244,18 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               }),
             { concurrency: 1 },
           );
-          if (userText.length === 0 && images.length === 0) {
+          if (plainText.length === 0 && images.length === 0) {
             return yield* new ProviderAdapter.ProviderAdapterProtocolError({
               driver: CursorAgentSdk.CURSOR_PROVIDER,
               detail: "Cursor turn requires non-empty text or attachments.",
             });
           }
           const text = `${userText}\n\n${buildRuntimeInstructions({ harness: "Cursor", model: turnInput.modelSelection.model })}`;
-          return images.length === 0
-            ? text
-            : ({
-                text,
-                images,
-              } satisfies SDKUserMessage);
+          return {
+            message: images.length === 0 ? text : ({ text, images } satisfies SDKUserMessage),
+            compacts: false,
+            instructionState: userText === plainText ? undefined : instructionState,
+          };
         });
 
         const startTurn = Effect.fn("CursorAdapterV2.startTurn")(
@@ -2267,13 +2277,13 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               runtimePolicy: turnInput.runtimePolicy,
             });
             const mcpServers = cursorMcpServers(yield* mcpSessions.read(turnInput.threadId));
-            const message = yield* resolveUserMessage(turnInput, mcpServers);
+            const resolved = yield* resolveUserMessage(turnInput, mcpServers, agent.nativeThreadId);
             const pendingUpdates: Array<InteractionUpdate> = [];
             let context: ActiveCursorTurn | null = null;
             // MCP send overrides replace the ambient servers loaded when the agent opens.
             const sdkRun = yield* agent.session
               .send({
-                message,
+                message: resolved.message,
                 options: {
                   model: cursorSdkModelSelection(turnInput.modelSelection),
                   mode: turnInput.runtimePolicy.interactionMode === "plan" ? "plan" : "agent",
@@ -2288,6 +2298,16 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 },
               })
               .pipe(Effect.mapError(classifyCursorModelRejection(turnInput.modelSelection)));
+            const sentInstructionState = resolved.instructionState;
+            if (resolved.compacts || sentInstructionState !== undefined) {
+              yield* Ref.update(instructionStates, (current) => {
+                const updated = new Map(current);
+                // A compressed context may have dropped the instructions, so resend them.
+                if (sentInstructionState === undefined) updated.delete(agent.nativeThreadId);
+                else updated.set(agent.nativeThreadId, sentInstructionState);
+                return updated;
+              });
+            }
             const startedAt = yield* DateTime.now;
             const completed = yield* Deferred.make<void, never>();
             const providerTurnId = idAllocator.derive.providerTurn({

@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { OpencodeClient, ToolPart } from "@opencode-ai/sdk/v2";
 import {
   CheckpointId,
+  EnvironmentId,
   NodeId,
   ProjectId,
   ProviderInstanceId,
@@ -37,6 +38,7 @@ import type * as ProviderEventLoggers from "@t3tools/provider-core/server/Provid
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import type { T3SidekickLeadState } from "@t3tools/provider-core/server/orchestrationInstructions";
 
 import {
   advanceOpenCodePromptAdmission,
@@ -148,6 +150,7 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
   suffix: string,
   nativeSessionId: string,
   client: object,
+  harnessOptions: { readonly external?: boolean } = {},
 ) {
   const instanceId = ProviderInstanceId.make(`opencode-${suffix}`);
   const threadId = ThreadId.make(`thread-opencode-${suffix}`);
@@ -163,7 +166,12 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
     environment: {},
   }).pipe(
     Effect.provideService(OpenCodeRuntime.OpenCodeRuntime, {
-      connectToOpenCodeServer: () => Effect.succeed({ url: "http://test.invalid", external: true }),
+      connectToOpenCodeServer: () =>
+        Effect.succeed({
+          url: "http://test.invalid",
+          external: harnessOptions.external ?? true,
+          exitCode: null,
+        }),
       createOpenCodeSdkClient: () => client,
     } as unknown as OpenCodeRuntime.OpenCodeRuntime["Service"]),
     Effect.provideService(ProviderHost.ProviderHost, {
@@ -186,9 +194,12 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
   const startTurn = (
     text = "hello",
     startProviderThread: OrchestrationV2ProviderThread = providerThread,
+    sidekick: T3SidekickLeadState | null = null,
   ) =>
     runtime.startTurn({
+      sidekick,
       appThread: {
+        sidekickModelSelection: null,
         id: threadId,
         projectId: ProjectId.make(`project-opencode-${suffix}`),
         title: suffix,
@@ -1411,6 +1422,58 @@ describe("OpenCodeAdapterV2", () => {
     ),
   );
 
+  it.effect.each([
+    { name: "on", sidekick: true, external: false, expected: true },
+    { name: "off", sidekick: false, external: false, expected: false },
+    { name: "on-without-t3-tools", sidekick: true, external: true, expected: false },
+  ])("puts the sidekick playbook in the turn's system prompt: $name", (input) =>
+    Effect.gen(function* () {
+      const suffix = `sidekick-${input.name}`;
+      yield* (yield* McpProviderSessions.McpProviderSessions).set({
+        environmentId: EnvironmentId.make(`environment-opencode-${suffix}`),
+        threadId: ThreadId.make(`thread-opencode-${suffix}`),
+        providerSessionId: `mcp-session-opencode-${suffix}`,
+        providerInstanceId: ProviderInstanceId.make(`opencode-${suffix}`),
+        endpoint: "http://127.0.0.1:43123/mcp",
+        authorizationHeader: "Bearer synthetic-opencode-token",
+        browserToolsAvailable: true,
+      });
+      const systems: Array<string | undefined> = [];
+      const harness = yield* makeOpenCodeRuntimeHarness(
+        suffix,
+        `native-opencode-${suffix}`,
+        {
+          event: { subscribe: async () => ({ stream: asyncEventStream().stream }) },
+          mcp: { add: async () => ({ data: {} }) },
+          session: {
+            create: async () => ({
+              data: { id: `native-opencode-${suffix}`, time: { created: 1, updated: 1 } },
+            }),
+            promptAsync: async (prompt: { system?: string }) => {
+              systems.push(prompt.system);
+              return { data: true };
+            },
+          },
+        },
+        { external: input.external },
+      );
+      yield* harness.startTurn(
+        "hello",
+        harness.providerThread,
+        input.sidekick ? { label: "Luna · Codex", billingModel: "per_token" } : null,
+      );
+      assert.equal(systems.length, 1);
+      assert.equal(systems[0]?.includes("Par3 orchestration"), !input.external);
+      assert.equal(
+        systems[0]?.includes("This thread has a sidekick: Luna · Codex.") ?? false,
+        input.expected,
+      );
+    }).pipe(
+      Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
+      Effect.scoped,
+    ),
+  );
+
   it.effect("compacts with the native summarize API and emits a completed compaction", () =>
     Effect.gen(function* () {
       const nativeEvents = asyncEventStream();
@@ -1705,6 +1768,7 @@ describe("OpenCodeAdapterV2", () => {
       const start = yield* runtime
         .startTurn({
           appThread: {
+            sidekickModelSelection: null,
             id: threadId,
             projectId: ProjectId.make("project-opencode-admission-race"),
             title: "race",
@@ -2005,6 +2069,7 @@ describe("OpenCodeAdapterV2", () => {
       const start = yield* runtime
         .startTurn({
           appThread: {
+            sidekickModelSelection: null,
             id: threadId,
             projectId: ProjectId.make("project-opencode-initial-stop"),
             title: "initial stop",

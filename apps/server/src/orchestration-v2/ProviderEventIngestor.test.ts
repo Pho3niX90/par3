@@ -138,6 +138,7 @@ function threadCreatedEvent(
       nativeThreadId: "native-thread",
     });
     const thread: OrchestrationV2AppThread = {
+      sidekickModelSelection: null,
       createdBy: "user",
       creationSource: "web",
       id: threadId,

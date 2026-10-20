@@ -28,6 +28,7 @@ export function threadCreated(provider: ProviderDriverKind): OrchestrationV2Doma
     threadId: THREAD_ID,
     occurredAt: now,
     payload: {
+      sidekickModelSelection: null,
       id: THREAD_ID,
       projectId: ProjectId.make("transfer-project"),
       title: "Transfer budget",

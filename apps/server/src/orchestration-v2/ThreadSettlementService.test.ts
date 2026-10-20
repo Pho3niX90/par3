@@ -53,6 +53,7 @@ type SettlementShell = OrchestrationV2ThreadShell &
 
 function shell(overrides: Partial<SettlementShell> = {}): SettlementShell {
   return {
+    sidekickModelSelection: null,
     id: ThreadId.make("thread-1"),
     projectId: ProjectId.make("project-1"),
     title: "Thread",
@@ -1188,6 +1189,7 @@ describe("ThreadSettlementServiceV2 terminals", () => {
   ): OrchestrationV2AppThread => {
     const threadId = ThreadId.make(id);
     return {
+      sidekickModelSelection: null,
       createdBy: "user",
       creationSource: "web",
       id: threadId,

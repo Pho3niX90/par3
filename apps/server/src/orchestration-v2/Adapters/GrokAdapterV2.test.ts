@@ -495,6 +495,7 @@ describe("Grok launch permission mode", () => {
         const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
         return yield* runtimePolicy.resolve({
           thread: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: threadId,
@@ -736,6 +737,7 @@ describe("Grok native questions", () => {
       const now = yield* DateTime.now;
       yield* runtime.startTurn({
         appThread: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,

@@ -2,7 +2,7 @@ import { SheetHeader } from "../../components/ui/SheetHeader";
 import { Toolbar } from "../../components/ui/Toolbar";
 import * as Dialog from "../../components/ui/Dialog";
 import { createV5StackNavigator as createNativeStackNavigator } from "../../native/createV5StackNavigator";
-import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
+import { DEFAULT_SERVER_SETTINGS, resolveProjectProviderInstanceEnabled } from "@t3tools/contracts";
 import {
   modelPreferencesMigrationPatch,
   resolveModelPreferences,
@@ -97,6 +97,12 @@ import {
   providerSectionIsCollapsed,
 } from "./thread-settings-sheet-state";
 import { formatProviderUpdateRequiredNotice } from "@t3tools/client-runtime/providerUpdateRequiredModels";
+import {
+  resolveSidekickRow,
+  sidekickPickerGroups,
+  type SidekickPickerGroup,
+  type SidekickRowPresentation,
+} from "./thread-sidekick-presentation";
 
 const PRIMARY_PROVIDER_DRIVERS: ReadonlySet<string> = new Set([
   "claudeAgent",
@@ -238,7 +244,8 @@ function SwitchRow(props: {
 
 type ThreadSettingsSubmenuPage =
   | { readonly kind: "descriptor"; readonly id: string }
-  | { readonly kind: "runtime" };
+  | { readonly kind: "runtime" }
+  | { readonly kind: "sidekick" };
 
 type ThreadSettingsSessionProps = {
   readonly environmentId: EnvironmentId | null;
@@ -254,6 +261,11 @@ type ThreadSettingsSessionProps = {
   readonly onUpdateOptionSelections: (selections: ReadonlyArray<ProviderOptionSelection>) => void;
   readonly runtimeMode: RuntimeMode;
   readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
+  /** Present for created threads; the new-task draft has no sidekick yet. */
+  readonly sidekick?: {
+    readonly selection: ModelSelection | null;
+    readonly onChange: (selection: ModelSelection | null) => void;
+  };
 };
 
 export type ExistingThreadSettingsRouteSession = ThreadSettingsSessionProps & {
@@ -310,6 +322,13 @@ type ThreadSettingsSessionValue = {
   readonly runtimeMode: RuntimeMode;
   readonly runtimeModeChoices: ReturnType<typeof runtimeModeChoicesForSupportedModes>;
   readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
+  readonly sidekick: {
+    readonly row: SidekickRowPresentation;
+    readonly groups: ReadonlyArray<SidekickPickerGroup>;
+    readonly selection: ModelSelection | null;
+    readonly descriptors: ReadonlyArray<ProviderOptionDescriptor>;
+    readonly onChange: (selection: ModelSelection | null) => void;
+  } | null;
   readonly displayedDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   readonly displayedModelSelection: ModelSelection | null;
   readonly reportedModelSelection: ModelSelection | null;
@@ -518,6 +537,37 @@ function ThreadSettingsSessionProvider(
     runtimeModeChoices,
   );
 
+  const sidekickLead = pendingModel?.selection ?? props.selectedModel;
+  const sidekick = (() => {
+    if (!props.sidekick || !config || !sidekickLead) return null;
+    const sidekickInput = {
+      providers: config.providers,
+      lead: sidekickLead,
+      isInstanceEnabled: (instanceId: ProviderInstanceId) =>
+        resolveProjectProviderInstanceEnabled(config.settings, props.projectId, instanceId),
+    };
+    const row = resolveSidekickRow({
+      ...sidekickInput,
+      supported: config.environment.capabilities.threadSidekick === true,
+      sidekick: props.sidekick.selection,
+    });
+    return row
+      ? {
+          row,
+          groups: sidekickPickerGroups(sidekickInput),
+          selection: props.sidekick.selection,
+          descriptors: resolveProviderOptionDescriptors({
+            capabilities: config.providers
+              .find((provider) => provider.instanceId === props.sidekick?.selection?.instanceId)
+              ?.models.find((model) => model.slug === props.sidekick?.selection?.model)
+              ?.capabilities,
+            selections: props.sidekick.selection?.options,
+          }),
+          onChange: props.sidekick.onChange,
+        }
+      : null;
+  })();
+
   const hasLegacyModels = props.providerGroups.some((group) =>
     group.models.some((model) => model.isLegacy),
   );
@@ -585,6 +635,7 @@ function ThreadSettingsSessionProvider(
     runtimeMode: compatibleRuntimeMode,
     runtimeModeChoices,
     onUpdateRuntimeMode: props.onUpdateRuntimeMode,
+    sidekick,
     displayedDescriptors,
     displayedModelSelection: pendingModel?.selection ?? props.selectedModel,
     reportedModelSelection: pendingModel ? null : (props.reportedModelSelection ?? null),
@@ -857,6 +908,15 @@ function ThreadSettingsOptionsItem(props: {
             </Animated.View>
           );
         })}
+        {session.sidekick ? (
+          <Animated.View layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}>
+            <DisclosureRow
+              label="Sidekick"
+              value={session.sidekick.row.value}
+              onPress={() => props.onOpenSubmenu({ kind: "sidekick" })}
+            />
+          </Animated.View>
+        ) : null}
         <Animated.View layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}>
           <DisclosureRow
             isLast
@@ -869,6 +929,11 @@ function ThreadSettingsOptionsItem(props: {
           />
         </Animated.View>
       </Animated.View>
+      {session.sidekick?.row.problem ? (
+        <Text className="px-5 pt-2 text-xs text-foreground-muted">
+          Sidekick not in use: {session.sidekick.row.problem}
+        </Text>
+      ) : null}
 
       <Text className="px-5 pb-2 pt-7 text-sm font-t3-medium text-foreground-muted">Catalog</Text>
       <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">
@@ -1048,6 +1113,9 @@ function ThreadSettingsChoiceContent(props: {
   const insets = useSafeAreaInsets();
   const session = useThreadSettingsSession();
   const descriptorId = props.submenu.kind === "descriptor" ? props.submenu.id : null;
+  if (props.submenu.kind === "sidekick") {
+    return <ThreadSettingsSidekickContent onSelected={props.onSelected} />;
+  }
 
   const activeDescriptor =
     descriptorId !== null
@@ -1125,6 +1193,141 @@ function ThreadSettingsChoiceContent(props: {
           />
         ))}
       </View>
+    </ScrollView>
+  );
+}
+
+function ThreadSettingsSidekickContent(props: { readonly onSelected: () => void }) {
+  const insets = useSafeAreaInsets();
+  const sidekick = useThreadSettingsSession().sidekick;
+  if (!sidekick) {
+    return <View className="flex-1 bg-sheet" />;
+  }
+  const choose = (selection: ModelSelection | null) => {
+    void Haptics.selectionAsync();
+    sidekick.onChange(selection);
+    props.onSelected();
+  };
+  const current = sidekick.selection;
+  const currentIsListed =
+    current === null ||
+    sidekick.groups.some((group) =>
+      group.models.some(
+        (model) =>
+          model.selection.instanceId === current.instanceId &&
+          model.selection.model === current.model,
+      ),
+    );
+
+  return (
+    <ScrollView
+      className="flex-1 bg-sheet"
+      style={
+        Platform.OS === "android"
+          ? { width: "100%", maxWidth: 720, alignSelf: "center" }
+          : undefined
+      }
+      contentContainerStyle={{ paddingBottom: insets.bottom + 12, paddingTop: 16 }}
+      contentInsetAdjustmentBehavior="automatic"
+      showsVerticalScrollIndicator={false}
+    >
+      <Text className="px-5 pb-3 text-sm text-foreground-muted">
+        The lead hands routine work to this cheaper model by default. Changes apply to future
+        delegations.
+      </Text>
+      {current &&
+        sidekick.descriptors.map((descriptor) => (
+          <View key={descriptor.id}>
+            <Text className="px-5 pb-2 pt-2 text-sm font-t3-medium text-foreground-muted">
+              {descriptor.label}
+            </Text>
+            <View className="mx-4 mb-3 overflow-hidden rounded-2xl bg-grouped-card">
+              {descriptor.type === "boolean" ? (
+                <SwitchRow
+                  label={descriptor.label}
+                  value={descriptor.currentValue ?? false}
+                  onValueChange={(value) =>
+                    sidekick.onChange({
+                      ...current,
+                      options:
+                        applyProviderOptionSelection(sidekick.descriptors, {
+                          id: descriptor.id,
+                          value,
+                        }) ?? [],
+                    })
+                  }
+                />
+              ) : (
+                selectableChoices(descriptor).map((option, index, options) => (
+                  <ChoiceRow
+                    key={option.id}
+                    label={option.label}
+                    selected={option.id === getProviderOptionCurrentValue(descriptor, current)}
+                    isLast={index === options.length - 1}
+                    onPress={() =>
+                      sidekick.onChange({
+                        ...current,
+                        options:
+                          applyProviderOptionSelection(sidekick.descriptors, {
+                            id: descriptor.id,
+                            value: option.id,
+                          }) ?? [],
+                      })
+                    }
+                  />
+                ))
+              )}
+            </View>
+          </View>
+        ))}
+      <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">
+        {/* A selection the picker no longer offers stays visible so its reason shows and None clears it. */}
+        {current !== null && !currentIsListed ? (
+          <ChoiceRow
+            description={sidekick.row.problem ?? undefined}
+            isLast={false}
+            label={sidekick.row.value}
+            selected
+            onPress={props.onSelected}
+          />
+        ) : null}
+        <ChoiceRow
+          description="Delegations use the lead's model."
+          isLast
+          label="None"
+          selected={current === null}
+          onPress={() => choose(null)}
+        />
+      </View>
+      {sidekick.groups.map((group) => (
+        <View key={group.instanceId} className="pt-4">
+          <View
+            accessibilityRole="header"
+            className="mx-4 min-h-9 flex-row items-center gap-2 px-1 pt-1"
+          >
+            <ProviderIcon iconUrl={group.iconUrl} provider={group.driver} size={15} />
+            <Text className="text-sm font-t3-medium text-foreground-muted">{group.label}</Text>
+          </View>
+          <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">
+            {group.models.map((model, index) => (
+              <ChoiceRow
+                key={model.key}
+                isLast={index === group.models.length - 1}
+                label={model.label}
+                selected={
+                  current !== null &&
+                  current.instanceId === model.selection.instanceId &&
+                  current.model === model.selection.model
+                }
+                onPress={() => choose(model.selection)}
+              />
+            ))}
+          </View>
+          {group.billingHint ? (
+            <Text className="mx-5 mt-2 text-xs text-foreground-muted">{group.billingHint}</Text>
+          ) : null}
+        </View>
+      ))}
     </ScrollView>
   );
 }
@@ -1292,9 +1495,11 @@ function ThreadSettingsModelsScreen() {
             const title =
               submenu.kind === "runtime"
                 ? "Runtime"
-                : (session.displayedDescriptors.find(
-                    (descriptor) => descriptor.type === "select" && descriptor.id === submenu.id,
-                  )?.label ?? "Option");
+                : submenu.kind === "sidekick"
+                  ? "Sidekick"
+                  : (session.displayedDescriptors.find(
+                      (descriptor) => descriptor.type === "select" && descriptor.id === submenu.id,
+                    )?.label ?? "Option");
             navigation.navigate("ThreadSettingsChoice", { ...submenu, title });
           }}
         />

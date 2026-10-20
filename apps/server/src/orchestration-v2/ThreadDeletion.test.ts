@@ -44,6 +44,7 @@ function makeProjection(): OrchestrationV2ThreadProjection {
     threadId,
     occurredAt: createdAt,
     payload: {
+      sidekickModelSelection: null,
       id: threadId,
       createdBy: "user",
       creationSource: "web",

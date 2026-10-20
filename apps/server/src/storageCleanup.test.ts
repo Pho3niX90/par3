@@ -63,6 +63,7 @@ function at(offsetMs: number): DateTime.Utc {
 
 function shell(overrides: Partial<OrchestrationV2ThreadShell> = {}): OrchestrationV2ThreadShell {
   return {
+    sidekickModelSelection: null,
     id: ThreadId.make("thread-1"),
     projectId: ProjectId.make("project-1"),
     title: "Thread",

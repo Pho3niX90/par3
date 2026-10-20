@@ -40,6 +40,7 @@ import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 
+import type { T3SidekickLeadState } from "./orchestrationInstructions.ts";
 import type {
   ProviderSelectionTransitionInput,
   ProviderSelectionTransitionPlan,
@@ -436,6 +437,11 @@ export interface ProviderAdapterV2TurnInput {
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
   readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
+  /**
+   * The thread's sidekick while it is usable; null or absent means sidekick
+   * mode is off. Adapters send the lead playbook when this changes.
+   */
+  readonly sidekick?: T3SidekickLeadState | null;
 }
 
 export interface ProviderAdapterV2SteerInput {

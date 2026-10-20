@@ -157,7 +157,11 @@ import {
 } from "../../provider/claudeUsageLimits.ts";
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { T3_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
+import {
+  T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+  sidekickInstructionUpdate,
+  type T3SidekickLeadState,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import {
   mcpToolPresentation,
@@ -1817,6 +1821,18 @@ export function makeClaudeUserMessage(input: {
     ...(input.priority === undefined ? {} : { priority: input.priority }),
     ...(input.uuid === undefined ? {} : { uuid: input.uuid }),
   };
+}
+
+/**
+ * The sidekick playbook rides in the prompt rather than the system prompt:
+ * changing launch options would replace the CLI process, which background
+ * work forbids. The wrapper keeps it from reading as text the user wrote.
+ * Returns null for a native slash command, which must stay first, so the
+ * update waits for the next prompt.
+ */
+function claudePromptWithSidekickUpdate(prompt: string, update: string): string | null {
+  if (prompt.trimStart().startsWith("/")) return null;
+  return `<t3_code_instructions>\n${update}\n</t3_code_instructions>\n\n<user_request>\n${prompt}\n</user_request>`;
 }
 
 const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input: {
@@ -4031,6 +4047,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           new Map<string, OrchestrationV2ProviderThread>(),
         );
         const goalsByNativeThread = new Map<string, OrchestrationV2ProviderGoal | null>();
+        // The sidekick state each native conversation last received. Absent
+        // means a context that has seen none: new, compacted or rolled back.
+        const sidekickSentByNativeThread = new Map<string, T3SidekickLeadState | null>();
         const goalCheckedTurns = new Set<string>();
         // Subagent registry that survives turn settle: a background subagent
         // (Agent with run_in_background) can complete after the root turn
@@ -7326,6 +7345,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           const message = input.message;
+          // Compaction summarizes the prompt that carried the playbook away.
+          if (message.type === "system" && message.subtype === "compact_boundary") {
+            sidekickSentByNativeThread.delete(liveQuery.nativeThreadId);
+          }
           // Before any routing: a Monitor started during an idle wake turn
           // reports its task before the drain replays the tool call.
           yield* trackClaudeMonitorCalls(message);
@@ -9339,14 +9362,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             if (!goalsByNativeThread.has(nativeThreadId)) {
               goalsByNativeThread.set(nativeThreadId, turnInput.providerThread.goal ?? null);
             }
+            const promptText = applyClaudePromptEffortPrefix(
+              turnInput.message.text,
+              compileClaudeModelSelection(turnInput.modelSelection).promptEffort,
+            );
+            // The playbook drives T3 tools, so it only counts while they are available.
+            const sidekick =
+              (yield* mcpSessions.read(turnInput.threadId)) === undefined
+                ? null
+                : (turnInput.sidekick ?? null);
+            const sidekickUpdate = sidekickInstructionUpdate(
+              sidekickSentByNativeThread.get(nativeThreadId),
+              sidekick,
+            );
+            const promptWithSidekick =
+              sidekickUpdate === null
+                ? promptText
+                : claudePromptWithSidekickUpdate(promptText, sidekickUpdate);
             const userMessage =
               promptUuid === null
                 ? null
                 : yield* makeClaudeUserMessageWithAttachments({
-                    text: applyClaudePromptEffortPrefix(
-                      turnInput.message.text,
-                      compileClaudeModelSelection(turnInput.modelSelection).promptEffort,
-                    ),
+                    text: promptWithSidekick ?? promptText,
                     attachments: turnInput.message.attachments,
                     attachmentsDir,
                     fileSystem,
@@ -9462,6 +9499,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               yield* attachTurn;
               yield* startUserTurnForWakeReports(nativeThreadId);
               yield* querySession.query.offer(userMessage);
+              if (promptWithSidekick !== null)
+                sidekickSentByNativeThread.set(nativeThreadId, sidekick);
               return;
             }
             // Transcript reads suspend replay. Hold live SDK frames until the whole
@@ -10184,6 +10223,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 
               const nativeThreadId = yield* getNativeThreadId(rollbackInput.providerThread);
               yield* closeLiveQueryForNativeThread(nativeThreadId);
+              // The rewound history may no longer hold the sidekick playbook.
+              sidekickSentByNativeThread.delete(nativeThreadId);
               const now = yield* DateTime.now;
               const resumeSessionAt = yield* resolveClaudeRollbackResumeSessionAt(rollbackInput);
 

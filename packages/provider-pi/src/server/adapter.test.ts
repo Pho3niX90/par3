@@ -469,6 +469,7 @@ const makeAppThread = Effect.fnUntraced(function* (model: string, threadId = THR
     title: "Pi test thread",
     providerInstanceId: PI_INSTANCE_ID,
     modelSelection: modelSelection(model),
+    sidekickModelSelection: null,
     runtimeMode: "full-access",
     interactionMode: "default",
     branch: null,

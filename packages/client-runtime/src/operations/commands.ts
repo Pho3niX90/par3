@@ -33,7 +33,7 @@ import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 
-import { getInitialServerConfig, request } from "../rpc/client.ts";
+import { getInitialServerConfig, request, requestGuarded } from "../rpc/client.ts";
 
 interface CommandMetadata {
   readonly commandId?: CommandId;
@@ -137,11 +137,18 @@ export interface SetThreadInteractionModeInput extends ThreadCommandInput {
   readonly interactionMode: ProviderInteractionMode;
 }
 
+export interface SetThreadSidekickInput extends ThreadCommandInput {
+  /** Null turns sidekick mode off. */
+  readonly sidekickModelSelection: ModelSelection | null;
+}
+
 interface StartThreadBootstrap {
   readonly createThread?: {
     readonly projectId: ProjectId;
     readonly title: string;
     readonly modelSelection: ModelSelection;
+    /** Chosen in the draft, so it lands atomically with the first message. */
+    readonly sidekickModelSelection?: ModelSelection | null;
     readonly runtimeMode: RuntimeMode;
     readonly interactionMode: ProviderInteractionMode;
     readonly branch: string | null;
@@ -260,7 +267,7 @@ const allocateCommandId = Effect.fn("EnvironmentCommands.allocateCommandId")(fun
 });
 
 const dispatch = (command: OrchestrationV2Command) =>
-  request(ORCHESTRATION_V2_WS_METHODS.dispatchCommand, command);
+  requestGuarded(ORCHESTRATION_V2_WS_METHODS.dispatchCommand, command);
 
 const getProjection = (threadId: ThreadId) =>
   request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, { threadId });
@@ -617,6 +624,17 @@ export const setThreadInteractionMode = Effect.fn("EnvironmentCommands.setThread
   },
 );
 
+export const setThreadSidekick = Effect.fn("EnvironmentCommands.setThreadSidekick")(function* (
+  input: SetThreadSidekickInput,
+) {
+  return yield* dispatch({
+    type: "thread.sidekick.set",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    sidekickModelSelection: input.sidekickModelSelection,
+  });
+});
+
 export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(function* (
   input: StartThreadTurnInput,
 ) {
@@ -668,6 +686,9 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       title: input.titleSeed ?? thread.title,
       generateTitle: input.titleSeed !== undefined,
       modelSelection: input.modelSelection ?? thread.modelSelection,
+      ...(bootstrap?.sidekickModelSelection == null
+        ? {}
+        : { sidekickModelSelection: bootstrap.sidekickModelSelection }),
       runtimeMode: input.runtimeMode,
       interactionMode: input.interactionMode,
       workspaceStrategy,

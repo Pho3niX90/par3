@@ -210,6 +210,7 @@ function importedThread(row: LegacyThreadRow): OrchestrationV2AppThread {
       ? [...pullRequests, legacyLink]
       : pullRequests;
   return {
+    sidekickModelSelection: null,
     createdBy: "system",
     creationSource: "server",
     id: threadId,

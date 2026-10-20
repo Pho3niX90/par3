@@ -169,6 +169,7 @@ describe("CursorAdapterV2", () => {
           attemptId: RunAttemptId.make("cursor-lifecycle-attempt"),
           rootNodeId: NodeId.make("cursor-lifecycle-root"),
           appThread: {
+            sidekickModelSelection: null,
             id: threadId,
             projectId: ProjectId.make("cursor-lifecycle-project"),
             createdBy: "user",
@@ -320,6 +321,7 @@ describe("CursorAdapterV2", () => {
         attemptId: RunAttemptId.make("cursor-failure-attempt"),
         rootNodeId: NodeId.make("cursor-failure-root"),
         appThread: {
+          sidekickModelSelection: null,
           id: threadId,
           projectId: ProjectId.make("cursor-failure-project"),
           createdBy: "user",
@@ -434,6 +436,7 @@ describe("CursorAdapterV2", () => {
       });
       const now = yield* DateTime.now;
       const appThread = {
+        sidekickModelSelection: null,
         id: threadId,
         projectId: ProjectId.make("cursor-error-project"),
         createdBy: "user" as const,
@@ -510,6 +513,171 @@ describe("CursorAdapterV2", () => {
         Stream.runHead,
       );
       assert.equal(sentMessages[1], "/compress");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+      ),
+    ),
+  );
+
+  it.effect("sends T3 instructions per native agent and sidekick updates when they change", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const workspace = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "cursor-v2-instructions-",
+      });
+      const sentMessages: Array<string> = [];
+      const instanceId = ProviderInstanceId.make("cursor");
+      const threadId = ThreadId.make("cursor-instructions-thread");
+      yield* (yield* McpProviderSessions.McpProviderSessions).set({
+        environmentId: EnvironmentId.make("cursor-instructions-environment"),
+        threadId,
+        providerSessionId: "cursor-instructions-session",
+        providerInstanceId: instanceId,
+        endpoint: "http://127.0.0.1:43123/mcp",
+        authorizationHeader: "Bearer synthetic-cursor-token",
+        browserToolsAvailable: true,
+      });
+      const modelSelection = { instanceId, model: "composer-2.5" };
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: workspace,
+      });
+      const adapter = yield* makeCursorAdapterV2({
+        instanceId,
+        settings: yield* decodeCursorSettings({}),
+        environment: { HOME: workspace },
+      }).pipe(
+        Effect.provideService(CursorAgentSdk.CursorAgentSdkRunner, {
+          assertComplete: Effect.void,
+          open: (openInput) => {
+            const agentId = openInput.agentId ?? "native-cursor-first";
+            return Effect.succeed({
+              agentId,
+              listMessages: Effect.succeed([]),
+              close: Effect.void,
+              send: (input) =>
+                Effect.sync(() => {
+                  sentMessages.push(
+                    typeof input.message === "string" ? input.message : input.message.text,
+                  );
+                  const runId = `native-cursor-run-${sentMessages.length}`;
+                  return {
+                    agentId,
+                    runId,
+                    wait: Effect.succeed({
+                      id: runId,
+                      requestId: `native-request-${sentMessages.length}`,
+                      status: "finished" as const,
+                      model: { id: "composer-2.5" },
+                      durationMs: 1,
+                    }),
+                    cancel: Effect.void,
+                  };
+                }),
+            });
+          },
+        }),
+        Effect.provide(TestProviderHost.layer({ cwd: workspace })),
+      );
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("cursor-instructions-session"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      const luna = { label: "Luna · Codex", billingModel: "per_token" } as const;
+      const nova = { label: "Nova · Copilot", billingModel: "per_request" } as const;
+      // Starts mid-thread, as when a thread switches to Cursor after other providers.
+      let ordinal = 4;
+      const runTurn = Effect.fnUntraced(function* (
+        text: string,
+        sidekick: typeof luna | typeof nova | null,
+        thread = providerThread,
+      ) {
+        ordinal += 1;
+        yield* runtime.startTurn({
+          threadId,
+          providerThread: thread,
+          modelSelection,
+          runtimePolicy,
+          runId: RunId.make(`cursor-instructions-run-${ordinal}`),
+          runOrdinal: ordinal,
+          providerTurnOrdinal: ordinal,
+          attemptId: RunAttemptId.make(`cursor-instructions-attempt-${ordinal}`),
+          rootNodeId: NodeId.make(`cursor-instructions-root-${ordinal}`),
+          appThread: {
+            sidekickModelSelection: null,
+            id: threadId,
+            projectId: ProjectId.make("cursor-instructions-project"),
+            createdBy: "user",
+            creationSource: "web",
+            title: "Cursor instructions",
+            providerInstanceId: instanceId,
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            activeProviderThreadId: thread.id,
+            lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
+            archivedAt: null,
+            settledOverride: null,
+            settledAt: null,
+            lastVisitedAt: null,
+            deletedAt: null,
+          },
+          message: {
+            messageId: MessageId.make(`cursor-instructions-message-${ordinal}`),
+            createdBy: "user",
+            creationSource: "web",
+            text,
+            attachments: [],
+          },
+          sidekick,
+        });
+        yield* runtime.events.pipe(
+          Stream.filter((event) => event.type === "turn.terminal"),
+          Stream.runHead,
+        );
+        return sentMessages.at(-1) ?? "";
+      });
+
+      const first = yield* runTurn("Start.", luna);
+      assert.include(first, "<t3_code_orchestration_instructions>");
+      assert.include(first, "Par3 orchestration");
+      assert.include(first, "This thread has a sidekick: Luna · Codex.");
+      assert.notInclude(yield* runTurn("Same.", luna), "<t3_code_orchestration_instructions>");
+
+      const changed = yield* runTurn("Change.", nova);
+      assert.include(changed, "This thread has a sidekick: Nova · Copilot.");
+      assert.notInclude(changed, "Par3 orchestration");
+      assert.include(yield* runTurn("Off.", null), "Par3 sidekick mode is now off");
+      assert.notInclude(yield* runTurn("Still off.", null), "<t3_code_orchestration_instructions>");
+
+      assert.equal(yield* runTurn("/compress", null), "/compress");
+      const afterCompress = yield* runTurn("After compress.", luna);
+      assert.include(afterCompress, "Par3 orchestration");
+      assert.include(afterCompress, "This thread has a sidekick: Luna · Codex.");
+
+      const otherAgent = {
+        ...providerThread,
+        nativeThreadRef: { ...providerThread.nativeThreadRef!, nativeId: "native-cursor-second" },
+      };
+      const freshAgent = yield* runTurn("New agent.", luna, otherAgent);
+      assert.include(freshAgent, "Par3 orchestration");
+      assert.include(freshAgent, "This thread has a sidekick: Luna · Codex.");
     }).pipe(
       Effect.scoped,
       Effect.provide(
@@ -783,6 +951,7 @@ describe("CursorAdapterV2", () => {
         attemptId: RunAttemptId.make("cursor-search-attempt"),
         rootNodeId: NodeId.make("cursor-search-root"),
         appThread: {
+          sidekickModelSelection: null,
           id: threadId,
           projectId: ProjectId.make("cursor-search-project"),
           createdBy: "user",
@@ -1003,6 +1172,7 @@ describe("CursorAdapterV2", () => {
           attemptId: RunAttemptId.make("cursor-custom-model-attempt"),
           rootNodeId: NodeId.make("cursor-custom-model-root"),
           appThread: {
+            sidekickModelSelection: null,
             id: threadId,
             projectId: ProjectId.make("cursor-custom-model-project"),
             createdBy: "user",

@@ -200,6 +200,7 @@ const seedNativeThreads = Effect.fn("ProjectCliTest.seedNativeThreads")(function
       commandId: CommandId.make("project-cli-seed-threads"),
       events: threads.map(({ id, projectId, archived }) => {
         const payload: OrchestrationV2AppThread = {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id,

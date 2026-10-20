@@ -2788,4 +2788,197 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
     );
   });
+
+  describe("sidekick routing", () => {
+    const sidekick = {
+      instanceId: antigravityInstanceId,
+      model: "ant-model",
+      options: [{ id: "effort", value: "high" }],
+    };
+    const runningTask = {
+      id: taskId,
+      threadId: parentThreadId,
+      runId: parentRunId,
+      parentNodeId,
+      origin: "app_owned",
+      createdBy: "agent",
+      driver: ProviderDriverKind.make("antigravity"),
+      providerInstanceId: antigravityInstanceId,
+      providerThreadId: null,
+      childThreadId,
+      nativeTaskRef: null,
+      prompt: "Add the parser.",
+      title: null,
+      model: "ant-model",
+      status: "running",
+      result: null,
+      startedAt: null,
+      completedAt: null,
+    };
+    const withSidekick = (projection: OrchestrationV2ThreadProjection) =>
+      ({
+        ...projection,
+        thread: { ...projection.thread, sidekickModelSelection: sidekick },
+      }) as OrchestrationV2ThreadProjection;
+
+    const run = <A, E>(
+      options: { readonly sidekickEnabled?: boolean },
+      body: (input: {
+        readonly service: OrchestratorMcpService.OrchestratorMcpService["Service"];
+        readonly dispatched: Ref.Ref<ReadonlyArray<Record<string, unknown>>>;
+      }) => Effect.Effect<A, E>,
+    ) =>
+      Effect.gen(function* () {
+        const dispatched = yield* Ref.make<ReadonlyArray<Record<string, unknown>>>([]);
+        const layerDependencies = Layer.mergeAll(
+          NodeServices.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            hasReceipt: () => Effect.succeed(false),
+            assertProviderInstanceEnabled: () => Effect.void,
+            isProviderInstanceEnabledForProject: () => Effect.succeed(true),
+            delegatedTaskResultPending: () => Effect.succeed(false),
+            getThreadRecords: (threadId) =>
+              Effect.succeed(
+                threadId === parentThreadId
+                  ? withSidekick(parentProjection([runningTask]))
+                  : childProjection,
+              ),
+            dispatch: (command) =>
+              Ref.update(dispatched, (commands) => [
+                ...commands,
+                command as unknown as Record<string, unknown>,
+              ]).pipe(
+                Effect.as({
+                  sequence: 1,
+                  storedEvents: [
+                    {
+                      sequence: 1,
+                      commandId: null,
+                      event: { type: "subagent.updated", payload: runningTask },
+                    },
+                  ],
+                } as never),
+              ),
+          }),
+          ServerSettings.layerTest({}),
+          providerRegistryLayer([
+            providerSnapshot({
+              instanceId: codexInstanceId,
+              driver: ProviderDriverKind.make("codex"),
+              model: "gpt-5.4",
+            }),
+            providerSnapshot({
+              instanceId: antigravityInstanceId,
+              driver: ProviderDriverKind.make("antigravity"),
+              model: "ant-model",
+              enabled: options.sidekickEnabled ?? true,
+            }),
+          ]),
+          adapterRegistryLayer([codexInstanceId, antigravityInstanceId]),
+          Layer.mock(ProjectService.ProjectService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        );
+        return yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          return yield* body({ service, dispatched });
+        }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
+      });
+
+    it.effect("an omitted target runs on the sidekick, with its options and preamble", () =>
+      run({}, ({ service, dispatched }) =>
+        Effect.gen(function* () {
+          yield* service.delegateTask(scope, {
+            task: "Add the parser.",
+            role: "implementation",
+            mode: "async",
+            clientRequestId: "sidekick-omitted",
+          });
+          const [command] = yield* Ref.get(dispatched);
+          assert.deepEqual(command?.modelSelection, sidekick);
+          // Titles and timeline previews read task, so it stays the raw brief.
+          assert.equal(
+            command?.task,
+            "Act as the implementation sub-agent for this task.\n\nAdd the parser.",
+          );
+          const messageText = String(command?.messageText);
+          assert.isTrue(messageText.startsWith("Act as the implementation sub-agent"));
+          assert.include(messageText, "Status: done | blocked | needs_decision");
+          assert.isTrue(messageText.endsWith("Add the parser."));
+        }),
+      ),
+    );
+
+    it.effect("an empty target inherits the lead instead of the sidekick", () =>
+      run({}, ({ service, dispatched }) =>
+        Effect.gen(function* () {
+          yield* service.delegateTask(scope, {
+            task: "Review the parser.",
+            target: {},
+            mode: "async",
+            clientRequestId: "sidekick-empty-target",
+          });
+          const [command] = yield* Ref.get(dispatched);
+          assert.deepEqual(command?.modelSelection, {
+            instanceId: codexInstanceId,
+            model: "gpt-5.4",
+          });
+          assert.isUndefined(command?.messageText);
+        }),
+      ),
+    );
+
+    it.effect("an unusable sidekick fails with an error that names it", () =>
+      run({ sidekickEnabled: false }, ({ service, dispatched }) =>
+        Effect.gen(function* () {
+          const error = yield* service
+            .delegateTask(scope, {
+              task: "Add the parser.",
+              mode: "async",
+              clientRequestId: "sidekick-disabled",
+            })
+            .pipe(Effect.flip);
+          assert.equal(error.code, "provider_unavailable");
+          assert.include(error.message, "sidekick (ant-model on antigravity)");
+          assert.include(error.message, "t3_thread_configure");
+          assert.deepEqual(yield* Ref.get(dispatched), []);
+        }),
+      ),
+    );
+
+    it.effect("reports the sidekick as the default delegation selection", () =>
+      run({}, ({ service }) =>
+        Effect.gen(function* () {
+          const capabilities = yield* service.capabilities(scope);
+          assert.deepInclude(capabilities.defaultDelegationSelection, {
+            providerInstanceId: antigravityInstanceId,
+            model: "ant-model",
+            source: "sidekick",
+          });
+        }),
+      ),
+    );
+
+    it.effect("a follow-up refuses a target and a task that has not finished", () =>
+      run({}, ({ service, dispatched }) =>
+        Effect.gen(function* () {
+          const withTarget = yield* service
+            .delegateTask(scope, {
+              task: "Now add tests.",
+              continueTaskId: taskId,
+              target: { model: "gpt-5.4" },
+              mode: "async",
+            })
+            .pipe(Effect.flip);
+          assert.equal(withTarget.code, "invalid_request");
+          const running = yield* service
+            .delegateTask(scope, { task: "Now add tests.", continueTaskId: taskId, mode: "async" })
+            .pipe(Effect.flip);
+          assert.equal(running.code, "task_still_running");
+          assert.include(running.message, "t3_thread_send");
+          assert.deepEqual(yield* Ref.get(dispatched), []);
+        }),
+      ),
+    );
+  });
 });

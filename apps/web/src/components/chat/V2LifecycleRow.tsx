@@ -198,6 +198,7 @@ export function V2LifecycleRow(props: {
         origin={item.origin}
         status={item.status}
         driver={item.driver}
+        model={item.model}
         title={formatSubagentDisplayTitle(item.title ?? "Subagent")}
         result={item.result}
         progress={item.progress}
@@ -412,6 +413,8 @@ function SubagentTimelineLink(props: {
   readonly providerInstanceId: ProviderInstanceId;
   readonly origin: OrchestrationV2Subagent["origin"];
   readonly driver: ProviderDriverKind;
+  /** The model this task ran on, so a pair on one provider shows which side did the work. */
+  readonly model?: string | undefined;
   readonly title: string;
   readonly result: string | null;
   readonly progress: string | undefined;
@@ -431,6 +434,19 @@ function SubagentTimelineLink(props: {
     (thread) => thread?.projection.subagents.find((agent) => agent.id === props.subagentId) ?? null,
   );
   const threadId = props.threadId;
+  const model = props.model ?? agent?.model ?? agent?.modelSelection?.model;
+  const modelName = useAtomValue(
+    serverEnvironment.providersValueAtom(props.parentRef.environmentId),
+    (providers) => {
+      if (props.model === undefined) return null;
+      const provider = providers?.find(
+        (candidate) => candidate.instanceId === props.providerInstanceId,
+      );
+      return (
+        provider?.models.find((candidate) => candidate.slug === props.model)?.name ?? props.model
+      );
+    },
+  );
   const liveStatus = agent?.status ?? props.status;
   const status = props.event ? props.event.status : liveStatus;
   const statusLabel = props.event?.label ?? subagentStatusVisual(liveStatus).label;
@@ -452,7 +468,7 @@ function SubagentTimelineLink(props: {
         environmentId={props.parentRef.environmentId}
         providerInstanceId={props.providerInstanceId}
         driver={props.driver}
-        model={agent?.model ?? agent?.modelSelection?.model}
+        model={model}
         status={status ?? undefined}
       />
       <span className="min-w-0 flex-1">
@@ -460,6 +476,11 @@ function SubagentTimelineLink(props: {
           <span className="min-w-0 truncate text-xs font-medium text-foreground">
             {props.title}
           </span>
+          {modelName !== null ? (
+            <span className="min-w-0 shrink truncate text-3xs text-muted-foreground">
+              {modelName}
+            </span>
+          ) : null}
           {detail !== null && (props.event !== undefined || status !== "completed") ? (
             <span
               className={cn(
@@ -529,7 +550,7 @@ function SubagentTimelineLink(props: {
         <SubagentTimelineTooltip
           {...props}
           elapsed={agent ? <AgentElapsed agent={projectedSubagentsToRuntime([agent])[0]!} /> : null}
-          model={agent?.model ?? null}
+          model={props.model ?? agent?.model ?? null}
           modelSelection={agent?.modelSelection}
           status={liveStatus}
           result={agent?.result ?? props.result}
@@ -541,7 +562,7 @@ function SubagentTimelineLink(props: {
 }
 
 function SubagentTimelineTooltip(
-  props: Parameters<typeof SubagentTimelineLink>[0] & {
+  props: Omit<Parameters<typeof SubagentTimelineLink>[0], "model"> & {
     model: string | null;
     modelSelection: OrchestrationV2Subagent["modelSelection"];
     elapsed: ReactNode;

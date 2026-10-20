@@ -4,6 +4,7 @@ import type {
   ThreadLinkedPullRequest,
   EnvironmentId,
   MessageId,
+  ModelSelection,
   OrchestrationProjectShell,
   OrchestrationV2ProviderGoal,
   OrchestrationV2RunStatus,
@@ -94,6 +95,7 @@ export interface EnvironmentThreadShell {
   readonly title: string;
   readonly providerInstanceId: ProviderInstanceId;
   readonly modelSelection: OrchestrationV2ThreadShell["modelSelection"];
+  readonly sidekickModelSelection?: ModelSelection | null;
   readonly runtimeMode: OrchestrationV2ThreadShell["runtimeMode"];
   readonly interactionMode: OrchestrationV2ThreadShell["interactionMode"];
   readonly branch: string | null;
@@ -237,6 +239,7 @@ export function presentThreadShell(
         : thread.title,
     providerInstanceId: thread.providerInstanceId,
     modelSelection: thread.modelSelection,
+    sidekickModelSelection: thread.sidekickModelSelection ?? null,
     runtimeMode: thread.runtimeMode,
     interactionMode: thread.interactionMode,
     branch: thread.branch,

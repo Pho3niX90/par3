@@ -138,6 +138,7 @@ describe("ThreadPullRequestServiceV2 reads", () => {
   const threadShell = (id: string): OrchestrationV2ThreadShell => {
     const threadId = ThreadId.make(id);
     return {
+      sidekickModelSelection: null,
       id: threadId,
       projectId: ProjectId.make("project-1"),
       title: id,
@@ -346,6 +347,7 @@ describe("ThreadPullRequestServiceV2 reads", () => {
             threadId: thread.id,
             occurredAt: NOW,
             payload: {
+              sidekickModelSelection: null,
               createdBy: thread.createdBy,
               creationSource: thread.creationSource,
               id: thread.id,

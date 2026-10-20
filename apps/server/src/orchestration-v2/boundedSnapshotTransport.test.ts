@@ -100,6 +100,7 @@ function threadCreated(id: ThreadId, at: DateTime.Utc, forkOf?: RunId): Orchestr
     threadId: id,
     occurredAt: at,
     payload: {
+      sidekickModelSelection: null,
       createdBy: "user",
       creationSource: "web",
       id,

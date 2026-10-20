@@ -134,6 +134,11 @@ import {
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import { backgroundWorkNotification } from "@t3tools/provider-core/server/notification";
 import {
+  sidekickInstructionUpdate,
+  sidekickInstructions,
+  type T3SidekickLeadState,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
+import {
   makeProviderFailure,
   makeProviderFailureTurnItem,
   makeProviderRetryTurnItem,
@@ -757,6 +762,20 @@ function codexRuntimeModeTurnDefaults(runtimeMode: RuntimeMode): {
   }
 }
 
+/**
+ * Codex keeps each sent additionalContext entry in the thread history and only
+ * sends an entry again when its value changes, so dropping the key would leave
+ * the playbook in effect. The first turn after the sidekick goes away carries
+ * the off notice instead; later turns leave the key out.
+ */
+export function codexSidekickContext(
+  previous: T3SidekickLeadState | null | undefined,
+  next: T3SidekickLeadState | null,
+): string | undefined {
+  if (next !== null) return sidekickInstructions(next);
+  return sidekickInstructionUpdate(previous, null) ?? undefined;
+}
+
 export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTurnStartParams")(
   function* (input: {
     readonly nativeThreadId: string;
@@ -769,6 +788,8 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
     /** ChatGPT token sharing does not accept service tiers. */
     readonly omitServiceTier?: boolean;
     readonly appContext?: ProviderAdapter.ProviderAdapterV2TurnInput["appContext"];
+    /** Sidekick playbook or off notice; see `codexSidekickContext`. */
+    readonly sidekickContext?: string;
   }) {
     const runtimeModeDefaults = codexRuntimeModeTurnDefaults(input.runtimePolicy.runtimeMode);
     const approvalPolicy =
@@ -811,6 +832,8 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
             },
           )
         : undefined;
+    if (t3Context !== undefined && input.sidekickContext !== undefined)
+      t3Context.t3_code_sidekick = { kind: "application", value: input.sidekickContext };
     const additionalContext =
       t3Context === undefined && Object.keys(appContext).length === 0
         ? undefined
@@ -1825,6 +1848,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }),
           ),
         );
+        // The sidekick state each native thread last received; absent until a
+        // turn starts on it from this app-server.
+        const sidekickByThread = new Map<string, T3SidekickLeadState | null>();
         const initialized = yield* Ref.make(false);
         // Threads share this app-server, and Codex rejects a second
         // `initialize`.
@@ -6362,6 +6388,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           ) {
             const threadId = yield* getNativeThreadId(turnInput.providerThread);
             const mcpSession = yield* mcpSessions.read(turnInput.threadId);
+            // The playbook drives T3 tools, so it only counts while they are available.
+            const sidekick = mcpSession === undefined ? null : (turnInput.sidekick ?? null);
+            const sidekickContext = codexSidekickContext(sidekickByThread.get(threadId), sidekick);
             const turnStartParams = yield* buildCodexTurnStartParams({
               nativeThreadId: threadId,
               codexInput,
@@ -6372,6 +6401,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               deviceToolsAvailable: mcpSession?.capabilities?.has("device") ?? false,
               omitServiceTier: adapterOptions.resolveRuntime !== undefined,
               ...(turnInput.appContext === undefined ? {} : { appContext: turnInput.appContext }),
+              ...(sidekickContext === undefined ? {} : { sidekickContext }),
             });
             yield* Ref.update(pendingRootTurns, (current) => {
               const updated = new Map(current);
@@ -6386,6 +6416,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return next;
             });
             const started = yield* client.request("turn/start", turnStartParams);
+            sidekickByThread.set(threadId, sidekick);
             yield* registerRootTurn({
               turnInput,
               nativeTurnId: started.turn.id,

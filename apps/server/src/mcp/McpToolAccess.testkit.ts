@@ -26,6 +26,7 @@ export const liveThreadShell = (
 ): OrchestrationV2ThreadShell => {
   const providerInstanceId = ProviderInstanceId.make("codex");
   return {
+    sidekickModelSelection: null,
     id,
     projectId: ProjectId.make("project:mcp-test"),
     title: id,

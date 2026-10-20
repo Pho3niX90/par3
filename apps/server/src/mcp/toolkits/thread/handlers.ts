@@ -21,6 +21,7 @@ import {
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
+import * as ThreadSidekick from "../../../orchestration-v2/ThreadSidekick.ts";
 import { ThreadToolkit } from "./tools.ts";
 
 function queueEntry(
@@ -174,6 +175,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       return {
         threadId: thread.id,
         modelSelection: thread.modelSelection,
+        sidekickModelSelection: thread.sidekickModelSelection ?? null,
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,
       };
@@ -185,16 +187,48 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         threads,
         projection: { thread },
       } = yield* readThread(input.threadId);
-      const type = modelSelectionCommandType(thread.providerInstanceId, input.modelSelection);
-      const result = yield* threads
-        .dispatch({
-          type,
-          threadId: thread.id,
-          commandId: yield* newCommandId(),
-          modelSelection: input.modelSelection,
-        })
-        .pipe(Effect.mapError(dispatchFailure));
-      return { sequence: result.sequence };
+      if (input.modelSelection === undefined && input.sidekickModelSelection === undefined)
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: "Pass modelSelection, sidekickModelSelection, or both.",
+        });
+      const lead = input.modelSelection ?? thread.modelSelection;
+      const sidekick = input.sidekickModelSelection;
+      // Check both before dispatching either, so a bad sidekick leaves the lead unchanged too.
+      if (sidekick != null)
+        yield* ThreadSidekick.ThreadSidekick.pipe(
+          Effect.flatMap((sidekicks) =>
+            sidekicks.validate({ projectId: thread.projectId, lead, sidekick }),
+          ),
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
+          ),
+        );
+      let sequence = 0;
+      if (input.modelSelection !== undefined) {
+        const result = yield* threads
+          .dispatch({
+            type: modelSelectionCommandType(thread.providerInstanceId, input.modelSelection),
+            threadId: thread.id,
+            commandId: yield* newCommandId(),
+            modelSelection: input.modelSelection,
+          })
+          .pipe(Effect.mapError(dispatchFailure));
+        sequence = result.sequence;
+      }
+      if (sidekick !== undefined) {
+        const result = yield* threads
+          .dispatch({
+            type: "thread.sidekick.set",
+            threadId: thread.id,
+            commandId: yield* newCommandId(),
+            sidekickModelSelection: sidekick,
+          })
+          .pipe(Effect.mapError(dispatchFailure));
+        sequence = result.sequence;
+      }
+      return { sequence };
     }),
   ),
   t3_pending_request_list: McpToolAccess.reads((input) =>

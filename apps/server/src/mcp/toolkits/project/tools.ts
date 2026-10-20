@@ -21,6 +21,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as ServerConfig from "../../../config.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadLaunchService from "../../../orchestration-v2/ThreadLaunchService.ts";
+import * as ThreadSidekick from "../../../orchestration-v2/ThreadSidekick.ts";
 import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
@@ -115,6 +116,12 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     ),
     title: TrimmedNonEmptyString,
     modelSelection: Schema.optional(ModelSelection),
+    sidekickModelSelection: Schema.optional(
+      ModelSelection.annotate({
+        description:
+          "Optional sidekick for the new thread: the cheaper model its delegate_task calls use when they omit a target. Not inherited from the caller.",
+      }),
+    ),
     runtimeMode: Schema.optional(RuntimeMode),
     interactionMode: Schema.optional(ProviderInteractionMode),
     workspaceStrategy: Schema.optional(
@@ -146,6 +153,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     FileSystem.FileSystem,
     ServerConfig.ServerConfig,
     ServerSettings.ServerSettingsService,
+    ThreadSidekick.ThreadSidekick,
   ],
 })
   .annotate(Tool.Destructive, true)

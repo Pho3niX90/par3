@@ -2,6 +2,7 @@ import { remapComposerContextAttachments } from "@t3tools/shared/composerContext
 import { appendUserInputAttachmentPaths } from "../provider/userInputAttachments.ts";
 import type { ChatAttachment, OrchestrationV2Command } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -10,6 +11,7 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as AttachmentClaims from "./AttachmentClaims.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
+import * as ThreadSidekick from "./ThreadSidekick.ts";
 
 // These dispatcher failures occur in receipt validation or planning, before
 // commitCommand. Generic dispatch errors can follow a commit and remain uncertain.
@@ -53,9 +55,37 @@ const releaseUnusedClaims = Effect.fn("ThreadMessageIntake.releaseUnusedClaims")
   );
 });
 
+/**
+ * The orchestrator only checks what it can see; the provider catalog lives
+ * here. Callers without the service (MCP tools) validate on their own.
+ */
+const validateSidekick = Effect.fn("ThreadMessageIntake.validateSidekick")(function* (
+  command: OrchestrationV2Command,
+) {
+  const sidekicks = yield* Effect.serviceOption(ThreadSidekick.ThreadSidekick);
+  if (Option.isNone(sidekicks)) return;
+  if (command.type === "thread.create" && command.sidekickModelSelection != null) {
+    yield* sidekicks.value.validate({
+      projectId: command.projectId,
+      lead: command.modelSelection,
+      sidekick: command.sidekickModelSelection,
+    });
+  }
+  if (command.type === "thread.sidekick.set" && command.sidekickModelSelection !== null) {
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const { thread } = yield* threads.getThreadRecords(command.threadId, []);
+    yield* sidekicks.value.validate({
+      projectId: thread.projectId,
+      lead: thread.modelSelection,
+      sidekick: command.sidekickModelSelection,
+    });
+  }
+});
+
 export const dispatchCommand = Effect.fn("ThreadMessageIntake.dispatchCommand")(function* (
   command: OrchestrationV2Command,
 ) {
+  yield* validateSidekick(command);
   const threads = yield* ThreadManagement.ThreadManagementService;
   if (command.type === "runtime-request.respond" && command.attachmentsByQuestionId) {
     const config = yield* ServerConfig.ServerConfig;
@@ -184,6 +214,14 @@ export const launchThread = Effect.fn("ThreadMessageIntake.launchThread")(functi
   input: ThreadLaunch.ThreadLaunchInput,
 ) {
   const launches = yield* ThreadLaunch.ThreadLaunchService;
+  const sidekicks = yield* Effect.serviceOption(ThreadSidekick.ThreadSidekick);
+  if (Option.isSome(sidekicks) && input.sidekickModelSelection != null) {
+    yield* sidekicks.value.validate({
+      projectId: input.projectId,
+      lead: input.modelSelection,
+      sidekick: input.sidekickModelSelection,
+    });
+  }
   yield* AttachmentClaims.validateAttachmentLimits(input.initialMessage?.attachments ?? []);
   if (!input.initialMessage?.attachments.some(AttachmentClaims.attachmentIsPendingUpload)) {
     return yield* launches.launch(input);

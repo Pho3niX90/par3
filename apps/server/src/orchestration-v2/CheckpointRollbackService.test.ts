@@ -826,6 +826,7 @@ const seedRollbackHistory = Effect.gen(function* () {
   yield* apply({
     type: "thread.created",
     payload: {
+      sidekickModelSelection: null,
       id: threadId,
       createdBy: "user",
       creationSource: "web",

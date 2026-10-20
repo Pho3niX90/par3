@@ -32,6 +32,7 @@ it.effect.each(["sqlite", "memory"] as const)(
       const messageId = MessageId.make("message:completion-reads");
       const instanceId = ProviderInstanceId.make("codex");
       const thread: OrchestrationV2AppThread = {
+        sidekickModelSelection: null,
         id: threadId,
         projectId: ProjectId.make("project:completion-reads"),
         title: "Completion controls",

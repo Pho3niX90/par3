@@ -41,6 +41,7 @@ import {
   createModelSelection,
   draftModelPickMatchesThread,
   normalizeModelSlug,
+  modelSelectionsEqual,
 } from "@t3tools/shared/model";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 import * as Option from "effect/Option";
@@ -316,6 +317,7 @@ const PersistedDraftThreadState = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   envMode: DraftThreadEnvModeSchema,
   startFromOrigin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  sidekickModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   promotedTo: Schema.optionalKey(
     Schema.NullOr(
       Schema.Struct({
@@ -407,6 +409,8 @@ export interface DraftSessionState {
   worktreePath: string | null;
   envMode: DraftThreadEnvMode;
   startFromOrigin: boolean;
+  /** Sent with the thread's creation so the first turn already delegates to it. */
+  sidekickModelSelection?: ModelSelection | null;
   promotedTo?: ScopedThreadRef | null;
 }
 
@@ -477,6 +481,7 @@ interface ComposerDraftStoreState {
   setDraftThreadContext: (
     threadRef: ComposerThreadTarget,
     options: {
+      sidekickModelSelection?: ModelSelection | null;
       branch?: string | null;
       worktreePath?: string | null;
       projectRef?: ScopedProjectRef;
@@ -1465,6 +1470,11 @@ function createDraftThreadState(
     envMode:
       options?.envMode ?? (nextWorktreePath ? "worktree" : (existingThread?.envMode ?? "local")),
     startFromOrigin: nextStartFromOrigin,
+    // Provider instances belong to an environment, so a sidekick does not follow the draft to another.
+    ...(existingThread?.sidekickModelSelection &&
+    existingThread.environmentId === projectRef.environmentId
+      ? { sidekickModelSelection: existingThread.sidekickModelSelection }
+      : {}),
     promotedTo: null,
   };
 }
@@ -1483,6 +1493,36 @@ function isDraftThreadPromoting(draftThread: DraftThreadState | null | undefined
   return draftThread?.promotedTo !== null && draftThread?.promotedTo !== undefined;
 }
 
+function isPersistedModelSelection(value: unknown): value is ModelSelection {
+  if (value === null || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.instanceId === "string" &&
+    candidate.instanceId.length > 0 &&
+    typeof candidate.model === "string" &&
+    candidate.model.length > 0 &&
+    (candidate.options === undefined ||
+      (Array.isArray(candidate.options) &&
+        candidate.options.every(
+          (option: unknown) =>
+            option !== null &&
+            typeof option === "object" &&
+            "id" in option &&
+            typeof option.id === "string" &&
+            "value" in option &&
+            (typeof option.value === "string" || typeof option.value === "boolean"),
+        )))
+  );
+}
+
+function sameOptionalModelSelection(
+  left: ModelSelection | null | undefined,
+  right: ModelSelection | null | undefined,
+): boolean {
+  if (left == null || right == null) return (left ?? null) === (right ?? null);
+  return modelSelectionsEqual(left, right);
+}
+
 function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThreadState): boolean {
   return (
     !!left &&
@@ -1499,6 +1539,7 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.worktreePath === right.worktreePath &&
     left.envMode === right.envMode &&
     left.startFromOrigin === right.startFromOrigin &&
+    sameOptionalModelSelection(left.sidekickModelSelection, right.sidekickModelSelection) &&
     scopedThreadRefsEqual(left.promotedTo, right.promotedTo)
   );
 }
@@ -1647,6 +1688,9 @@ function normalizePersistedDraftThreads(
         worktreePath: normalizedWorktreePath,
         envMode: normalizeDraftThreadEnvMode(candidateDraftThread.envMode, normalizedWorktreePath),
         startFromOrigin,
+        ...(isPersistedModelSelection(candidateDraftThread.sidekickModelSelection)
+          ? { sidekickModelSelection: candidateDraftThread.sidekickModelSelection }
+          : {}),
         ...(candidateDraftThread.environmentSelection === "manual" ||
         candidateDraftThread.environmentSelection === "auto"
           ? { environmentSelection: candidateDraftThread.environmentSelection }
@@ -2103,7 +2147,19 @@ export function partializeComposerDraftStoreState(
     if (!keptSessionKeys.has(threadKey)) {
       continue;
     }
-    persistedDraftThreadsByThreadKey[threadKey] = draftThread;
+    const { sidekickModelSelection, ...persistedDraftThread } = draftThread;
+    persistedDraftThreadsByThreadKey[threadKey] = sidekickModelSelection
+      ? {
+          ...persistedDraftThread,
+          sidekickModelSelection: {
+            instanceId: sidekickModelSelection.instanceId,
+            model: sidekickModelSelection.model,
+            ...(sidekickModelSelection.options === undefined
+              ? {}
+              : { options: sidekickModelSelection.options.map((option) => ({ ...option })) }),
+          },
+        }
+      : persistedDraftThread;
   }
   return {
     draftsByThreadKey: persistedDraftsByThreadKey,
@@ -2386,6 +2442,9 @@ function toHydratedDraftThreadState(
     worktreePath: persistedDraftThread.worktreePath,
     envMode: persistedDraftThread.envMode,
     startFromOrigin: persistedDraftThread.startFromOrigin,
+    ...(persistedDraftThread.sidekickModelSelection
+      ? { sidekickModelSelection: persistedDraftThread.sidekickModelSelection }
+      : {}),
     ...(persistedDraftThread.environmentSelection
       ? { environmentSelection: persistedDraftThread.environmentSelection }
       : {}),
@@ -2653,6 +2712,13 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               options.startFromOrigin === undefined
                 ? existing.startFromOrigin
                 : options.startFromOrigin;
+            // Provider instances belong to an environment, so a sidekick does not follow the draft to another.
+            const nextSidekickModelSelection =
+              options.sidekickModelSelection !== undefined
+                ? options.sidekickModelSelection
+                : nextProjectRef.environmentId === existing.environmentId
+                  ? (existing.sidekickModelSelection ?? null)
+                  : null;
             const environmentSelection =
               options.environmentSelection ??
               (options.branch != null || options.worktreePath != null
@@ -2681,6 +2747,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               envMode:
                 options.envMode ?? (nextWorktreePath ? "worktree" : (existing.envMode ?? "local")),
               startFromOrigin: nextStartFromOrigin,
+              ...(nextSidekickModelSelection
+                ? { sidekickModelSelection: nextSidekickModelSelection }
+                : {}),
               promotedTo: existing.promotedTo ?? null,
             };
             const isUnchanged =
@@ -2696,6 +2765,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.worktreePath === existing.worktreePath &&
               nextDraftThread.envMode === existing.envMode &&
               nextDraftThread.startFromOrigin === existing.startFromOrigin &&
+              sameOptionalModelSelection(
+                nextDraftThread.sidekickModelSelection,
+                existing.sidekickModelSelection,
+              ) &&
               scopedThreadRefsEqual(nextDraftThread.promotedTo, existing.promotedTo);
             if (isUnchanged) {
               return state;

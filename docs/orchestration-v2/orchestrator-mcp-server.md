@@ -244,13 +244,30 @@ omits it for a provider that offers all of them. When the target lists
 `runtimeModes`, an explicit `runtimeMode` outside that list is refused, and an
 inherited mode steps down to the broadest mode the target offers.
 
-Each delegated review round uses a new `delegate_task` call with the original brief,
-prior findings, responses, and unresolved objections. Track each round by its own `taskId` and use
-a distinct `clientRequestId` per round, stable across retries of that round.
-`childThreadId` is backing storage, not a target for another review round through
-`t3_thread_send`. Ordinary thread messaging remains available for user-requested
-conversations; it does not reopen a completed task. There is no task-level follow-up
-API for preserving the same reviewer session.
+Three ways to talk to a child, each for one job:
+
+- `delegate_task` with `continueTaskId` follows up on a finished task in the same
+  child and provider session. It is accepted only once the task's result is
+  available; a follow-up sent while the child still works would join its turn and
+  get no task of its own, so it is refused with `task_still_running`. The follow-up
+  is a new task with its own `taskId`, `mode`, timeout and wake policy, and keeps
+  the child's model and checkout, so `target` and `isolation` are refused.
+- `t3_thread_send` on `childThreadId` steers a child that is still running. It does
+  not reopen a completed task.
+- A fresh `delegate_task` starts an independent review round. Include the original
+  brief, prior findings, responses, and unresolved objections. Track each round by
+  its own `taskId` and use a distinct `clientRequestId` per round, stable across
+  retries of that round.
+
+A thread can have a sidekick (`sidekickModelSelection` on the thread). A
+`delegate_task` whose `target` is omitted runs on it, with its options; `{}` or a
+partial target still inherits from the lead, so a caller can always opt out. The
+sidekick is re-validated like any explicit target, and an unusable one fails with
+an error that names it instead of falling back silently. Only a task that runs on
+the sidekick gets the sidekick preamble, and only in the child's message: the
+command's `task` stays the raw brief because the child's title and the parent's
+timeline preview use it. The lead's playbook is not a permission boundary, and a
+delegated child never inherits a sidekick, so routing never recurses on its own.
 
 Delegation requires an active parent run owned by the MCP credential's
 provider session. The request becomes the V2 command

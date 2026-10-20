@@ -137,6 +137,20 @@ const decodeOrchestrationV2SubscribeThreadInput = Schema.decodeUnknownSync(
 );
 
 describe("orchestration V2 contracts", () => {
+  it("decodes historical threads and model-selection events with sidekick mode off", () => {
+    const projection = decodeOrchestrationV2ThreadProjection(emptyThreadProjection());
+    expect(projection.thread.sidekickModelSelection).toBeNull();
+    const event = decodeOrchestrationV2DomainEvent({
+      id: "event:historical-model-selection",
+      type: "thread.model-selection-updated",
+      threadId: "thread-1",
+      occurredAt: now,
+      payload: emptyThreadProjection().thread,
+    });
+    expect(
+      event.type === "thread.model-selection-updated" && event.payload.sidekickModelSelection,
+    ).toBeNull();
+  });
   it("carries command failure metadata through runtime and JSON schemas without output text", () => {
     const base = {
       id: "command-item",
@@ -1316,6 +1330,7 @@ describe("orchestration V2 contracts", () => {
     });
 
     expect(shell.pendingBackgroundTasks).toEqual([]);
+    expect(shell.sidekickModelSelection).toBeNull();
   });
 });
 

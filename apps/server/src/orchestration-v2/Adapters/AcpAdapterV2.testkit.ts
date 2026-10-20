@@ -270,6 +270,7 @@ export function makeTurnInput(input: {
     input.modelSelection ?? ({ instanceId: input.instanceId, model: "default" } as const);
   return {
     appThread: {
+      sidekickModelSelection: null,
       createdBy: "user",
       creationSource: "web",
       id: input.threadId,

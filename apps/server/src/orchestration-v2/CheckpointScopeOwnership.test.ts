@@ -57,6 +57,7 @@ it.effect("resolves the thread baseline after a second root run replaces scope o
       providerInstanceId,
       occurredAt: now,
       payload: {
+        sidekickModelSelection: null,
         createdBy: "user",
         creationSource: "web",
         id: threadId,

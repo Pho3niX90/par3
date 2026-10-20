@@ -46,6 +46,7 @@ function makeProjection(input: {
   const nodeId = NodeId.make("node:restart-session");
   return {
     thread: {
+      sidekickModelSelection: null,
       createdBy: "user",
       creationSource: "web",
       id: input.threadId,

@@ -92,6 +92,7 @@ function nativeThreadCreated(projectId: ProjectId, threadId: ThreadId) {
   const createdAt = DateTime.makeUnsafe("2026-01-01T00:00:00.000Z");
   const providerInstanceId = ProviderInstanceId.make("codex");
   const payload: OrchestrationV2AppThread = {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: threadId,

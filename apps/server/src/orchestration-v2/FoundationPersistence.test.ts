@@ -99,6 +99,7 @@ const modelSelection = {
 
 function makeThread(threadId: ThreadId, now: DateTime.Utc): OrchestrationV2AppThread {
   return {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: threadId,

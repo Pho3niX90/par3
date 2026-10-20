@@ -20,6 +20,7 @@ export function makeRawThreadShell(
   const providerInstanceId = input.providerInstanceId ?? ProviderInstanceId.make("codex");
   const now = DateTime.makeUnsafe(DEFAULT_TIMESTAMP);
   return {
+    sidekickModelSelection: null,
     id,
     projectId: ProjectId.make("project-test"),
     title: "Thread",

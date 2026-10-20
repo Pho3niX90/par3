@@ -376,6 +376,10 @@ export const OrchestrationV2AppThread = Schema.Struct({
   title: TrimmedNonEmptyString,
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
+  /** Missing fields in historical payloads decode with sidekick mode off. */
+  sidekickModelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
@@ -1524,6 +1528,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     driver: ProviderDriverKind,
     providerInstanceId: ProviderInstanceId,
     childThreadId: Schema.NullOr(ThreadId),
+    /** The model the child ran; absent on items recorded before it was tracked. */
+    model: Schema.optional(TrimmedNonEmptyString),
     prompt: Schema.String,
     progress: Schema.optional(Schema.String),
     result: Schema.NullOr(Schema.String),
@@ -1812,6 +1818,10 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   title: Schema.String,
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
+  /** Missing fields in historical payloads decode with sidekick mode off. */
+  sidekickModelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
@@ -2283,6 +2293,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     driver: ProviderDriverKind,
     providerInstanceId: ProviderInstanceId,
     childThreadId: Schema.NullOr(ThreadId),
+    /** The model the child ran; absent on items recorded before it was tracked. */
+    model: Schema.optional(TrimmedNonEmptyString),
     prompt: Schema.String,
     progress: Schema.optional(Schema.String),
     result: Schema.NullOr(Schema.String),
@@ -2576,6 +2588,7 @@ export const OrchestrationV2Command = Schema.Union([
     projectId: ProjectId,
     title: TrimmedNonEmptyString,
     modelSelection: ModelSelection,
+    sidekickModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
     branch: Schema.NullOr(TrimmedNonEmptyString),
@@ -2776,6 +2789,13 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     modelSelection: ModelSelection,
   }),
+  /** Applies to future delegations only; running children keep their model. */
+  Schema.Struct({
+    type: Schema.Literal("thread.sidekick.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    sidekickModelSelection: Schema.NullOr(ModelSelection),
+  }),
   Schema.Struct({
     type: Schema.Literal("provider-session.detach"),
     commandId: CommandId,
@@ -2806,6 +2826,12 @@ export const OrchestrationV2Command = Schema.Union([
     usageLimitRecoveryRequestId: Schema.optional(CommandId),
     usageLimitResetConfirmedAt: Schema.optional(IsoDateTime),
     deliveryIntent: Schema.optional(Schema.Literals(["auto", "steer", "restart"])),
+    /**
+     * Wake policy for the task a follow-up to a finished delegated child
+     * records. Omitted means "always"; a blocking follow-up passes
+     * "settled_only" because the waiting tool call delivers the result.
+     */
+    followupCompletionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),
     delegatedCompletion: Schema.optional(
       Schema.Struct({
         parentRunId: RunId,
@@ -2957,6 +2983,11 @@ export const OrchestrationV2Command = Schema.Union([
     parentRunId: RunId,
     parentNodeId: NodeId,
     task: TrimmedNonEmptyString,
+    /**
+     * What the child receives when it differs from `task`, such as a sidekick
+     * preamble. `task` stays the raw brief because titles and previews use it.
+     */
+    messageText: Schema.optional(TrimmedNonEmptyString),
     title: Schema.optional(TrimmedNonEmptyString),
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
@@ -3165,6 +3196,7 @@ export const OrchestrationV2ThreadLaunchInput = Schema.Struct({
   title: TrimmedNonEmptyString,
   generateTitle: Schema.optional(Schema.Boolean),
   modelSelection: ModelSelection,
+  sidekickModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,

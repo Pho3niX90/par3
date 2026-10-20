@@ -500,6 +500,7 @@ export function buildLocalDraftThread(
 ): Thread {
   const timestamp = DateTime.makeUnsafe(draftThread.createdAt);
   return presentThreadShell(draftThread.environmentId, {
+    sidekickModelSelection: draftThread.sidekickModelSelection ?? null,
     id: threadId,
     projectId: draftThread.projectId,
     title: "New thread",

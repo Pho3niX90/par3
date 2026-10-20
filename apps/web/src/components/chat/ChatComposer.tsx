@@ -297,6 +297,8 @@ import {
 } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import { ComposerSidekickControl, SidekickMenuContent } from "./ComposerSidekickControl";
+import { providerCanLeadSidekick, resolveSidekickPairing } from "../../sidekick";
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
@@ -1657,6 +1659,11 @@ export interface ChatComposerProps {
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
+  /** The thread's or draft's sidekick; null when off. */
+  sidekickModelSelection: ModelSelection | null;
+  /** The destination environment accepts sidekick changes. */
+  sidekickSupported: boolean;
+  onSidekickChange: (selection: ModelSelection | null) => void;
 
   focusComposer: () => void;
   scheduleComposerFocus: () => void;
@@ -1998,6 +2005,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     toggleInteractionMode,
     handleRuntimeModeChange,
     handleInteractionModeChange,
+    sidekickModelSelection,
+    sidekickSupported,
+    onSidekickChange,
     focusComposer,
     scheduleComposerFocus,
     setThreadError,
@@ -5128,10 +5138,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const iconOnlyBlockCount = composerControlsCollapsed
     ? restingControlsIconOnlyBlockCount
     : expandedControlsIconOnlyBlockCount;
+  const sidekickLead = {
+    instanceId: selectedModelSelection.instanceId,
+    model: selectedModelSelection.model,
+  };
+  const sidekickPairing = resolveSidekickPairing({
+    selection: sidekickModelSelection,
+    lead: sidekickLead,
+    entries: providerInstanceEntries,
+  });
+  // A stored sidekick stays visible after switching to a lead that cannot use it, so it can be cleared.
+  const showSidekickControl =
+    sidekickSupported &&
+    (sidekickPairing !== null || providerCanLeadSidekick(selectedProviderStatus));
+  const sidekickMenuInput = {
+    pairing: sidekickPairing,
+    lead: sidekickLead,
+    entries: providerInstanceEntries,
+    modelOptionsByInstance,
+    onChange: onSidekickChange,
+  };
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
     ...providerTraitsPickerInput,
     size: composerControlsCollapsed ? "xs" : "sm",
-    hidden: composerControlsHidden || restingHiddenBlockCount > 1,
+    hidden: composerControlsHidden || restingHiddenBlockCount > (showSidekickControl ? 2 : 1),
   });
   const restingBlockDefs = [
     ...(providerTraitsPicker
@@ -5157,12 +5187,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           size={composerControlsCollapsed ? "xs" : "sm"}
-          hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+          hidden={composerControlsHidden || restingHiddenBlockCount > (showSidekickControl ? 1 : 0)}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
         />
       ),
     },
+    ...(showSidekickControl
+      ? [
+          {
+            id: "sidekick",
+            content: (
+              <ComposerSidekickControl
+                {...sidekickMenuInput}
+                size={composerControlsCollapsed ? "xs" : "sm"}
+                hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+              />
+            ),
+          },
+        ]
+      : []),
   ];
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)
@@ -5324,6 +5368,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.includes("mode")}
             traitsMenuContent={
               hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
+            }
+            sidekickMenuContent={
+              hiddenRestingBlockIds.includes("sidekick") ? (
+                <SidekickMenuContent {...sidekickMenuInput} />
+              ) : undefined
             }
             onToggleInteractionMode={toggleInteractionMode}
             onRuntimeModeChange={handleRuntimeModeChange}
