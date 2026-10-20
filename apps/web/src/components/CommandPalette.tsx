@@ -80,6 +80,7 @@ import {
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
+  FileTextIcon,
 } from "lucide-react";
 import { requestPlanModeToggle } from "./chat/planModeActionBus";
 import { requestSidekickChange } from "./chat/sidekickActionBus";
@@ -91,6 +92,8 @@ import {
   sidekickOptionKey,
 } from "../sidekick";
 import { useComposerDraftStore } from "../composerDraftStore";
+import { requestSpecModeToggle } from "../specs/specModeActionBus";
+import { useProjectSpecModeState } from "../specs/state";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
 import {
   useDeferredValue,
@@ -993,6 +996,10 @@ function OpenCommandPaletteDialog(props: {
     defaultProjectRef,
     handleNewThread,
   });
+  const specModeState = useProjectSpecModeState(
+    contextualProjectRef?.environmentId ?? null,
+    contextualProjectRef?.projectId ?? null,
+  );
   const projectPickerEntries = buildSidebarProjectPickerEntries({
     groups: projectGroups,
     preferredProjectRef: contextualProjectRef,
@@ -1787,6 +1794,44 @@ function OpenCommandPaletteDialog(props: {
 
   const sidekickPaletteItem = buildSidekickPaletteItem();
   if (sidekickPaletteItem !== null) actionItems.push(sidekickPaletteItem);
+  if (contextualProjectRef !== null && specModeState.capabilitiesSupported) {
+    const { environmentId, projectId } = contextualProjectRef;
+    actionItems.push({
+      kind: "action",
+      value: "action:project-specs",
+      title: "Project specs",
+      searchTerms: ["spec", "specs", "specification", "requirements", "approve", "review"],
+      icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/specs",
+          search: { environment: environmentId, project: projectId },
+        });
+      },
+    });
+  }
+  if (
+    paletteRouteTarget !== null &&
+    contextualProjectRef !== null &&
+    specModeState.specModeEnabled
+  ) {
+    const { environmentId, projectId } = contextualProjectRef;
+    actionItems.push({
+      kind: "action",
+      value: "action:toggle-spec-mode",
+      title: "Toggle Spec mode",
+      shortcutCommand: "composer.toggleSpecMode",
+      searchTerms: ["spec", "specification", "requirements", "bind", "composer"],
+      icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        if (requestSpecModeToggle()) return;
+        await navigate({
+          to: "/specs",
+          search: { environment: environmentId, project: projectId },
+        });
+      },
+    });
+  }
 
   // Read once per open: the palette is a snapshot of the composer, not a live view of it.
   const promptLinkTarget = paletteRouteTarget

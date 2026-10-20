@@ -27,6 +27,7 @@ const backgroundThreadId = ThreadId.make("thread:background");
 const oldProviderThreadId = ThreadId.make("thread:old-provider-background");
 const archivedThreadId = ThreadId.make("thread:archived-background");
 const unknownOwnerThreadId = ThreadId.make("thread:unknown-background-owner");
+const specChildThreadId = ThreadId.make("thread:spec-child");
 
 const backgroundShell = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) => ({
   ...liveThreadShell(threadId, { activeRunId: null }),
@@ -50,6 +51,17 @@ const shells = new Map([
     {
       ...backgroundShell(archivedThreadId, ProviderInstanceId.make("codex")),
       archivedAt: liveThreadShell(archivedThreadId).updatedAt,
+    },
+  ],
+  [
+    specChildThreadId,
+    {
+      ...liveThreadShell(specChildThreadId),
+      lineage: {
+        rootThreadId: fullAccessThreadId,
+        parentThreadId: fullAccessThreadId,
+        relationshipToParent: "subagent" as const,
+      },
     },
   ],
   [
@@ -229,6 +241,12 @@ const supervisedClient = clientCaller("approval-required");
 const fullAccessClient = clientCaller("full-access");
 const readOnlyClient = clientCaller("read-only");
 const previewOnly = { ...fullAccess, capabilities: new Set(["preview"] as const) };
+const specBound = (specRole: "requirements" | "implementation") => ({
+  ...fullAccess,
+  thread: { ...fullAccess.thread!, specRole },
+});
+const specRequirements = specBound("requirements");
+const specImplementation = specBound("implementation");
 
 it.effect.each([
   ["reads", ended, {}, "ran"],
@@ -298,6 +316,13 @@ it.effect.each([
   ["writes_environment", plan, {}, "capability_denied"],
   ["writes_environment", fullAccessClient, {}, "ran"],
   ["writes_environment", supervisedClient, {}, "capability_denied"],
+
+  ["writes", specRequirements, {}, "capability_denied"],
+  ["writes", specImplementation, {}, "ran"],
+  ["writes_threads", specImplementation, { threadId: specChildThreadId }, "ran"],
+  ["writes_threads", specImplementation, { threadId: supervisedThreadId }, "capability_denied"],
+  ["starts_threads", specImplementation, {}, "capability_denied"],
+  ["writes_environment", specImplementation, {}, "capability_denied"],
 ] as const)("%s from %o with %o: %s", ([tool, scope, args, expected]) =>
   call(tool, scope, args).pipe(
     Effect.map((outcome) => expect(outcome).toBe(expected)),

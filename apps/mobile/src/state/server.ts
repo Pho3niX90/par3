@@ -19,3 +19,7 @@ export const environmentServerConfigsAtom = createEnvironmentServerConfigsAtom({
 export const threadListEnvironmentsAtom = createThreadListEnvironmentsAtom(
   environmentServerConfigsAtom,
 );
+
+export const specsQuery = serverEnvironment.specsQuery;
+export const specsLive = serverEnvironment.specsLive;
+export const specsMutate = serverEnvironment.specsMutate;

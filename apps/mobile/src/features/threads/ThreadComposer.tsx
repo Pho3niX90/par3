@@ -487,6 +487,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     offersUsageLimits: usageLimitsOffered,
     onUsageLimits:
       usageLimitsOffered && draftAttachments.length === 0 ? openUsageLimits : undefined,
+    onOpenSpecs:
+      project && props.serverConfig?.environment.capabilities.specMode
+        ? () =>
+            navigation.navigate("ProjectSpecs", {
+              environmentId: props.environmentId,
+              projectId: project.id,
+            })
+        : undefined,
   });
   const voiceInput = useVoiceInputController({
     ownerKey: composerDraftKey,

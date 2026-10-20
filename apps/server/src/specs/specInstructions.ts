@@ -1,0 +1,17 @@
+import type { SpecDocument, SpecRole } from "@t3tools/contracts";
+
+const roles: Record<SpecRole, string> = {
+  requirements:
+    "Turn the request into requirements, never implementation. Read specs/constitution.md if present and relevant knowledge/ documents before drafting. Ground decisions in the existing code. Clarify blocking questions with the user and mark unresolved ones [blocking]. Edit requirements only through spec_update, never by writing spec files directly. Preserve stable AC-n IDs; retire IDs with strikethrough. Fix the readiness findings spec_status reports, call spec_request_approval, and stop. You cannot approve or change approval files.",
+  implementation:
+    "Implement only the approved acceptance criteria. Use to-tasks: every task references active AC-n IDs, dependencies, and a concrete verification step; every active criterion is covered. Use spec_update_tasks, then spec_set_status to enter in-progress. Work one task at a time and record passing verification before marking it passed. Never weaken requirements to match code. On scope changes, stop and use evolve-spec: unchanged requirements can continue, changed criteria require reapproval, completed/new scope requires a superseding spec. Mark implemented only after all tasks pass. Do not mark done.",
+  test: "Verify the implemented requirements. Use to-test-plan: map every active AC-n to automated verification or explicit manual steps and expected results; write test-plan.md through spec_write_artifact. Add or update tests, run the applicable checks, and record evidence with the current requirements hash, task hash, and tested code checkpoint. Manual evidence requires human confirmation. Failed acceptance returns the spec to in-progress. Mark done only when every criterion has current passing evidence. Do not change production behavior or requirements to make checks pass. A push or PR is optional, never automatic.",
+  researcher:
+    "Answer focused research questions using read-only tools. Read the constitution and relevant knowledge/ material. Cite files and symbols, distinguish verified facts from inference, and cover affected clients/providers. Do not edit files, change status, or launch unrestricted work.",
+  verifier:
+    "Review read-only against active AC-n criteria and supplied test evidence. For each criterion report met, partially met, or unmet with file references. Flag scope creep and constraint violations. Report high-confidence findings; do not edit files or change spec status. The Test role runs checks and records evidence.",
+};
+
+export function specInstructions(document: SpecDocument, role: SpecRole) {
+  return `<par3_spec_workflow>\nRole: ${role}\nSpec: specs/${document.slug}/spec.md\nCheckout: ${document.workspacePath}\nStatus: ${document.status}; revision: ${document.revision}\nRequirements SHA-256: ${document.specHash}\nTask-definition SHA-256: ${document.taskHash}\n${roles[role]}\nUse spec_status to read the current document and allowed work. Status lifecycle: draft -> review -> approved -> in-progress -> implemented -> done; blocked/rejected require resolution. Human approval is separate from starting implementation, is local to this checkout/environment, and is invalidated by requirements or constitution changes. Never write status.json, tasks.json, or approval.json directly. Use the spec service tools. A child task inherits this spec and role; changing checkout requires approval there. Never clear the binding, approve yourself, or bypass restrictions through another thread.\n</par3_spec_workflow>`;
+}

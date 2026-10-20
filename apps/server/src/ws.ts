@@ -257,6 +257,7 @@ import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as JiraIssues from "./jira/JiraIssues.ts";
 import * as McpGateway from "./mcpGateway/McpGateway.ts";
+import * as SpecService from "./specs/SpecService.ts";
 import * as ThreadRepositories from "./vcs/ThreadRepositories.ts";
 
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -1252,6 +1253,7 @@ export const layerWsRpc = (
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
       const jiraIssues = yield* JiraIssues.JiraIssues;
       const mcpGateway = yield* McpGateway.McpGateway;
+      const specs = yield* SpecService.SpecService;
       const threadRepositories = yield* ThreadRepositories.ThreadRepositories;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
@@ -2500,6 +2502,14 @@ export const layerWsRpc = (
             Effect.orDie,
           ),
         [WS_METHODS.mcpGatewayTest]: (input) => mcpGateway.test(input.serverId),
+        [WS_METHODS.specsQuery]: (input) => specs.query(input),
+        [WS_METHODS.specsSubscribe]: (input) => specs.subscribe(input),
+        [WS_METHODS.specsMutate]: (input) =>
+          specs.mutate(input, {
+            kind: "human",
+            subject: currentSession.subject,
+            label: `Client ${currentSession.sessionId}`,
+          }),
         [WS_METHODS.pullRequestsPreview]: (input) =>
           withPullRequestViewer(input, pullRequests.preview(input)),
         [WS_METHODS.pullRequestsChecks]: (input) =>

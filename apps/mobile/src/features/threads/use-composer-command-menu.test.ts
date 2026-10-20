@@ -110,6 +110,31 @@ describe("mobile slash commands", () => {
       }),
     ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
   });
+
+  it("offers /spec command and never sets provider interactionMode to spec", () => {
+    const items = buildComposerSlashCommandItems({
+      query: "spec",
+      atMessageStart: true,
+      hasThread: true,
+      offersSpecs: true,
+      allowInteractionMode: true,
+      selectedProviderStatus: null,
+    });
+    const specItem = items.find(
+      (i): i is typeof i & { command: string } =>
+        i.type === "slash-command" && i.command === "spec",
+    );
+    expect(specItem).toBeDefined();
+    expect(specItem?.label).toBe("/spec");
+    expect(
+      resolveComposerCommandSelection({
+        draftMessage: "/spec",
+        trigger: { rangeStart: 0, rangeEnd: 5 },
+        item: specItem!,
+        allowInteractionMode: true,
+      }),
+    ).toEqual({ text: "/spec ", cursor: 6, interactionMode: null });
+  });
 });
 
 describe("workspace command discovery retry", () => {

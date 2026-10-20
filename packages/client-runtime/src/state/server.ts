@@ -1337,6 +1337,20 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:mcp-gateway-status",
       tag: WS_METHODS.mcpGatewayStatus,
     }),
+    specsQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:specs-query",
+      tag: WS_METHODS.specsQuery,
+      staleTimeMs: 0,
+    }),
+    specsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:specs-live",
+      tag: WS_METHODS.specsSubscribe,
+      idleTtlMs: 0,
+    }),
+    specsMutate: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:specs-mutate",
+      tag: WS_METHODS.specsMutate,
+    }),
     mcpGatewayTest: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:mcp-gateway-test",
       tag: WS_METHODS.mcpGatewayTest,

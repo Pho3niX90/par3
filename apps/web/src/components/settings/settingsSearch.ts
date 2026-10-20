@@ -912,6 +912,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "project-defaults",
   },
   {
+    id: "spec-mode",
+    title: "Spec mode",
+    to: "/settings/projects",
+    searchTerms: ["spec specification requirements approval review implementation workflow"],
+    environmentOnly: true,
+  },
+  {
     id: "project-actions",
     title: "Actions",
     to: "/settings/projects",

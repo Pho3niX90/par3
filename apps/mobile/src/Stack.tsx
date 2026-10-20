@@ -44,6 +44,11 @@ import {
 import { PullRequestReviewSheet } from "./features/pull-requests/PullRequestReviewSheet";
 import { PullRequestReviewersScreen } from "./features/pull-requests/PullRequestReviewersScreen";
 import {
+  ProjectSpecsRouteScreen,
+  SpecDetailRouteScreen,
+  SpecEditorRouteScreen,
+} from "./features/specs/SpecsRouteScreens";
+import {
   RenderErrorBoundary,
   RenderFailureView,
   type RenderFailureProps,
@@ -1013,6 +1018,35 @@ const RootStackConfig = createWorkspaceStackNavigator({
         ...NESTED_NAVIGATOR_OPTIONS,
         gestureEnabled: true,
         headerShown: false,
+      },
+    }),
+    ProjectSpecs: createNativeStackScreen({
+      screen: ProjectSpecsRouteScreen,
+      linking: "specs/:environmentId/:projectId",
+      options: {
+        ...SOLID_HEADER_OPTIONS,
+        headerTitle: "Specs",
+      },
+    }),
+    SpecDetail: createNativeStackScreen({
+      screen: SpecDetailRouteScreen,
+      linking: "specs/:environmentId/:projectId/:slug",
+      options: {
+        ...SOLID_HEADER_OPTIONS,
+        headerTitle: "Spec",
+      },
+    }),
+    SpecEditor: createNativeStackScreen({
+      screen: SpecEditorRouteScreen,
+      options: {
+        headerShown: false,
+        ...(Platform.OS === "android"
+          ? { presentation: "card" as const }
+          : {
+              ...FORM_SHEET_PRESENTATION_OPTIONS,
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: true,
+            }),
       },
     }),
     NotFound: createNativeStackScreen({

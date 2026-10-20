@@ -1453,6 +1453,7 @@ export const CLAUDE_T3_MCP_TOOL_TIMEOUT_MS = 65 * 60 * 1_000;
 export function claudeMcpQueryOverrides(input: {
   readonly mcpSession: McpProviderSession.McpProviderSessionConfig | undefined;
   readonly readOnlySandbox: boolean;
+  readonly specRequirements?: boolean;
   readonly allowedTools?: ReadonlyArray<string>;
 }): {
   readonly allowedTools?: ReadonlyArray<string>;
@@ -1466,7 +1467,19 @@ export function claudeMcpQueryOverrides(input: {
     ? CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS
     : [CLAUDE_T3_MCP_TOOL_WILDCARD];
   return {
-    allowedTools: Array.from(new Set([...(input.allowedTools ?? []), ...mcpAllowedTools])),
+    allowedTools: Array.from(
+      new Set([
+        ...(input.allowedTools ?? []),
+        ...mcpAllowedTools,
+        ...(input.specRequirements
+          ? [
+              "mcp__t3-code__spec_update",
+              "mcp__t3-code__spec_request_approval",
+              "mcp__t3-code__spec_status",
+            ]
+          : []),
+      ]),
+    ),
     mcpServers: {
       "t3-code": {
         type: "http",
@@ -9075,6 +9088,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             mcpSession: yield* mcpSessions.read(turnInput.threadId),
             readOnlySandbox:
               sandboxPolicyKindForClaudeRuntimePolicy(turnInput.runtimePolicy) === "readOnly",
+            specRequirements: turnInput.runtimePolicy.specRole === "requirements",
             ...(queryPolicy.allowedTools === undefined
               ? {}
               : { allowedTools: queryPolicy.allowedTools }),

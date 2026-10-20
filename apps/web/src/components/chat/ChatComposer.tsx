@@ -142,6 +142,12 @@ import {
 import { ComposerStashBadge } from "./ComposerStashBadge";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerMenuState } from "./useComposerMenuState";
+import {
+  ThreadSpecModeControl,
+  useOpenSpecMode,
+  useThreadSpecBannerItem,
+  useThreadSpecState,
+} from "../../specs/ThreadSpecControl";
 import { useComposerTriggerState } from "./useComposerTriggerState";
 import { useComposerFocusState } from "./useComposerFocusState";
 import { useComposerMultilinePrompt } from "./useComposerMultilinePrompt";
@@ -1237,6 +1243,12 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   showInteractionModeToggle: boolean;
   interactionMode: ProviderInteractionMode;
   interactionModeShortcutLabel: string | null;
+  spec: {
+    environmentId: EnvironmentId;
+    projectId: ProjectId | null;
+    threadId: ThreadId | null;
+    driver: string | null;
+  };
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   size?: "sm" | "xs";
@@ -1350,6 +1362,14 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
       </Tooltip>
 
       {interactionModeToggle}
+      <ThreadSpecModeControl
+        environmentId={props.spec.environmentId}
+        projectId={props.spec.projectId}
+        threadId={props.spec.threadId}
+        driver={props.spec.driver}
+        size={size}
+        hidden={props.hidden ?? false}
+      />
     </>
   );
 });
@@ -2672,6 +2692,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? []
       : composerPullRequestsFromLinks(threadPullRequests ?? [], pullRequestProjectId);
 
+  const specSlashCommandAvailable = useThreadSpecState(
+    environmentId,
+    activeProjectId,
+    routeKind === "server" ? routeThreadRef.threadId : null,
+  ).usable;
+  const openSpecMode = useOpenSpecMode(environmentId, activeProjectId);
+
   const composerMenuItems = ((): ComposerCommandItem[] => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
@@ -2702,6 +2729,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           label: "/model",
           description: "Switch response model for this thread",
         },
+        ...(specSlashCommandAvailable
+          ? ([
+              {
+                id: "slash:spec",
+                type: "slash-command",
+                command: "spec",
+                label: "/spec",
+                description: "Bind this thread to a spec",
+              },
+            ] as const)
+          : []),
         ...(planModeUiEnabled
           ? ([
               {
@@ -3880,6 +3918,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }
         return;
       }
+      if (item.command === "spec") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+          focusEditorAfterReplace: false,
+        });
+        if (applied) {
+          setComposerHighlightedItemId(null);
+          openSpecMode();
+        }
+        return;
+      }
       if (!planModeUiEnabled) return;
       void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
       const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
@@ -4255,6 +4304,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ) {
       if (!planModeUiEnabled) return false;
       toggleInteractionMode();
+      return true;
+    }
+    if (
+      submissionIntent === null &&
+      !event.isComposing &&
+      shortcutCommand === "composer.toggleSpecMode"
+    ) {
+      if (!specSlashCommandAvailable) return false;
+      openSpecMode();
       return true;
     }
     const { trigger } = resolveActiveComposerTrigger();
@@ -5184,6 +5242,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           showInteractionModeToggle={planModeUiEnabled}
           interactionMode={interactionMode}
           interactionModeShortcutLabel={interactionModeShortcutLabel}
+          spec={{
+            environmentId,
+            projectId: activeProjectId,
+            threadId: routeKind === "server" ? routeThreadRef.threadId : null,
+            driver: selectedProviderEntry?.driverKind ?? null,
+          }}
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           size={composerControlsCollapsed ? "xs" : "sm"}
@@ -5409,9 +5473,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         content: activityStackContent,
       }
     : null;
-  const bannerStackItems = activityStackItem
-    ? [activityStackItem, ...props.bannerItems]
+  const specBannerItem = useThreadSpecBannerItem(
+    environmentId,
+    activeProjectId,
+    routeKind === "server" ? routeThreadRef.threadId : null,
+  );
+  const leadingBannerItems = specBannerItem
+    ? [...props.bannerItems, specBannerItem]
     : props.bannerItems;
+  const bannerStackItems = activityStackItem
+    ? [activityStackItem, ...leadingBannerItems]
+    : leadingBannerItems;
   const [tasksDrawerThreadId, setTasksDrawerThreadId] = useState(activeThreadId);
   if (
     isTasksDrawerOpen &&
