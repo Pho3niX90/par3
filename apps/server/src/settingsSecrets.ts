@@ -35,6 +35,9 @@ const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 const jiraSecretFields = secretSettingsFields(JiraSettings);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
+export const mcpServerSecretName = (serverId: string, kind: "env" | "header", name: string) =>
+  `mcp-server-${encode(serverId)}-${kind}-${encode(name)}`;
+
 export interface SettingsSecret {
   readonly secretName: string;
   readonly kind: "field" | "environment";
@@ -164,7 +167,7 @@ export function mapSettingsSecrets(
   ) =>
     variables.map((variable) => {
       const result = map({
-        secretName: `mcp-server-${encode(serverId)}-${kind}-${encode(variable.name)}`,
+        secretName: mcpServerSecretName(serverId, kind, variable.name),
         kind: "environment",
         value: variable.value,
         redacted: variable.valueRedacted === true,
