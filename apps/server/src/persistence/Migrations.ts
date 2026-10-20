@@ -71,6 +71,8 @@ import Migration0065 from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
 import Migration0066 from "./Migrations/066_RepairClientSettlementTimestamps.ts";
 import Migration0067 from "./Migrations/067_ScheduledTaskFallback.ts";
 import Migration0068 from "./Migrations/068_SpecMode.ts";
+// Upstream numbers this 67; Par3 already used 67 and 68, so it runs as 69 here.
+import Migration0069 from "./Migrations/067_WebhookDedupe.ts";
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -142,6 +144,7 @@ export const migrationEntries = [
   [66, "RepairClientSettlementTimestamps", Migration0066],
   [67, "ScheduledTaskFallback", Migration0067],
   [68, "SpecMode", Migration0068],
+  [69, "WebhookDedupe", Migration0069],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
