@@ -34,6 +34,7 @@ import {
   resolveNewDraftStartFromOrigin,
   resolveNewThreadModelSelectionOverride,
 } from "../lib/chatThreadActions";
+import { resolveNewThreadSeed } from "@t3tools/client-runtime/last-used-thread-selection";
 import { readT3ProjectFile } from "../lib/t3ProjectFileDefaults";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentServerConfigsAtom } from "../state/server";
@@ -88,6 +89,7 @@ export function useNewThreadHandler() {
       getDraftSession,
       getDraftThread,
       applyStickyState,
+      lastUsedThreadSelectionByProjectKey,
       setDraftThreadContext,
       setLogicalProjectDraftThreadId,
       setModelSelection,
@@ -128,11 +130,28 @@ export function useNewThreadHandler() {
       project?.id ?? null,
       project,
     );
-    const projectDefaultModelSelection = projectSettings.settings.defaultModelSelection;
-    const defaultRuntimeMode = projectSettings.settings.defaultRuntimeMode;
+    const logicalProjectKey = project
+      ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
+      : scopedProjectKey(projectRef);
+    const seed = resolveNewThreadSeed({
+      lastUsed: lastUsedThreadSelectionByProjectKey[logicalProjectKey],
+      defaultModelSelection: projectSettings.settings.defaultModelSelection ?? null,
+      defaultModelSelectionSource: projectSettings.sources.defaultModelSelection,
+      defaultRuntimeMode: projectSettings.settings.defaultRuntimeMode,
+      defaultRuntimeModeSource: projectSettings.sources.defaultRuntimeMode,
+    });
+    const defaultRuntimeMode = seed.runtimeMode;
+    // An already-open draft keeps its own unsent toggle; any other new draft starts from
+    // the project's last-used mode, falling back to the thread being left.
+    const newDraftInteractionMode = (draftAlreadyOpen: boolean) => {
+      const interactionMode = draftAlreadyOpen
+        ? carryInteractionMode
+        : (seed.interactionMode ?? carryInteractionMode);
+      return interactionMode ? { interactionMode } : {};
+    };
     const resolveModelSelectionOverride = (destinationDraftId: DraftId) =>
       resolveNewThreadModelSelectionOverride({
-        projectDefaultSelection: projectDefaultModelSelection ?? null,
+        projectDefaultSelection: seed.modelSelection,
         carrySelection: carryModelSelection,
         carrySourceDraftId:
           currentRouteTarget?.kind === "draft" ? currentRouteTarget.draftId : null,
@@ -160,9 +179,6 @@ export function useNewThreadHandler() {
         ),
       });
     };
-    const logicalProjectKey = project
-      ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
-      : scopedProjectKey(projectRef);
     const hasBranchOption = options?.branch !== undefined;
     const hasWorktreePathOption = options?.worktreePath !== undefined;
     const hasEnvModeOption = options?.envMode !== undefined;
@@ -242,7 +258,7 @@ export function useNewThreadHandler() {
           setDraftThreadContext(emptyStoredDraftThread.draftId, {
             ...workspaceContext,
             ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-            ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+            ...newDraftInteractionMode(isDraftAlreadyOpen),
           });
         }
         const storedDraft = getComposerDraft(emptyStoredDraftThread.draftId);
@@ -270,7 +286,7 @@ export function useNewThreadHandler() {
             threadId: emptyStoredDraftThread.threadId,
             ...workspaceContext,
             ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-            ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+            ...newDraftInteractionMode(isDraftAlreadyOpen),
           },
         );
         const opened = {
@@ -366,7 +382,7 @@ export function useNewThreadHandler() {
             newWorktreesStartFromOrigin: projectSettings.settings.newWorktreesStartFromOrigin,
           }),
         runtimeMode: defaultRuntimeMode,
-        ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+        ...newDraftInteractionMode(false),
       });
       applyStickyState(draftId);
       const modelSelectionOverride = resolveModelSelectionOverride(draftId);

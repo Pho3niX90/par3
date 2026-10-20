@@ -33,6 +33,11 @@ import {
   scopedThreadKey,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
+import {
+  recordLastUsedThreadSelection,
+  type LastUsedThreadSelection,
+  type LastUsedThreadSelectionByProjectKey,
+} from "@t3tools/client-runtime/last-used-thread-selection";
 import * as Schema from "effect/Schema";
 import * as Equal from "effect/Equal";
 import * as Effect from "effect/Effect";
@@ -329,6 +334,13 @@ const PersistedDraftThreadState = Schema.Struct({
 });
 type PersistedDraftThreadState = typeof PersistedDraftThreadState.Type;
 
+const PersistedLastUsedThreadSelection = Schema.Struct({
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+});
+const isPersistedLastUsedThreadSelection = Schema.is(PersistedLastUsedThreadSelection);
+
 const PersistedComposerDraftStoreState = Schema.Struct({
   draftsByThreadKey: Schema.Record(Schema.String, PersistedComposerThreadDraftState),
   draftThreadsByThreadKey: Schema.Record(Schema.String, PersistedDraftThreadState),
@@ -340,6 +352,9 @@ const PersistedComposerDraftStoreState = Schema.Struct({
     Schema.Record(ProviderInstanceId, Schema.Record(Schema.String, ProviderOptionSelections)),
   ),
   stickyActiveProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
+  lastUsedThreadSelectionByProjectKey: Schema.optionalKey(
+    Schema.Record(Schema.String, PersistedLastUsedThreadSelection),
+  ),
 });
 type PersistedComposerDraftStoreState = typeof PersistedComposerDraftStoreState.Type;
 
@@ -433,6 +448,7 @@ interface ComposerDraftStoreState {
     Record<ProviderInstanceId, Partial<Record<string, ReadonlyArray<ProviderOptionSelection>>>>
   >;
   stickyActiveProvider: ProviderInstanceId | null;
+  lastUsedThreadSelectionByProjectKey: LastUsedThreadSelectionByProjectKey;
   getComposerDraft: (target: ComposerThreadTarget) => ComposerThreadDraftState | null;
   getDraftThreadByLogicalProjectKey: (logicalProjectKey: string) => ProjectDraftSession | null;
   getDraftSessionByLogicalProjectKey: (logicalProjectKey: string) => ProjectDraftSession | null;
@@ -503,6 +519,10 @@ interface ComposerDraftStoreState {
   finalizePromotedDraftThread: (threadRef: ComposerThreadTarget) => void;
   clearDraftThread: (threadRef: ComposerThreadTarget) => void;
   setStickyModelSelection: (modelSelection: ModelSelection | null | undefined) => void;
+  setLastUsedThreadSelection: (
+    logicalProjectKey: string,
+    selection: LastUsedThreadSelection,
+  ) => void;
   setPrompt: (threadRef: ComposerThreadTarget, prompt: string) => void;
   setTerminalContexts: (threadRef: ComposerThreadTarget, contexts: TerminalContextDraft[]) => void;
   setModelSelection: (
@@ -733,6 +753,7 @@ const EMPTY_PERSISTED_DRAFT_STORE_STATE = Object.freeze<PersistedComposerDraftSt
   stickyModelSelectionByProvider: {},
   stickyOptionsByModelByProvider: {},
   stickyActiveProvider: null,
+  lastUsedThreadSelectionByProjectKey: {},
 });
 
 const EMPTY_IMAGES: ComposerImageAttachment[] = [];
@@ -2173,6 +2194,7 @@ export function partializeComposerDraftStoreState(
       state.stickyOptionsByModelByProvider,
     ),
     stickyActiveProvider: state.stickyActiveProvider,
+    lastUsedThreadSelectionByProjectKey: state.lastUsedThreadSelectionByProjectKey,
   };
 }
 
@@ -2245,7 +2267,21 @@ function normalizeCurrentPersistedComposerDraftStoreState(
         ? seedStickyOptionsByModel(stickyModelSelectionByProvider)
         : compactStickyOptionsByModel(normalizedPersistedState.stickyOptionsByModelByProvider),
     stickyActiveProvider,
+    lastUsedThreadSelectionByProjectKey: normalizeLastUsedThreadSelections(
+      normalizedPersistedState.lastUsedThreadSelectionByProjectKey,
+    ),
   };
+}
+
+function normalizeLastUsedThreadSelections(value: unknown): LastUsedThreadSelectionByProjectKey {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, entry]) => key.length > 0 && isPersistedLastUsedThreadSelection(entry),
+    ),
+  );
 }
 
 function readPersistedAttachmentIdsFromStorage(threadKey: string): string[] {
@@ -2477,6 +2513,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
         stickyModelSelectionByProvider: {},
         stickyOptionsByModelByProvider: {},
         stickyActiveProvider: null,
+        lastUsedThreadSelectionByProjectKey: {},
         getComposerDraft: (target) => getComposerDraftState(get(), target),
         getDraftThreadByLogicalProjectKey: (logicalProjectKey) => {
           return get().getDraftSessionByLogicalProjectKey(logicalProjectKey);
@@ -2905,6 +2942,18 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               stickyModelSelectionByProvider: nextMap,
               stickyActiveProvider: normalized.instanceId,
             };
+          });
+        },
+        setLastUsedThreadSelection: (logicalProjectKey, selection) => {
+          set((state) => {
+            const next = recordLastUsedThreadSelection(
+              state.lastUsedThreadSelectionByProjectKey,
+              logicalProjectKey,
+              selection,
+            );
+            return next === state.lastUsedThreadSelectionByProjectKey
+              ? state
+              : { lastUsedThreadSelectionByProjectKey: next };
           });
         },
         applyStickyState: (threadRef) => {
@@ -4214,6 +4263,8 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           stickyModelSelectionByProvider: normalizedPersisted.stickyModelSelectionByProvider ?? {},
           stickyOptionsByModelByProvider: normalizedPersisted.stickyOptionsByModelByProvider ?? {},
           stickyActiveProvider: normalizedPersisted.stickyActiveProvider ?? null,
+          lastUsedThreadSelectionByProjectKey:
+            normalizedPersisted.lastUsedThreadSelectionByProjectKey ?? {},
         };
       },
     },

@@ -353,6 +353,27 @@ function modelReconciliationHarness(
   };
 }
 
+describe("mobile last-used thread selection", () => {
+  it("round-trips the per-project selection through the persisted document", () => {
+    const selection = {
+      modelSelection: { instanceId: "codex", model: "gpt-5" },
+      runtimeMode: "approval-required",
+      interactionMode: "plan",
+    } as const;
+    expect(
+      decodePersistedComposerState({
+        schemaVersion: 1,
+        drafts: {},
+        lastUsedThreadSelectionByProjectKey: { "env:project-a": selection },
+      }).lastUsedThreadSelectionByProjectKey,
+    ).toEqual({ "env:project-a": selection });
+    expect(
+      decodePersistedComposerState({ schemaVersion: 1, drafts: {} })
+        .lastUsedThreadSelectionByProjectKey,
+    ).toEqual({});
+  });
+});
+
 describe("mobile composer drafts", () => {
   it("restores a PR checkout source after restarting the composer", () => {
     const draft: ComposerDraft = {
