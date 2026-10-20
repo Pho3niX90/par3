@@ -46,6 +46,8 @@ import {
   resolveNewTaskModelSelection,
   resolveSelectableModelSelection,
 } from "../../lib/modelOptions";
+import { deriveLogicalProjectKeyFromSettings } from "@t3tools/client-runtime/state/project-grouping";
+import { resolveNewThreadSeed } from "@t3tools/client-runtime/last-used-thread-selection";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { projectEnvironment } from "../../state/projects";
@@ -66,9 +68,11 @@ import {
   scheduleUnusedComposerAttachmentCleanup,
   setComposerDraftText,
   setComposerDraftContext,
+  setLastUsedThreadSelection,
   setStickyComposerModelSelection,
   updateComposerDraftSettings,
   useComposerDraft,
+  useLastUsedThreadSelection,
   useStickyComposerModelSelection,
 } from "../../state/use-composer-drafts";
 import {
@@ -223,6 +227,7 @@ type NewTaskFlowContextValue = {
   readonly beginEditingPendingTask: (messageId: string) => boolean;
   readonly finishEditingPendingTask: () => void;
   readonly cancelEditingPendingTask: () => void;
+  readonly recordLastUsedSelection: (message: QueuedThreadMessage) => void;
   readonly buildPendingTaskMessage: (
     metadata: TurnCommandMetadata,
     options?: {
@@ -473,6 +478,18 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     selectedProject,
     t3ProjectFile,
   );
+  const selectedLogicalProjectKey = selectedProject
+    ? deriveLogicalProjectKeyFromSettings(selectedProject, groupingSettings)
+    : null;
+  const storedLastUsed = useLastUsedThreadSelection(selectedLogicalProjectKey);
+  // Editing a queued task keeps the values it was queued with.
+  const newThreadSeed = resolveNewThreadSeed({
+    lastUsed: editingPendingTask ? null : storedLastUsed,
+    defaultModelSelection: projectSettings.settings.defaultModelSelection ?? null,
+    defaultModelSelectionSource: projectSettings.sources.defaultModelSelection,
+    defaultRuntimeMode: projectSettings.settings.defaultRuntimeMode,
+    defaultRuntimeModeSource: projectSettings.sources.defaultRuntimeMode,
+  });
   const canChooseWorkspace = !isScratchDraft;
   const selectedProjectHasThreads =
     selectedProject !== null &&
@@ -510,7 +527,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     draftStartFromOrigin ?? projectSettings.settings.newWorktreesStartFromOrigin;
   const defaultRuntimeMode = editingPendingTask
     ? (editingPendingTask.runtimeMode ?? DEFAULT_RUNTIME_MODE)
-    : projectSettings.settings.defaultRuntimeMode;
+    : newThreadSeed.runtimeMode;
   const runtimeMode = selectedProjectDraft.runtimeMode ?? defaultRuntimeMode;
 
   // Antigravity keeps unavailable selections so sign-out or a catalog change
@@ -522,7 +539,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   );
   const projectDefaultModelSelection = resolveDefaultableModelSelection(
     selectedEnvironmentServerConfig,
-    projectSettings.settings.defaultModelSelection,
+    newThreadSeed.modelSelection,
     selectedProject?.id ?? null,
   );
   const storedStickyModelSelection = useStickyComposerModelSelection();
@@ -562,7 +579,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const planModeEnabled =
     planModePreferenceEnabled && selectedProviderStatus?.showInteractionModeToggle !== false;
   const interactionMode = planModeEnabled
-    ? (selectedProjectDraft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE)
+    ? (selectedProjectDraft.interactionMode ??
+      newThreadSeed.interactionMode ??
+      DEFAULT_PROVIDER_INTERACTION_MODE)
     : DEFAULT_PROVIDER_INTERACTION_MODE;
   const setSelectedModelKey = (
     key: string | null,
@@ -997,7 +1016,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       interactionMode: resolvePendingTaskInteractionMode({
         preferenceLoaded: planModePreferenceLoaded,
         planModeEnabled: planModePreferenceEnabled,
-        draftInteractionMode: draft.interactionMode,
+        draftInteractionMode: draft.interactionMode ?? newThreadSeed.interactionMode ?? undefined,
         queuedInteractionMode: editingPendingTask?.interactionMode,
         provider: selectedEnvironmentServerConfig?.providers.find(
           (candidate) => candidate.instanceId === draftModelSelection.instanceId,
@@ -1027,6 +1046,17 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       },
       createdAt: metadata.createdAt,
     };
+  };
+
+  const recordLastUsedSelection = (message: QueuedThreadMessage) => {
+    if (!selectedLogicalProjectKey || !message.modelSelection) {
+      return;
+    }
+    setLastUsedThreadSelection(selectedLogicalProjectKey, {
+      modelSelection: message.modelSelection,
+      runtimeMode: message.runtimeMode ?? runtimeMode,
+      interactionMode: message.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
+    });
   };
 
   const finishEditingPendingTask = () => {
@@ -1174,6 +1204,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     beginEditingPendingTask,
     finishEditingPendingTask,
     cancelEditingPendingTask,
+    recordLastUsedSelection,
     buildPendingTaskMessage,
     setPrompt,
     replaceAttachments,

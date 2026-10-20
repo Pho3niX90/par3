@@ -7189,6 +7189,18 @@ export default function ChatView(props: ChatViewProps) {
           : undefined,
       ],
     });
+    if (activeProject) {
+      useComposerDraftStore
+        .getState()
+        .setLastUsedThreadSelection(
+          deriveLogicalProjectKeyFromSettings(activeProject, projectGroupingSettings),
+          {
+            modelSelection: ctxSelectedModelSelection,
+            runtimeMode,
+            interactionMode: sendInteractionMode,
+          },
+        );
+    }
     const threadCreateModelSelection = createModelSelection(
       ctxSelectedModelSelection.instanceId,
       ctxSelectedModel || activeProjectDefaultModelSelection?.model || DEFAULT_MODEL,

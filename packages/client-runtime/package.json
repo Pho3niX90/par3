@@ -11,6 +11,10 @@
       "types": "./src/imageAttachmentSize.ts",
       "default": "./src/imageAttachmentSize.ts"
     },
+    "./last-used-thread-selection": {
+      "types": "./src/lastUsedThreadSelection.ts",
+      "default": "./src/lastUsedThreadSelection.ts"
+    },
     "./handoff": {
       "types": "./src/handoff.ts",
       "default": "./src/handoff.ts"

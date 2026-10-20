@@ -1309,6 +1309,7 @@ export function NewTaskDraftScreen(props: {
       );
       return;
     }
+    flow.recordLastUsedSelection(message);
     const draftSnapshot = getComposerDraftSnapshot(draftKey);
     if (editingPendingTask) {
       flow.finishEditingPendingTask();

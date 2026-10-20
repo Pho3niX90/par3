@@ -178,6 +178,7 @@ function resetComposerDraftStore() {
     stickyModelSelectionByProvider: {},
     stickyOptionsByModelByProvider: {},
     stickyActiveProvider: null,
+    lastUsedThreadSelectionByProjectKey: {},
   });
 }
 
@@ -3871,5 +3872,30 @@ describe("composerDraftStore attachment references", () => {
     expect(merged.draftsByThreadKey[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]?.prompt).toBe(
       prompt,
     );
+  });
+});
+
+describe("composerDraftStore last-used thread selection", () => {
+  beforeEach(resetComposerDraftStore);
+
+  it("remembers the latest selection per logical project", () => {
+    const { setLastUsedThreadSelection } = useComposerDraftStore.getState();
+    setLastUsedThreadSelection("project-a", {
+      modelSelection: modelSelection(CODEX_DRIVER, "gpt-5"),
+      runtimeMode: "approval-required",
+      interactionMode: "plan",
+    });
+    setLastUsedThreadSelection("project-b", {
+      modelSelection: modelSelection(CLAUDE_AGENT_DRIVER, "claude-opus-4-6"),
+      runtimeMode: "full-access",
+      interactionMode: "default",
+    });
+
+    const stored = useComposerDraftStore.getState().lastUsedThreadSelectionByProjectKey;
+    expect(stored["project-a"]).toMatchObject({
+      runtimeMode: "approval-required",
+      interactionMode: "plan",
+    });
+    expect(stored["project-b"]?.modelSelection.model).toBe("claude-opus-4-6");
   });
 });
