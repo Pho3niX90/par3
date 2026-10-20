@@ -18,6 +18,9 @@ const runNode = <A, E>(
   effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | Scope.Scope>,
 ) => effect.pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise);
 
+const targets = (...names: string[]) =>
+  new Map(names.map((name) => [name, { path: `/skills/${name}/SKILL.md` }] as const));
+
 describe("Cursor skills", () => {
   it("discovers recursive project skills with project precedence", async () =>
     await runNode(
@@ -321,18 +324,27 @@ describe("Cursor skills", () => {
     expect(hasCursorSkillMention("use $Review_Pr:V2 here")).toBe(true);
     expect(hasCursorSkillMention("please $review this")).toBe(true);
     expect(
-      rewriteCursorSkillMentions("use $review, keep $HOME and 5$review", new Set(["review"])),
+      rewriteCursorSkillMentions("use $review, keep $HOME and 5$review", targets("review")),
     ).toBe("use $review, keep $HOME and 5$review");
-    expect(rewriteCursorSkillMentions("please $review this", new Set(["review"]))).toBe(
+    expect(rewriteCursorSkillMentions("please $review this", targets("review"))).toBe(
       "please /review this",
     );
   });
+  it("points user-only skills at their SKILL.md instead of relying on Cursor's slash command", () => {
+    const skills = new Map([
+      ["deploy", { path: "/skills/deploy/SKILL.md", userInvocationOnly: true }],
+      ["review", { path: "/skills/review/SKILL.md" }],
+    ]);
+    expect(rewriteCursorSkillMentions("run $deploy now, then $review", skills)).toBe(
+      "run /deploy [The user invoked this skill. Follow the instructions at: /skills/deploy/SKILL.md] now, then /review",
+    );
+  });
   it("detects and invokes digit-leading Cursor skills without rewriting money", () => {
-    const names = new Set(["2spec", "20k", "100M", "1e6"]);
+    const names = targets("2spec", "20k", "100M", "1e6");
     expect(hasCursorSkillMention("use $2spec here")).toBe(true);
     expect(hasCursorSkillMention("use $2spec here")).toBe(true);
     expect(rewriteCursorSkillMentions("use $2spec here", names)).toBe("use /2spec here");
-    expect(rewriteCursorSkillMentions("use $2spec here", new Set())).toBe("use $2spec here");
+    expect(rewriteCursorSkillMentions("use $2spec here", new Map())).toBe("use $2spec here");
     for (const text of [
       "pay $20 tomorrow",
       "budget $20k here",
