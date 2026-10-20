@@ -128,6 +128,12 @@ export function ContextWindowMeter(props: {
               />
             </div>
           ) : null}
+          {usage.maxTokens === null ? (
+            <div className="text-pretty text-secondary-label text-2xs">
+              {formatContextWindowTokens(usage.usedTokens)} tokens used. This model's context window
+              size is unknown, so no percentage is shown.
+            </div>
+          ) : null}
           {showTotalProcessed ? (
             <div className="flex items-center justify-between gap-3 text-2xs leading-4">
               <span className="text-secondary-label">Total processed</span>

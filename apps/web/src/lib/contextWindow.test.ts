@@ -120,6 +120,20 @@ describe("live provider-turn usage (#8144)", () => {
   });
 });
 
+describe("usage with a 0 context window", () => {
+  it("reads a 0 window as unknown, keeping the used tokens", () => {
+    const snapshot = deriveLatestContextWindowSnapshot([], {
+      usedTokens: 42_000,
+      maxTokens: 0,
+      updatedAt: "2026-08-27T00:00:00.000Z",
+    });
+    expect(snapshot?.usedTokens).toBe(42_000);
+    expect(snapshot?.maxTokens).toBeNull();
+    expect(snapshot?.remainingTokens).toBeNull();
+    expect(snapshot?.usedPercentage).toBeNull();
+  });
+});
+
 describe("latestProviderTurnTokenUsage", () => {
   it("picks the newest report, not the last turn in snapshot order", () => {
     const usage = (usedTokens: number, updatedAt: string) => ({

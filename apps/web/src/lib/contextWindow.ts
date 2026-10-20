@@ -65,7 +65,8 @@ export function deriveLatestContextWindowSnapshot(
 ): ContextWindowSnapshot | null {
   if (liveUsage != null) {
     const usedTokens = Math.max(0, liveUsage.usedTokens);
-    const maxTokens = liveUsage.maxTokens ?? null;
+    // A 0 window is a provider that does not know its limit, not a full one.
+    const maxTokens = liveUsage.maxTokens ? liveUsage.maxTokens : null;
     const usedPercentage =
       maxTokens !== null && maxTokens > 0 ? Math.min(100, (usedTokens / maxTokens) * 100) : null;
     const remainingTokens =
@@ -102,7 +103,7 @@ export function deriveLatestContextWindowSnapshot(
     providerUsage !== undefined &&
     providerUsageUpdatedAt !== undefined
   ) {
-    const maxTokens = asFiniteNumber(providerUsage.maxTokens);
+    const maxTokens = asFiniteNumber(providerUsage.maxTokens) || null;
     const usedTokens = providerUsage.usedTokens;
     const usedPercentage =
       maxTokens !== null && maxTokens > 0 ? Math.min(100, (usedTokens / maxTokens) * 100) : null;

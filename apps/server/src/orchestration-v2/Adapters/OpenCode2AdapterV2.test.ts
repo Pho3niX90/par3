@@ -4373,6 +4373,63 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("still reports a turn's token usage when the model's window is unknown", () =>
+    Effect.gen(function* () {
+      const model = modelCatalog.data[0]!;
+      const unknownWindow = {
+        ...modelCatalog,
+        data: [{ ...model, limit: { context: 0, input: 0, output: 0 } }],
+      };
+      const gate = makeProviderReplayGate(["reread"]);
+      const runtime = yield* openCode2ReplayRuntime(
+        withInstructions([
+          out("event.subscribe"),
+          out("model.list", "<any>"),
+          reply("model.list", unknownWindow),
+          out("session.get", { sessionID: SESSION }),
+          replyData("session.get", sessionInfo()),
+          ...noOpenRequests,
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("session.step.ended", {
+            sessionID: SESSION,
+            assistantMessageID: "msg_0eb735d5b001oAFVeY5jz3WD4Z",
+            finish: "stop",
+            cost: 0,
+            tokens: { input: 1000, output: 40, reasoning: 10, cache: { read: 200, write: 50 } },
+          }),
+          event("session.execution.succeeded", { sessionID: SESSION }),
+          out("model.list", "<any>"),
+          reply("model.list", unknownWindow),
+          event("session.usage.updated", { sessionID: SESSION }, "reread"),
+        ]),
+        { replayGate: gate },
+      );
+      const thread = yield* runtime.resumeThread({
+        providerThread: providerThread(yield* DateTime.now),
+        threadId,
+        modelSelection: bigPickle,
+        runtimePolicy: policy(),
+      });
+      const settled = yield* runtime.events.pipe(
+        Stream.filter(
+          (event) =>
+            event.type === "provider_turn.updated" && event.providerTurn.completedAt !== null,
+        ),
+        Stream.runHead,
+        Effect.forkScoped,
+      );
+      yield* runtime.startTurn(turnInput(thread));
+      const turn = Option.getOrUndefined(yield* Fiber.join(settled));
+      const usage = turn?.type === "provider_turn.updated" ? turn.providerTurn.tokenUsage : null;
+      assert.equal(usage?.usedTokens, 1290);
+      assert.equal(usage?.maxTokens, null);
+      // The turn's own end re-reads the unknown window off-stream; let it finish.
+      yield* Effect.promise(() => gate.waitForReached("reread"));
+      gate.release("reread");
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("clears a staged revert whose commit failed, before the next prompt too", () =>
     Effect.gen(function* () {
       const kept = "msg_t3_turn_run-attempt:kept:1";
