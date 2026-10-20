@@ -5,7 +5,7 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { CLOUD_LINK_SECRETS, RELAY_URL_SECRET } from "./config.ts";
 import { relayUrlConfig } from "./publicConfig.ts";
 
-export function isUpstreamRelayUrl(value: string): boolean {
+function isUpstreamRelayUrl(value: string): boolean {
   try {
     const { hostname } = new URL(value.trim());
     return hostname === "t3.codes" || hostname.endsWith(".t3.codes");
