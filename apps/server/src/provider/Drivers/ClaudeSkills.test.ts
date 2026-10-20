@@ -63,12 +63,14 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
           path: path.join(plugin, "skills", "plain", "SKILL.md"),
           enabled: true,
           scope: "user",
+          source: "plugin",
         },
         {
           name: "manifest-plugin:review-alias",
           path: path.join(plugin, "engineering", "review", "SKILL.md"),
           enabled: true,
           scope: "user",
+          source: "plugin",
           description: "Review changes.",
           userInvocationOnly: true,
           userInvocable: false,
@@ -325,6 +327,7 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
           path: path.join(configDir, "skills", "codex-review", "SKILL.md"),
           enabled: true,
           scope: "user",
+          source: "user",
           description: "Ask Codex for a review.",
         },
         {
@@ -332,6 +335,7 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
           path: path.join(workspace, ".claude", "skills", "deploy", "SKILL.md"),
           enabled: true,
           scope: "project",
+          source: "project",
           description: "Deploy the app.",
         },
       ]);
@@ -369,6 +373,7 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
             path: path.join(extraDir, ".claude", "skills", "demo", "SKILL.md"),
             enabled: true,
             scope: "project",
+            source: "add-dir",
             description: "From an additional directory.",
           },
         ]);
@@ -454,6 +459,7 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
           path: path.join(configDir, "skills", "deploy", "SKILL.md"),
           enabled: true,
           scope: "user",
+          source: "user",
           description: "User deploy.",
         },
       ]);
@@ -520,6 +526,7 @@ it.layer(NodeServices.layer)("discoverClaudeSkills", (it) => {
             path: path.join(configDir, "skills", "kane-cli", "SKILL.md"),
             enabled: true,
             scope: "user",
+            source: "user",
             description,
             userInvocationOnly: true,
             userInvocable: false,
