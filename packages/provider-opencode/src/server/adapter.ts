@@ -2,6 +2,7 @@ import type {
   Event as OpenCodeEvent,
   Message as OpenCodeMessage,
   Part as OpenCodePart,
+  PermissionConfig,
   PermissionRequest,
   PermissionRuleset,
   QuestionRequest,
@@ -36,6 +37,7 @@ import {
   type RuntimeRequestId,
   type ThreadId,
 } from "@t3tools/contracts";
+import * as NodeOS from "node:os";
 import { OpenCodeSettings } from "../settings.ts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -602,12 +604,51 @@ const OPENCODE_RESTRICTED_PERMISSIONS = [
   "doom_loop",
 ] as const;
 
+function expandOpenCodePermissionPattern(pattern: string): string {
+  const home = NodeOS.homedir();
+  if (pattern === "~" || pattern === "$HOME") return home;
+  if (pattern.startsWith("~/")) return `${home}${pattern.slice(1)}`;
+  if (pattern.startsWith("$HOME/")) return `${home}${pattern.slice(5)}`;
+  return pattern;
+}
+
+/**
+ * Flattens the `permission` block of the user's resolved OpenCode config into
+ * session rules the way OpenCode itself does: wildcard keys first so specific
+ * keys can refine them, since the last matching rule wins.
+ */
+export function openCodeUserPermissionRules(
+  permission: PermissionConfig | undefined,
+): PermissionRuleset {
+  if (permission === undefined || permission === null) return [];
+  if (typeof permission === "string")
+    return [{ permission: "*", pattern: "*", action: permission }];
+  const entries = Object.entries(permission).sort(
+    ([left], [right]) => Number(right.includes("*")) - Number(left.includes("*")),
+  );
+  return entries.flatMap(([key, value]): PermissionRuleset => {
+    if (value === undefined) return [];
+    if (typeof value === "string") return [{ permission: key, pattern: "*", action: value }];
+    return Object.entries(value).map(([pattern, action]) => ({
+      permission: key,
+      pattern: expandOpenCodePermissionPattern(pattern),
+      action,
+    }));
+  });
+}
+
 /**
  * OpenCode does not provide an OS sandbox, so permission rules are also the
  * enforcement boundary for non-interactive policies.
+ *
+ * Session rules are evaluated after the user's config, so Par3's ask rules
+ * would otherwise shadow every pattern the user configured. In Auto mode the
+ * user's own rules are re-appended last so they keep winning; tools the user
+ * did not configure keep Par3's defaults.
  */
 export function openCodePermissionRules(
   runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+  userPermissionRules: PermissionRuleset = [],
 ): PermissionRuleset {
   const sandboxPolicy = recordValue(runtimePolicy, "sandboxPolicy");
   const sandboxType = recordString(sandboxPolicy, "type");
@@ -695,6 +736,10 @@ export function openCodePermissionRules(
     }
   }
 
+  if (runtimePolicy.runtimeMode === "auto") {
+    rules.push(...userPermissionRules);
+  }
+
   return rules;
 }
 
@@ -718,8 +763,9 @@ function permissionRuleEquals(
 export function openCodeChildPermissionRules(
   runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
   nativeChildRules: PermissionRuleset,
+  userPermissionRules: PermissionRuleset = [],
 ): PermissionRuleset {
-  const parentRules = openCodePermissionRules(runtimePolicy);
+  const parentRules = openCodePermissionRules(runtimePolicy, userPermissionRules);
   const inheritedRules = parentRules.filter(
     (rule) => rule.permission === "external_directory" || rule.action === "deny",
   );
@@ -1049,6 +1095,19 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               }),
             ),
           );
+
+        // Only Auto mode honors the user's own patterns. An unreadable config
+        // falls back to Par3's rules, which are the safe (asking) default.
+        const userPermissionRulesFor = Effect.fn("OpencodeAdapter.userPermissionRulesFor")(
+          function* (runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) {
+            if (runtimePolicy.runtimeMode !== "auto") return [];
+            const userPermission = yield* sdkCall("config.get", {}, () => client.config.get()).pipe(
+              Effect.map((response) => response.data?.permission),
+              Effect.orElseSucceed(() => undefined),
+            );
+            return openCodeUserPermissionRules(userPermission);
+          },
+        );
 
         const abortDescendants = Effect.fn("OpencodeAdapter.abortDescendants")(function* (
           rootId: string,
@@ -1398,6 +1457,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             const childPermission = openCodeChildPermissionRules(
               turn.runtimePolicy,
               nativeChildSession.permission ?? [],
+              yield* userPermissionRulesFor(turn.runtimePolicy),
             );
             yield* sdkCall(
               "session.update",
@@ -3014,13 +3074,12 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               }
               // No title: OpenCode generates one from the first prompt only when
               // session.create leaves it unset (SessionPrompt.ensureTitle).
-              const response = yield* sdkCall(
-                "session.create",
-                { permission: openCodePermissionRules(threadInput.runtimePolicy) },
-                () =>
-                  client.session.create({
-                    permission: openCodePermissionRules(threadInput.runtimePolicy),
-                  }),
+              const permission = openCodePermissionRules(
+                threadInput.runtimePolicy,
+                yield* userPermissionRulesFor(threadInput.runtimePolicy),
+              );
+              const response = yield* sdkCall("session.create", { permission }, () =>
+                client.session.create({ permission }),
               );
               const nativeSession = unwrapData("session.create", response);
               const createdAt = yield* DateTime.now;
@@ -3595,11 +3654,12 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   return yield* protocolError(
                     "OpenCode did not preserve the requested rewind boundary.",
                   );
+                const forkPermission = openCodePermissionRules(
+                  input.runtimePolicy,
+                  yield* userPermissionRulesFor(input.runtimePolicy),
+                );
                 yield* sdkCall("session.update", { sessionID: fork.id }, () =>
-                  client.session.update({
-                    sessionID: fork.id,
-                    permission: openCodePermissionRules(input.runtimePolicy),
-                  }),
+                  client.session.update({ sessionID: fork.id, permission: forkPermission }),
                 );
                 retainedThread = {
                   ...rollbackInput.providerThread,
