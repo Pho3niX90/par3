@@ -120,25 +120,24 @@ export function copilotApprovalOptions(
   ];
 }
 
-export const makeCopilotAcpRuntime = (
+export const makeCopilotAcpRuntime = Effect.fn("makeCopilotAcpRuntime")(function* (
   input: CopilotAcpRuntimeInput,
-): Effect.Effect<
+): Effect.fn.Return<
   AcpSessionRuntime.AcpSessionRuntime["Service"],
   EffectAcpErrors.AcpError,
   ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
-> =>
-  Effect.gen(function* () {
-    const acpContext = yield* Layer.build(
-      AcpSessionRuntime.layer({
-        ...input,
-        spawn: buildCopilotAcpSpawnInput(
-          input.copilotSettings,
-          input.cwd ?? process.cwd(),
-          input.environment,
-        ),
-      }),
-    );
-    return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
-      Effect.provide(acpContext),
-    );
-  });
+> {
+  const acpContext = yield* Layer.build(
+    AcpSessionRuntime.layer({
+      ...input,
+      spawn: buildCopilotAcpSpawnInput(
+        input.copilotSettings,
+        input.cwd ?? process.cwd(),
+        input.environment,
+      ),
+    }),
+  );
+  return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
+    Effect.provide(acpContext),
+  );
+});

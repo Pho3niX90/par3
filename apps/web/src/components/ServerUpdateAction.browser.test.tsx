@@ -583,7 +583,7 @@ describe("server updates from the environment selector", () => {
     await expect.element(page.getByRole("option", { name: "Other machine" })).toBeVisible();
     expect(testState.clipboard).not.toHaveBeenCalled();
     await userEvent.click(page.getByRole("option", { name: /Copy relaunch command/ }));
-    expect(testState.clipboard).toHaveBeenCalledExactlyOnceWith("npx t3@0.0.31");
+    expect(testState.clipboard).toHaveBeenCalledExactlyOnceWith("npx @paritylabs/par3@0.0.31");
     expect(testState.updateServer).not.toHaveBeenCalled();
     await expect.element(picker).toHaveTextContent("Build box");
     await userEvent.click(picker);

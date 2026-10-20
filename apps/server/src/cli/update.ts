@@ -177,15 +177,14 @@ export const resolveLauncherPath = Effect.gen(function* () {
   const cwd = yield* HostProcess.WorkingDirectory;
   const environment = yield* HostProcess.Environment;
   const platform = yield* HostProcess.Platform;
-  const throughAlias = (launcher: string) =>
-    Effect.gen(function* () {
-      if (path.basename(launcher) !== LAUNCHER_ALIAS) return launcher;
-      const target = yield* fs.readLink(launcher).pipe(Effect.option);
-      const primary = path.join(path.dirname(launcher), LAUNCHER_NAME);
-      return Option.isSome(target) && path.resolve(path.dirname(launcher), target.value) === primary
-        ? primary
-        : launcher;
-    });
+  const throughAlias = Effect.fn("update.throughAlias")(function* (launcher: string) {
+    if (path.basename(launcher) !== LAUNCHER_ALIAS) return launcher;
+    const target = yield* fs.readLink(launcher).pipe(Effect.option);
+    const primary = path.join(path.dirname(launcher), LAUNCHER_NAME);
+    return Option.isSome(target) && path.resolve(path.dirname(launcher), target.value) === primary
+      ? primary
+      : launcher;
+  });
   if (invokedAs.includes("/") || invokedAs.includes("\\")) {
     return yield* throughAlias(path.resolve(cwd, invokedAs));
   }

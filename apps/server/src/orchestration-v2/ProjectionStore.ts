@@ -4284,8 +4284,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           ),
         );
 
-    const getThreadEditedPaths: ProjectionStoreV2Shape["getThreadEditedPaths"] = (threadId) =>
-      Effect.gen(function* () {
+    const getThreadEditedPaths: ProjectionStoreV2Shape["getThreadEditedPaths"] = Effect.fn(
+      "ProjectionStore.getThreadEditedPaths",
+    )(
+      function* (threadId) {
         const rows = yield* sql<{ readonly path: unknown }>`
           SELECT json_extract(payload_json, '$.fileName') AS path
           FROM orchestration_v2_projection_turn_items
@@ -4299,7 +4301,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         return rows.flatMap((row) =>
           typeof row.path === "string" && row.path.length > 0 ? [row.path] : [],
         );
-      }).pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
+      },
+      (effect, threadId) =>
+        effect.pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause }))),
+    );
 
     const getTurnStartHistory: ProjectionStoreV2Shape["getTurnStartHistory"] = Effect.fn(
       "ProjectionStore.getTurnStartHistory",

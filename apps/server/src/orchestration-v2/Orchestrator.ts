@@ -993,12 +993,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   // read that a checkpoint capture, which commits outside the dispatch lock, can overtake,
   // so the sink rebuilds them from the latest row when the command commits.
   const delegatedCompletionOnlyEvents = new WeakSet<OrchestrationV2DomainEvent>();
-  const emitDelegatedCompletionUpdate = (
-    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
-    command: OrchestrationV2ServerCommand,
-    event: Omit<Extract<OrchestrationV2DomainEvent, { readonly type: "run.updated" }>, "id">,
-  ) =>
-    Effect.gen(function* () {
+  const emitDelegatedCompletionUpdate =
+    /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
+    Effect.fnUntraced(function* (
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+      command: OrchestrationV2ServerCommand,
+      event: Omit<Extract<OrchestrationV2DomainEvent, { readonly type: "run.updated" }>, "id">,
+    ) {
       const withId = yield* emit(events, command)(event);
       delegatedCompletionOnlyEvents.add(withId);
     });

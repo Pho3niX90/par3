@@ -351,11 +351,12 @@ const layerBase: Layer.Layer<
     // Checkpoint capture commits outside the thread dispatch lock, so it can finish after a
     // cohort writer read the parent run. Merging in this transaction keeps that completion in
     // both the event log and the projection.
-    const mergeDelegatedCompletionOnly = (
-      events: ReadonlyArray<OrchestrationV2DomainEvent>,
-      eventIds: ReadonlyArray<EventId> | undefined,
-    ) =>
-      Effect.gen(function* () {
+    const mergeDelegatedCompletionOnly =
+      /* This helper runs inside every write transaction; the enclosing write owns the span. */
+      Effect.fnUntraced(function* (
+        events: ReadonlyArray<OrchestrationV2DomainEvent>,
+        eventIds: ReadonlyArray<EventId> | undefined,
+      ) {
         if (eventIds === undefined || eventIds.length === 0) return events;
         const mergeIds = new Set(eventIds);
         const latestRuns = new Map<RunId, OrchestrationV2Run>();

@@ -176,18 +176,20 @@ export const install = Effect.gen(function* () {
       return Option.none<string>();
     }
     /** Our file at `target`, or nothing there: never replace a file the app did not write. */
-    const writeOwned = (target: string, text: string) =>
-      Effect.gen(function* () {
-        const current = yield* fs.readFileString(target).pipe(Effect.option);
-        if (Option.isSome(current) && !current.value.includes(MARKER)) return;
-        if (Option.getOrUndefined(current) === text) return;
-        yield* fs.makeDirectory(path.dirname(target), { recursive: true });
-        // Written beside the launcher and renamed over it, so a running `par3` never reads half a file.
-        const staging = `${target}.${process.pid}.tmp`;
-        yield* fs.writeFileString(staging, text, { mode: 0o755 });
-        yield* fs.rename(staging, target);
-        yield* logInfo("installed par3 launcher", { target });
-      });
+    const writeOwned = Effect.fn("DesktopCliShim.writeOwned")(function* (
+      target: string,
+      text: string,
+    ) {
+      const current = yield* fs.readFileString(target).pipe(Effect.option);
+      if (Option.isSome(current) && !current.value.includes(MARKER)) return;
+      if (Option.getOrUndefined(current) === text) return;
+      yield* fs.makeDirectory(path.dirname(target), { recursive: true });
+      // Written beside the launcher and renamed over it, so a running `par3` never reads half a file.
+      const staging = `${target}.${process.pid}.tmp`;
+      yield* fs.writeFileString(staging, text, { mode: 0o755 });
+      yield* fs.rename(staging, target);
+      yield* logInfo("installed par3 launcher", { target });
+    });
     yield* writeOwned(shimPath, content);
     if (windows)
       yield* writeOwned(path.join(path.dirname(shimPath), "p3.cmd"), renderWindowsAlias());
