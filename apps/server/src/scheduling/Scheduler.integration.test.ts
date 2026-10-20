@@ -28,6 +28,7 @@ import * as ScheduledTasks from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as Scheduler from "./Scheduler.ts";
 
 it.effect.each(["on time", "after restart"])(
@@ -119,6 +120,9 @@ it.effect.each(["on time", "after restart"])(
         }),
         Layer.mock(ServerSettings.ServerSettingsService)({
           getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+        }),
+        Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+          listInstances: Effect.succeed([]),
         }),
         Layer.mock(SecretRequests.SecretRequests)({}),
       );

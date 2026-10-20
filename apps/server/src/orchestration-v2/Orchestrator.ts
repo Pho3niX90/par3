@@ -4827,6 +4827,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const failure = latestRootProviderFailure(run, projection.turnItems);
       const recovery = projection.thread.limitRecovery;
       const now = yield* DateTime.now;
+      const resetConfirmed =
+        command.usageLimitResetConfirmedAt !== undefined &&
+        run?.completedAt != null &&
+        Date.parse(command.usageLimitResetConfirmedAt) > DateTime.toEpochMillis(run.completedAt) &&
+        Date.parse(command.usageLimitResetConfirmedAt) <= DateTime.toEpochMillis(now);
+      const recoverySnooze =
+        recovery?.snooze &&
+        projection.thread.snoozedUntil != null &&
+        DateTime.toEpochMillis(projection.thread.snoozedUntil) === Date.parse(recovery.resetAt);
       if (
         run?.id !== command.usageLimitContinuationOfRunId ||
         failure?.class !== "usage_limit" ||
@@ -4835,14 +4844,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         recovery.requestId !== command.usageLimitRecoveryRequestId ||
         recovery.runId !== run.id ||
         recovery.resetAt !== failure.resetAt ||
-        Date.parse(recovery.resetAt) > DateTime.toEpochMillis(now) ||
+        (Date.parse(recovery.resetAt) > DateTime.toEpochMillis(now) && !resetConfirmed) ||
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
         projection.thread.settledOverride === "settled" ||
         projection.thread.providerInstanceId !== run.providerInstanceId ||
         projection.runtimeRequests.some((request) => request.status === "pending") ||
         (projection.thread.snoozedUntil != null &&
-          DateTime.toEpochMillis(projection.thread.snoozedUntil) > DateTime.toEpochMillis(now))
+          DateTime.toEpochMillis(projection.thread.snoozedUntil) > DateTime.toEpochMillis(now) &&
+          !(resetConfirmed && recoverySnooze))
       ) {
         yield* emit(
           events,
