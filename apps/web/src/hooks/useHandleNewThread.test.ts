@@ -32,6 +32,7 @@ const testState = vi.hoisted(() => {
     getDraftSession: vi.fn(() => null),
     getDraftThread: vi.fn(() => null),
     applyStickyState: vi.fn(),
+    lastUsedThreadSelectionByProjectKey: {},
     setDraftThreadContext: vi.fn(),
     setLogicalProjectDraftThreadId: vi.fn(),
     setModelSelection: vi.fn(),
