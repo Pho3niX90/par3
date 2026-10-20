@@ -163,6 +163,24 @@ function modelWindows(models: typeof Models.Type) {
   return [...windows.values()];
 }
 
+const RESET_UNIT_MS = { day: 86_400_000, hour: 3_600_000, minute: 60_000, second: 1000 };
+
+/**
+ * The agent ends a turn with "Usage Limit Reached … Your limit will reset in
+ * 3 days, 21 hours." for quotas Google's quota endpoints do not report, such as
+ * preview models missing from fetchAvailableModels. Returns the reset time.
+ */
+export function parseAntigravityLimitReached(text: string, now: number): number | undefined {
+  if (!/reached your current quota/i.test(text)) return undefined;
+  const phrase = /limit will reset in ([^.\n]+)/i.exec(text)?.[1];
+  if (!phrase) return undefined;
+  let total = 0;
+  for (const [, amount, unit] of phrase.matchAll(/(\d+)\s*(day|hour|minute|second)s?/gi)) {
+    total += Number(amount) * RESET_UNIT_MS[unit!.toLowerCase() as keyof typeof RESET_UNIT_MS];
+  }
+  return total > 0 ? now + total : undefined;
+}
+
 export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(function* (input: {
   readonly profileDirectory: string;
   readonly authMethod: AntigravitySettings["authMethod"];
@@ -178,6 +196,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
     | { fingerprint: string; account: string; accessToken: string; expiresAt: number }
     | undefined;
   let generation = 0;
+  let reportedLimitResetsAt: number | undefined;
 
   const sha256 = (text: string) =>
     crypto
@@ -285,26 +304,42 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
       }
       return [...windows.values()];
     });
-    const summary = yield* fetchWindows("retrieveUserQuotaSummary", (response) =>
-      decodeSummary(response).pipe(Effect.map(summaryWindows)),
+    const [summary, models] = yield* Effect.all(
+      [
+        fetchWindows("retrieveUserQuotaSummary", (response) =>
+          decodeSummary(response).pipe(Effect.map(summaryWindows)),
+        ),
+        fetchWindows("fetchAvailableModels", (response) =>
+          decodeModels(response).pipe(Effect.map(modelWindows)),
+        ),
+      ],
+      { concurrency: "unbounded" },
     );
-    // The summary can omit a family entirely: some accounts get only the shared
-    // Claude & GPT group there, and Gemini's own quota is reported per model.
-    const hasGemini = summary.some((window) => window.id.startsWith("gemini-"));
-    const hasThirdParty = summary.some((window) => window.id.startsWith("3p-"));
-    const fallback =
-      hasGemini && hasThirdParty
-        ? []
-        : yield* fetchWindows("fetchAvailableModels", (response) =>
-            decodeModels(response).pipe(
-              Effect.map((models) =>
-                modelWindows(models).filter((window) =>
-                  window.id.startsWith("gemini-") ? !hasGemini : !hasThirdParty,
-                ),
-              ),
-            ),
-          );
-    const windows = [...summary, ...fallback];
+    // Per-model quotas can run out while every summary bucket still reads
+    // full, so show them beside the summary once they are partly used. The
+    // summary can also omit a family entirely (some accounts get only the shared
+    // Claude & GPT group), and then that family's model quotas always show.
+    const family = (id: string) => (id.startsWith("gemini-") ? "gemini" : "3p");
+    const summaryFamilies = new Set(summary.map((window) => family(window.id)));
+    const merged = new Map(summary.map((window) => [window.id, window]));
+    for (const window of models) {
+      if (window.usedPercent === 0 && summaryFamilies.has(family(window.id))) continue;
+      const previous = merged.get(window.id);
+      if (!previous || window.usedPercent > previous.usedPercent) merged.set(window.id, window);
+    }
+    const windows = [...merged.values()];
+    if (reportedLimitResetsAt !== undefined && reportedLimitResetsAt <= now) {
+      reportedLimitResetsAt = undefined;
+    }
+    if (reportedLimitResetsAt !== undefined) {
+      windows.push({
+        id: "agent-limit",
+        label: "Agent · Limit reached",
+        kind: "other",
+        usedPercent: 100,
+        resetsAt: DateTime.formatIso(DateTime.makeUnsafe(reportedLimitResetsAt)),
+      });
+    }
     if (windows.length === 0) {
       return makeUnavailableUsageLimits({
         checkedAt,
@@ -328,9 +363,14 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
   );
   return {
     probe,
+    reportLimitReached: (resetsAt: number) =>
+      Effect.sync(() => {
+        reportedLimitResetsAt = Math.max(reportedLimitResetsAt ?? 0, resetsAt);
+      }),
     clear: Effect.sync(() => {
       cached = undefined;
       generation++;
+      reportedLimitResetsAt = undefined;
     }),
   };
 });
