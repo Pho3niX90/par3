@@ -136,3 +136,16 @@ run with Par3's configuration (arm A1), not against bare `claude` (A0): A1 − A
 the appended prompt, thinking, and tools Par3 asks for, while B − A1 is the server's own cost.
 Claude streams text one content block at a time by design, so time to first visible text moves in
 whole blocks; compare it between arms rather than reading it as token latency.
+
+## Mobile looping animations
+
+`apps/mobile/package.json` sets Reanimated's `DISABLE_COMMIT_PAUSING_MECHANISM` so keyboard avoiding
+animates on iOS. Reanimated documents that flag as safe only alongside React Native's
+`preventShadowTreeCommitExhaustion`, which defaults to off and needs React Native built from source,
+so our builds run without it. Reanimated commits each animation frame to the shadow tree, and
+without commit pausing those commits can starve React's: the JS thread keeps retrying its commit,
+the screen freezes, and back does nothing. Release builds retry forever; dev builds abort with
+`ShadowTree.cpp: assertion failed (attempts < 1024)`. Looping animations that stay on screen while
+heavy content renders should use React Native's `Animated` with `useNativeDriver: true`, which
+updates views without commits, not Reanimated's `withRepeat`. The running-thread shimmer in
+`thread-work-log.tsx` is the example.
