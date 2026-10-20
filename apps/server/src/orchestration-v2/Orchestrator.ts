@@ -58,6 +58,7 @@ import {
   resolveProviderInstanceEnabled,
   type ProviderSessionId,
   RunId,
+  resolveProjectProviderInstanceEnabled,
   RuntimeMode,
   ThreadLinkedPullRequest,
   ThreadId,
@@ -4802,6 +4803,72 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
   ) {
     let projection = yield* getProjectionWithPendingEvents(command.threadId, events);
+    if (command.scheduledTaskFallbackOfRunId !== undefined) {
+      const source = projection.runs.find((run) => run.id === command.scheduledTaskFallbackOfRunId);
+      const message = yield* projectionStore
+        .getScheduledTaskFallback(command.threadId, command.scheduledTaskFallbackOfRunId)
+        .pipe(mapDispatchError(command));
+      const now = yield* DateTime.now;
+      if (
+        command.commandId !== `scheduled-task-fallback:${command.scheduledTaskFallbackOfRunId}` ||
+        command.messageId !== `scheduled-task-fallback:${command.scheduledTaskFallbackOfRunId}` ||
+        command.dispatchMode.type !== "start_immediately" ||
+        source?.status !== "failed" ||
+        latestExecutedRun(projection.runs)?.id !== source.id ||
+        latestRootProviderFailure(source, projection.turnItems)?.class !== "usage_limit" ||
+        message?.scheduledTaskFallback === undefined ||
+        command.modelSelection === undefined ||
+        !modelSelectionsEqual(message.scheduledTaskFallback, command.modelSelection) ||
+        projection.thread.providerInstanceId !== source.providerInstanceId ||
+        projection.thread.archivedAt !== null ||
+        projection.thread.deletedAt !== null ||
+        projection.thread.settledOverride === "settled" ||
+        (projection.thread.snoozedUntil != null &&
+          DateTime.isGreaterThan(projection.thread.snoozedUntil, now)) ||
+        projection.runtimeRequests.some((request) => request.status === "pending") ||
+        (yield* stopReachedRun(command, command.threadId, source.id))
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The automation is no longer eligible for fallback.",
+        });
+      }
+      const settings = yield* serverSettings.getSettings.pipe(mapDispatchError(command));
+      const primary = yield* providerAdapters
+        .get(source.providerInstanceId)
+        .pipe(mapDispatchError(command));
+      const fallback = yield* providerAdapters
+        .get(command.modelSelection.instanceId)
+        .pipe(mapDispatchError(command));
+      const fallbackPolicy = yield* runtimePolicy
+        .resolve({ thread: projection.thread, modelSelection: command.modelSelection })
+        .pipe(mapDispatchError(command));
+      if (
+        fallbackPolicy.runtimeMode !== projection.thread.runtimeMode ||
+        fallbackPolicy.interactionMode !== projection.thread.interactionMode
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The fallback provider does not support this automation's execution mode.",
+        });
+      }
+      if (
+        primary.driver === fallback.driver ||
+        !resolveProjectProviderInstanceEnabled(
+          settings,
+          projection.thread.projectId,
+          command.modelSelection.instanceId,
+        )
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The fallback provider must be enabled and different from the primary provider.",
+        });
+      }
+    }
     if (command.manualContinuationOfRunId !== undefined) {
       const source = projection.runs.find((run) => run.id === command.manualContinuationOfRunId);
       const limited = latestRootProviderFailure(source ?? null, projection.turnItems);
@@ -4829,6 +4896,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const now = yield* DateTime.now;
       if (
         run?.id !== command.usageLimitContinuationOfRunId ||
+        projection.messages.some(
+          (message) =>
+            message.id === run?.userMessageId &&
+            (message.scheduledTaskFallback !== undefined ||
+              message.scheduledTaskFallbackOfRunId !== undefined),
+        ) ||
         failure?.class !== "usage_limit" ||
         threadShellFromProjection(projection).lastErrorClass !== "usage_limit" ||
         !recovery?.autoResume ||
@@ -5441,6 +5514,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         completedAt: null,
       };
       const message: OrchestrationV2ConversationMessage = {
+        ...(command.scheduledTaskFallback === undefined
+          ? {}
+          : { scheduledTaskFallback: command.scheduledTaskFallback }),
+        ...(command.scheduledTaskFallbackOfRunId === undefined
+          ? {}
+          : { scheduledTaskFallbackOfRunId: command.scheduledTaskFallbackOfRunId }),
         createdBy: command.createdBy,
         creationSource: command.creationSource,
         ...(command.scheduledTaskId === undefined
@@ -5781,6 +5860,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         completedAt: null,
       };
       const message: OrchestrationV2ConversationMessage = {
+        ...(command.scheduledTaskFallback === undefined
+          ? {}
+          : { scheduledTaskFallback: command.scheduledTaskFallback }),
+        ...(command.scheduledTaskFallbackOfRunId === undefined
+          ? {}
+          : { scheduledTaskFallbackOfRunId: command.scheduledTaskFallbackOfRunId }),
         createdBy: command.createdBy,
         creationSource: command.creationSource,
         ...(command.scheduledTaskId === undefined
@@ -6468,6 +6553,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       completedAt: null,
     };
     const message: OrchestrationV2ConversationMessage = {
+      ...(command.scheduledTaskFallback === undefined
+        ? {}
+        : { scheduledTaskFallback: command.scheduledTaskFallback }),
+      ...(command.scheduledTaskFallbackOfRunId === undefined
+        ? {}
+        : { scheduledTaskFallbackOfRunId: command.scheduledTaskFallbackOfRunId }),
       createdBy: command.createdBy,
       creationSource: command.creationSource,
       ...(command.scheduledTaskId === undefined

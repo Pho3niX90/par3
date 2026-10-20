@@ -352,3 +352,29 @@ describe("scheduled task model defaults", () => {
     ).toBeNull();
   });
 });
+
+describe("scheduled task fallback models", () => {
+  it("tracks fallback edits and clearing while preserving custom options", () => {
+    const fallbackModelSelection = {
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      model: "custom-backup",
+      options: [{ id: "effort", value: "high" }],
+    };
+    const initial = editDraft({ ...legacyTask, fallbackModelSelection });
+    expect(initial.fallbackModelSelection).toEqual(fallbackModelSelection);
+    expect(editDraft(legacyTask).fallbackModelSelection).toBeNull();
+    expect(createDraft(null, null).fallbackModelSelection).toBeNull();
+    expect(
+      hasScheduledTaskDraftChanges(initial, { ...initial, fallbackModelSelection: null }),
+    ).toBe(true);
+    expect(
+      hasScheduledTaskDraftChanges(initial, {
+        ...initial,
+        fallbackModelSelection: { ...fallbackModelSelection, model: "other" },
+      }),
+    ).toBe(true);
+    expect(
+      hasScheduledTaskDraftChanges(initial, editDraft({ ...legacyTask, fallbackModelSelection })),
+    ).toBe(false);
+  });
+});

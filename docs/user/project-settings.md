@@ -76,6 +76,12 @@ Webhook tasks only run when their URL is called, so they can't be run
 immediately.
 Leaving an edited form asks before discarding unsaved changes.
 
+You can optionally choose a **Fallback model** from another provider. If the primary
+reaches its usage limit, Par3 continues the work once in the same thread and
+checkout using the fallback. A task that starts a new thread for each run goes
+back to the primary model next time; a task bound to a thread keeps using the
+model that thread is on. Choose **None** to remove the fallback. Other errors do not trigger a switch.
+
 ## Webhook automations
 
 In **Settings → Scheduled tasks**, choose **On webhook**

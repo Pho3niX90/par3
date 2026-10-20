@@ -1088,6 +1088,8 @@ export const OrchestrationV2Notification = Schema.Struct({
 export type OrchestrationV2Notification = typeof OrchestrationV2Notification.Type;
 
 export const OrchestrationV2ConversationMessage = Schema.Struct({
+  scheduledTaskFallback: Schema.optional(ModelSelection),
+  scheduledTaskFallbackOfRunId: Schema.optional(RunId),
   notification: Schema.optional(OrchestrationV2Notification),
   ...OrchestrationV2CreationFields,
   scheduledTaskId: Schema.optional(ScheduledTaskId),
@@ -2783,6 +2785,8 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("message.dispatch"),
+    scheduledTaskFallback: Schema.optional(ModelSelection),
+    scheduledTaskFallbackOfRunId: Schema.optional(RunId),
     notification: Schema.optional(OrchestrationV2Notification),
     ...OrchestrationV2CreationFields,
     scheduledTaskId: Schema.optional(ScheduledTaskId),

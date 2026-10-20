@@ -69,6 +69,7 @@ export type ThreadLaunchWorkspaceStrategy =
 export interface ThreadLaunchInitialMessage {
   readonly messageId?: MessageId;
   readonly scheduledTaskId?: ScheduledTaskId;
+  readonly scheduledTaskFallback?: ModelSelection;
   readonly senderThreadId?: ThreadId;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
@@ -984,6 +985,11 @@ const make = Effect.gen(function* () {
               threadId,
               messageId,
               text: input.initialMessage.text,
+              ...(input.initialMessage.scheduledTaskFallback === undefined
+                ? {}
+                : {
+                    scheduledTaskFallback: input.initialMessage.scheduledTaskFallback,
+                  }),
               ...(input.initialMessage.scheduledTaskId === undefined
                 ? {}
                 : { scheduledTaskId: input.initialMessage.scheduledTaskId }),

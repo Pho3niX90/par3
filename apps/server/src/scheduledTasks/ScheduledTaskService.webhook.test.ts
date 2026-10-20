@@ -1,3 +1,4 @@
+import * as ServerSettings from "../serverSettings.ts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no createHmac.
 import * as NodeCrypto from "node:crypto";
 
@@ -77,6 +78,7 @@ const withService = <A, E>(
     const secretsByRef = new Map<string, string>();
     const layerDependencies = Layer.mergeAll(
       NodePlatformCrypto.layer,
+      ServerSettings.layerTest(),
       Scheduler.layer,
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({
         launch: (input) =>
@@ -114,7 +116,8 @@ const withService = <A, E>(
 it.effect("dispatches exactly the rendered prompt and logs the delivery", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
-      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const fallbackModelSelection = { instanceId: "claudeAgent", model: "backup" };
+      const { task } = yield* service.upsert(yield* webhookTaskInput({ fallbackModelSelection }));
       assert.equal(task.nextRunAt, null);
       assert.isDefined(task.webhook);
       assert.isTrue(task.webhook!.path.startsWith("/api/hooks/scheduled-task%3Ahook/"));
@@ -123,6 +126,7 @@ it.effect("dispatches exactly the rendered prompt and logs the delivery", () =>
       const result = yield* service.triggerWebhook(requestFor(task));
       assert.equal(result._tag, "accepted");
       const launched = yield* Queue.take(launches);
+      assert.deepEqual(launched.initialMessage?.scheduledTaskFallback, fallbackModelSelection);
       const framed =
         /^Review this PR: <(webhook-data-[0-9a-f]{12})>https:\/\/github\.com\/org\/repo\/pull\/45<\/\1>\n\nText between <\1> and <\/\1> was copied from the webhook request\./;
       const frame = framed.exec(launched.initialMessage?.text ?? "")?.[1];

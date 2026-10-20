@@ -13,6 +13,7 @@ import {
   type OrchestrationV2ProviderThread,
   type OrchestrationV2ProviderTurnTokenUsage,
   ProjectId,
+  ScheduledTaskId,
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
@@ -22,6 +23,9 @@ import {
   ProviderDriverKind,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as FileSystem from "effect/FileSystem";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { limitRecoveryCommand } from "../UsageLimitRecoveryWorker.ts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -3787,5 +3791,173 @@ describe("orchestration v2 provider switching", () => {
         );
       }),
     ),
+  );
+});
+
+describe("automation fallback handoff", () => {
+  it.live(
+    "continues partial work with context once and starts the next trigger on the primary",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const cwd = yield* checkpointWorkspace("automation-fallback-handoff");
+          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+          const registry = ProviderAdapterRegistry.layerFromAdapters([
+            makeTestAdapter({
+              instanceId: CODEX_MODEL_SELECTION.instanceId,
+              driver: CODEX_DRIVER,
+              capabilities: CodexProviderCapabilitiesV2,
+              modelSelection: CODEX_MODEL_SELECTION,
+              responseByRunOrdinal: {
+                1: "Phase one finished. The marker is amber.",
+                3: "Primary is available again.",
+              },
+              capturedTurns,
+              failedRunOrdinals: new Set([1]),
+              failure: makeProviderFailure({
+                message: "Simulated usage limit.",
+                code: "simulated_usage_limit",
+                class: "usage_limit",
+              }),
+            }),
+            makeTestAdapter({
+              instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+              driver: CLAUDE_DRIVER,
+              capabilities: ClaudeProviderCapabilitiesV2,
+              modelSelection: CLAUDE_MODEL_SELECTION,
+              responseByRunOrdinal: { 2: "Continued phase two." },
+              capturedTurns,
+            }),
+          ]);
+          const database = SqlitePersistence.layerMemory;
+          const layer = Layer.mergeAll(
+            database,
+            ProjectionStore.layer.pipe(Layer.provide(database)),
+            ProviderReplayHarness.layerWithRegistry(
+              { name: "automation-fallback-handoff", runtimePolicyOverride: { cwd } },
+              registry,
+              { databaseLayer: database },
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            const wait = (ordinal: number) =>
+              orchestrator.streamStoredEvents.pipe(
+                Stream.filter(
+                  ({ event }) =>
+                    event.threadId === threadId &&
+                    event.type === "run.updated" &&
+                    event.payload.ordinal === ordinal &&
+                    (event.payload.status === "completed" || event.payload.status === "failed"),
+                ),
+                Stream.runHead,
+                Effect.andThen(worker.drain()),
+              );
+            const store = yield* ProjectionStore.ProjectionStoreV2;
+            const sql = yield* SqlClient.SqlClient;
+            const fs = yield* FileSystem.FileSystem;
+            const at = DateTime.formatIso(yield* DateTime.now);
+            const taskId = ScheduledTaskId.make("automation-fallback-handoff");
+            yield* sql`INSERT INTO scheduled_tasks ${sql.insert({
+              task_id: taskId,
+              title: "Continue work",
+              prompt: "Complete both phases",
+              enabled: 1,
+              schedule_json: '{"type":"interval","everyMs":60000}',
+              project_id: projectId,
+              workspace_strategy_json: '{"type":"root"}',
+              model_selection_json: JSON.stringify(CODEX_MODEL_SELECTION),
+              fallback_model_selection_json: JSON.stringify(CLAUDE_MODEL_SELECTION),
+              runtime_mode: "full-access",
+              interaction_mode: "default",
+              created_by: "user",
+              creation_source: "web",
+              created_at: at,
+              updated_at: at,
+              last_run_status: "never",
+              run_count: 0,
+            })}`;
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("fallback-handoff:create"),
+              threadId,
+              projectId,
+              title: "Automation fallback",
+              modelSelection: CODEX_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              worktreePath: cwd,
+              branch: null,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make("fallback-handoff:primary"),
+              threadId,
+              messageId: MessageId.make("fallback-handoff:primary"),
+              scheduledTaskId: taskId,
+              scheduledTaskFallback: CLAUDE_MODEL_SELECTION,
+              text: "Complete both phases",
+              attachments: [],
+              modelSelection: CODEX_MODEL_SELECTION,
+              dispatchMode: { type: "start_immediately" },
+              createdBy: "user",
+              creationSource: "server",
+            });
+            yield* worker.drain();
+            yield* wait(1);
+            yield* fs.writeFileString(`${cwd}/partial-work.txt`, "phase one complete");
+            const now = yield* DateTime.now;
+            const candidate = (yield* store.getLimitRecoveryCandidates({
+              now,
+              autoResume: false,
+              snooze: false,
+            })).find((entry) => entry.id === threadId);
+            assert.isDefined(candidate);
+            const fallback = limitRecoveryCommand(candidate!, false, DateTime.toEpochMillis(now))!;
+            yield* orchestrator.dispatch(fallback);
+            yield* worker.drain();
+            yield* wait(2);
+            yield* orchestrator.dispatch(fallback);
+            yield* worker.drain();
+            const turns = yield* Ref.get(capturedTurns);
+            assert.deepEqual(
+              turns.map((turn) => turn.driver),
+              [CODEX_DRIVER, CLAUDE_DRIVER],
+            );
+            assert.include(turns[1]!.text, "Context handoff (full_thread_summary)");
+            assert.include(turns[1]!.text, "Phase one finished. The marker is amber.");
+            assert.equal(yield* fs.readFileString(`${cwd}/partial-work.txt`), "phase one complete");
+            const after = yield* orchestrator.getThreadProjection(threadId);
+            assert.deepEqual(
+              after.runs.map((run) => run.status),
+              ["failed", "completed"],
+            );
+            assert.equal(after.thread.worktreePath, cwd);
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make("fallback-handoff:next"),
+              threadId,
+              messageId: MessageId.make("fallback-handoff:next"),
+              scheduledTaskId: taskId,
+              scheduledTaskFallback: CLAUDE_MODEL_SELECTION,
+              text: "Complete both phases",
+              attachments: [],
+              modelSelection: CODEX_MODEL_SELECTION,
+              dispatchMode: { type: "queue_after_active" },
+              createdBy: "user",
+              creationSource: "server",
+            });
+            yield* worker.drain();
+            yield* wait(3);
+            assert.deepEqual(
+              (yield* Ref.get(capturedTurns)).map((turn) => turn.driver),
+              [CODEX_DRIVER, CLAUDE_DRIVER, CODEX_DRIVER],
+            );
+          }).pipe(Effect.provide(layer), Effect.provide(NodeServices.layer));
+        }),
+      ),
   );
 });

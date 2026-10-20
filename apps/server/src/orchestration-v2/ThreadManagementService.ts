@@ -124,6 +124,7 @@ export interface ThreadManagementSendInput {
   readonly threadId: ThreadId;
   readonly messageId: MessageId;
   readonly scheduledTaskId?: ScheduledTaskId;
+  readonly scheduledTaskFallback?: ModelSelection;
   readonly senderThreadId?: ThreadId;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
@@ -645,6 +646,7 @@ const make = Effect.gen(function* () {
   const assertDispatchTargetEnabled = (command: OrchestrationV2ServerCommand) => {
     switch (command.type) {
       case "message.dispatch":
+        if (command.scheduledTaskFallbackOfRunId !== undefined) return Effect.void;
         return orchestrator.getThreadRecords(command.threadId, []).pipe(
           Effect.flatMap((projection) =>
             assertProviderInstanceEnabled({
@@ -787,6 +789,9 @@ const make = Effect.gen(function* () {
       threadId: input.threadId,
       messageId: input.messageId,
       ...(input.scheduledTaskId === undefined ? {} : { scheduledTaskId: input.scheduledTaskId }),
+      ...(input.scheduledTaskFallback === undefined
+        ? {}
+        : { scheduledTaskFallback: input.scheduledTaskFallback }),
       ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
       text: input.text,
       attachments: input.attachments,

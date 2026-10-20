@@ -1,7 +1,12 @@
+import * as ServerSettings from "../serverSettings.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
-import { ScheduledTaskUpsertInput } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  ProviderDriverKind,
+  ScheduledTaskUpsertInput,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,6 +26,7 @@ it.effect("rejects a stale form save after deletion while preserving explicit-id
   Effect.gen(function* () {
     const layerDependencies = Layer.mergeAll(
       NodeCrypto.layer,
+      ServerSettings.layerTest(),
       Scheduler.layer,
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
@@ -68,6 +74,7 @@ it.effect("preserves a due run when a save only pads the scheduled hour", () =>
 
     const layerDependencies = Layer.mergeAll(
       NodeCrypto.layer,
+      ServerSettings.layerTest(),
       Scheduler.layer,
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
@@ -115,4 +122,120 @@ it.effect("preserves a due run when a save only pads the scheduled hour", () =>
       );
     }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect.each([false, true])(
+  "saves, preserves, clears, and snapshots fallback for bound=%s",
+  (bound) =>
+    Effect.gen(function* () {
+      const launches: ThreadLaunchService.ThreadLaunchInput[] = [];
+      const sends: ThreadManagementService.ThreadManagementSendInput[] = [];
+      const layerDependencies = Layer.mergeAll(
+        NodeCrypto.layer,
+        Scheduler.layer,
+        ServerSettings.layerTest({
+          providerInstances: {
+            [ProviderInstanceId.make("backup")]: {
+              driver: ProviderDriverKind.make("claudeAgent"),
+              enabled: true,
+            },
+            [ProviderInstanceId.make("codex_other")]: {
+              driver: ProviderDriverKind.make("codex"),
+              enabled: true,
+            },
+          },
+        }),
+        Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+          namedProjectsRoot: "/projects",
+          isScratchProject: () => Effect.succeed(false),
+        }),
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+          launch: (input) =>
+            Effect.sync(() => {
+              launches.push(input);
+              return {} as never;
+            }),
+        }),
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          sendToThread: (input) =>
+            Effect.sync(() => {
+              sends.push(input);
+              return {} as never;
+            }),
+        }),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+      );
+      yield* Effect.gen(function* () {
+        const service = yield* ScheduledTaskService.ScheduledTaskService;
+        const fallback = {
+          instanceId: "backup",
+          model: "custom-fallback",
+          options: [{ id: "effort", value: "high" }],
+        };
+        const input = yield* decodeUpsertInput({
+          title: "Fallback task",
+          prompt: "Work",
+          enabled: true,
+          schedule: { type: "interval", everyMs: 60_000 },
+          projectId: "fallback-project",
+          threadId: bound ? "fallback-bound" : null,
+          workspaceStrategy: { type: "root" },
+          modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+        });
+        const created = yield* service.upsert(input);
+        expect(created.task.fallbackModelSelection).toBeNull();
+        const edit = { ...input, id: created.task.id };
+        const withFallback = yield* service.upsert(
+          yield* decodeUpsertInput({ ...edit, fallbackModelSelection: fallback }),
+        );
+        expect(withFallback.task.fallbackModelSelection).toEqual(fallback);
+        expect(
+          (yield* service.upsert({ ...edit, title: "Renamed" })).task.fallbackModelSelection,
+        ).toEqual(fallback);
+        yield* service.runNow({ id: created.task.id });
+        expect(
+          bound
+            ? sends[0]?.scheduledTaskFallback
+            : launches[0]?.initialMessage?.scheduledTaskFallback,
+        ).toEqual(fallback);
+        // A bound run follows its thread's current model; only a launch passes the primary.
+        expect(bound ? sends[0]?.modelSelection : launches[0]?.modelSelection).toEqual(
+          bound ? undefined : input.modelSelection,
+        );
+        expect(
+          (yield* service.upsert({ ...edit, fallbackModelSelection: null })).task
+            .fallbackModelSelection,
+        ).toBeNull();
+        yield* service.runNow({ id: created.task.id });
+        expect(
+          bound
+            ? sends[1]?.scheduledTaskFallback
+            : launches[1]?.initialMessage?.scheduledTaskFallback,
+        ).toBeUndefined();
+        expect(bound ? sends[1]?.modelSelection : launches[1]?.modelSelection).toEqual(
+          bound ? undefined : input.modelSelection,
+        );
+        expect((yield* service.list()).tasks[0]?.runCount).toBe(2);
+        const rejected = yield* service
+          .upsert(
+            yield* decodeUpsertInput({
+              ...edit,
+              fallbackModelSelection: { instanceId: "codex_other", model: "other" },
+            }),
+          )
+          .pipe(Effect.flip);
+        expect(rejected.message).toContain("another provider");
+        const disabled = yield* service
+          .upsert(
+            yield* decodeUpsertInput({
+              ...edit,
+              fallbackModelSelection: { instanceId: "unknown", model: "other" },
+            }),
+          )
+          .pipe(Effect.flip);
+        expect(disabled.message).toContain("disabled");
+      }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
+    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

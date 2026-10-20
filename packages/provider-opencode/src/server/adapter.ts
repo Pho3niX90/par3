@@ -2666,7 +2666,11 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                       failure: makeProviderFailure({
                         message,
                         code: event.properties.error?.name ?? null,
-                        class: "provider_error",
+                        class:
+                          event.properties.error?.name === "APIError" &&
+                          recordValue(event.properties.error.data, "statusCode") === 429
+                            ? "usage_limit"
+                            : "provider_error",
                       }),
                       threadDisposition:
                         event.properties.sessionID === undefined ? "broken" : "reusable",

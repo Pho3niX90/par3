@@ -21,14 +21,29 @@ function MissingTaskDraft() {
 }
 
 export function ScheduledTaskModelPickerRouteScreen() {
+  return <ScheduledTaskModelPicker fallback={false} />;
+}
+
+export function ScheduledTaskFallbackModelPickerRouteScreen() {
+  return <ScheduledTaskModelPicker fallback />;
+}
+
+function ScheduledTaskModelPicker({ fallback }: { readonly fallback: boolean }) {
   const navigation = useNavigation();
   const { editor, setEditor } = useScheduledTaskEditor();
   const config = useEnvironmentServerConfig(editor?.environmentId ?? null);
-  const selectedModel = editor?.draft.modelSelection ?? null;
+  const selectedModel =
+    (fallback ? editor?.draft.fallbackModelSelection : editor?.draft.modelSelection) ?? null;
+  const primaryDriver = config?.providers.find(
+    (provider) => provider.instanceId === editor?.draft.modelSelection?.instanceId,
+  )?.driver;
   const projectId = editor?.draft.projectId ?? null;
   const models = useMemo(
-    () => buildModelOptions(config, selectedModel, undefined, projectId),
-    [config, selectedModel, projectId],
+    () =>
+      buildModelOptions(config, selectedModel, undefined, projectId).filter(
+        (option) => !fallback || (option.providerDriver !== primaryDriver && !option.isUnavailable),
+      ),
+    [config, selectedModel, projectId, fallback, primaryDriver],
   );
   const providerGroups = useMemo(() => groupByProvider(models), [models]);
   const selectedOption = models.find(
@@ -60,8 +75,9 @@ export function ScheduledTaskModelPickerRouteScreen() {
                 ...current,
                 draft: {
                   ...current.draft,
-                  modelSelection: option.selection,
-                  modelSelectionIsExplicit: true,
+                  ...(fallback
+                    ? { fallbackModelSelection: option.selection }
+                    : { modelSelection: option.selection, modelSelectionIsExplicit: true }),
                 },
               }
             : current,
@@ -70,13 +86,17 @@ export function ScheduledTaskModelPickerRouteScreen() {
       optionDescriptors={optionDescriptors}
       onUpdateOptionSelections={(options) =>
         setEditor((current) =>
-          current?.draft.modelSelection
+          current && selectedModel
             ? {
                 ...current,
                 draft: {
                   ...current.draft,
-                  modelSelection: { ...current.draft.modelSelection, options },
-                  modelSelectionIsExplicit: true,
+                  ...(fallback
+                    ? { fallbackModelSelection: { ...selectedModel, options } }
+                    : {
+                        modelSelection: { ...selectedModel, options },
+                        modelSelectionIsExplicit: true,
+                      }),
                 },
               }
             : current,

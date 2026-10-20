@@ -83,6 +83,7 @@ type ScheduledTaskRoutes = {
   SettingsScheduledTaskNew: undefined;
   SettingsScheduledTaskEdit: undefined;
   SettingsScheduledTaskModel: undefined;
+  SettingsScheduledTaskFallbackModel: undefined;
   SettingsScheduledTaskBranch: undefined;
 };
 
@@ -645,12 +646,34 @@ function TaskForm({
       Dialog.alert("Project unavailable", "Choose a project in this environment.");
       return;
     }
+    if (draft.fallbackModelSelection !== null) {
+      const primary = modelOptions.find(
+        (option) => option.selection.instanceId === draft.modelSelection?.instanceId,
+      );
+      const fallback = modelOptions.find(
+        (option) =>
+          option.selection.instanceId === draft.fallbackModelSelection?.instanceId &&
+          option.selection.model === draft.fallbackModelSelection?.model,
+      );
+      if (
+        !fallback ||
+        fallback.isUnavailable ||
+        fallback.providerDriver === primary?.providerDriver
+      ) {
+        Dialog.alert(
+          "Invalid fallback model",
+          "Choose an available model from another provider, or select None.",
+        );
+        return;
+      }
+    }
     const input: ScheduledTaskUpsertInput = {
       ...(draft.task ? { id: draft.task.id, requireExisting: true } : {}),
       title: draft.title.trim(),
       prompt: draft.prompt.trim(),
       projectId: draft.projectId,
       modelSelection: draft.modelSelection,
+      fallbackModelSelection: draft.fallbackModelSelection,
       schedule,
       enabled: draft.enabled,
       threadId: draft.task?.threadId ?? null,
@@ -787,6 +810,27 @@ function TaskForm({
             onPress={() => navigation.navigate("SettingsScheduledTaskModel")}
             disabled={saving || dictationPending || environmentUnavailable}
           />
+          <SelectRow
+            label="Fallback model (optional)"
+            value={draft.fallbackModelSelection?.model ?? "None"}
+            actions={[
+              {
+                id: "none",
+                title: "None",
+                state: draft.fallbackModelSelection === null ? "on" : "off",
+              },
+              { id: "choose", title: "Choose model?" },
+            ]}
+            onSelect={(action) => {
+              if (saving || dictationPending || environmentUnavailable) return;
+              if (action === "none") setDraft({ ...draft, fallbackModelSelection: null });
+              else navigation.navigate("SettingsScheduledTaskFallbackModel");
+            }}
+            borderTop
+          />
+          <Text className="px-4 pb-3 text-sm text-foreground-muted">
+            Continue with this model if the primary reaches its usage limit.
+          </Text>
         </SettingsSection>
 
         <SettingsSection title="Workspace">

@@ -314,3 +314,16 @@ describe("scheduled task model defaults", () => {
     ).toBeNull();
   });
 });
+
+describe("scheduled task fallback models", () => {
+  it("preserves custom fallback options while editing and defaults old tasks to None", () => {
+    expect(taskToDraft(legacyTask).fallbackModelSelection).toBeNull();
+    const fallbackModelSelection = {
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      model: "custom-backup",
+      options: [{ id: "effort", value: "high" }],
+    };
+    const draft = taskToDraft({ ...legacyTask, fallbackModelSelection });
+    expect(draft.fallbackModelSelection).toEqual(fallbackModelSelection);
+  });
+});
