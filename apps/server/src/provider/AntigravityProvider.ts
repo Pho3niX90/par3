@@ -369,6 +369,26 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     });
   });
 
+  const refreshUsage = Effect.fn("AntigravityProvider.refreshUsage")(function* () {
+    if (!settings.enabled || !options.probeUsage) return;
+    const before = yield* SubscriptionRef.get(metadata);
+    const usageLimits = yield* options.probeUsage;
+    yield* SubscriptionRef.update(metadata, (state) =>
+      state.authRevision !== before.authRevision || state.draft.auth.status !== "authenticated"
+        ? state
+        : {
+            ...state,
+            draft: {
+              ...state.draft,
+              usageLimits: resolveUsageLimitsAfterProbe({
+                published: state.draft.usageLimits,
+                probed: usageLimits,
+              }),
+            },
+          },
+    );
+  });
+
   const clearAccountMetadata = Effect.fn("AntigravityProvider.clearAccountMetadata")(function* () {
     if (options.clearUsage) yield* options.clearUsage;
     if (!settings.enabled) return;
@@ -429,6 +449,7 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     onSessionStarted,
     onConfigOptionsUpdated,
     onAvailableCommands,
+    refreshUsage: refreshUsage(),
     onSignedOut: clearAccountMetadata(),
     onAuthRequired: clearAccountMetadata(),
     snapshotForCwd,

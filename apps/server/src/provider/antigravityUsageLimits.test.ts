@@ -1,12 +1,17 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
 
-import { makeAntigravityUsageProbe } from "./antigravityUsageLimits.ts";
+import {
+  makeAntigravityUsageProbe,
+  parseAntigravityLimitReached,
+} from "./antigravityUsageLimits.ts";
 
 const summary = {
   groups: [
@@ -260,6 +265,82 @@ describe("Antigravity subscription limits", () => {
       ).toBe(true);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
+
+  it.effect("shows partly used model quotas beside a summary that reads full", () =>
+    Effect.gen(function* () {
+      const { probe } = yield* fixture({
+        models: {
+          models: {
+            "gemini-flash": {
+              modelProvider: "MODEL_PROVIDER_GOOGLE",
+              quotaInfo: { remainingFraction: 0.71, resetTime: "2026-10-09T14:26:34Z" },
+              // Same id as the summary's weekly bucket; the more-used reading wins.
+              weeklyQuotaInfo: { remainingFraction: 0.5 },
+            },
+            "claude-opus": {
+              modelProvider: "MODEL_PROVIDER_ANTHROPIC",
+              quotaInfo: { remainingFraction: 1 },
+            },
+          },
+        },
+      });
+      const limits = yield* probe;
+      expect(limits.windows.map((window) => window.id).toSorted()).toEqual([
+        "3p-5h",
+        "3p-weekly",
+        "gemini-5h",
+        "gemini-quota",
+        "gemini-weekly",
+      ]);
+      const byId = new Map(limits.windows.map((window) => [window.id, window]));
+      expect(byId.get("gemini-quota")?.usedPercent).toBeCloseTo(29);
+      expect(byId.get("gemini-weekly")?.usedPercent).toBe(50);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("shows a limit the agent reported until it resets or the account signs out", () =>
+    Effect.gen(function* () {
+      const { probe, reportLimitReached, clear } = yield* fixture({
+        summary: { groups: [] },
+      });
+      const now = yield* Clock.currentTimeMillis;
+      const resetsAt = parseAntigravityLimitReached(
+        "Usage Limit Reached\n\nYou have reached your current quota for this period. Your limit will reset in 3 days, 21 hours.",
+        now,
+      );
+      expect(resetsAt).toBe(now + (3 * 24 + 21) * 3_600_000);
+      yield* reportLimitReached(resetsAt!);
+      const limited = yield* probe;
+      expect(limited.unavailable).toBeUndefined();
+      expect(limited.windows).toEqual([
+        {
+          id: "agent-limit",
+          label: "Agent · Limit reached",
+          kind: "other",
+          usedPercent: 100,
+          resetsAt: DateTime.formatIso(DateTime.makeUnsafe(resetsAt!)),
+        },
+      ]);
+      yield* clear;
+      expect((yield* probe).unavailable?.reason).toBe("probeFailed");
+      yield* reportLimitReached(now - 1);
+      expect((yield* probe).unavailable?.reason).toBe("probeFailed");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it("only reads the agent's quota message", () => {
+    const now = 1_000;
+    expect(parseAntigravityLimitReached("Your limit will reset in 5 hours.", now)).toBeUndefined();
+    expect(
+      parseAntigravityLimitReached("You have reached your current quota for this period.", now),
+    ).toBeUndefined();
+    expect(
+      parseAntigravityLimitReached(
+        "You have reached your current quota. Your limit will reset in 1 hour, 30 minutes.",
+        now,
+      ),
+    ).toBe(now + 90 * 60_000);
+  });
 
   it.effect("skips disabled and missing fractions and clamps valid percentages", () =>
     Effect.gen(function* () {
