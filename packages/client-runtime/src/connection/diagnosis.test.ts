@@ -71,9 +71,9 @@ describe("presentConnectionDiagnosis", () => {
     expect(diagnosis?.facts).toContainEqual(["Trace ID", "trace-1"]);
   });
 
-  it("tells a working tunnel apart from T3 Code not answering", () => {
+  it("tells a working tunnel apart from Par3 not answering", () => {
     expect(diagnose(backoff(unavailable("origin_unreachable")))?.headline).toBe(
-      "Tunnel works, but T3 Code on Mac mini did not answer",
+      "Tunnel works, but Par3 on Mac mini did not answer",
     );
     expect(results(backoff(unavailable("origin_unreachable")), "direct")).toEqual([
       "device:ok",
@@ -108,7 +108,7 @@ describe("presentConnectionDiagnosis", () => {
     expect(diagnosis?.steps.join(" ")).not.toContain("on this device");
   });
 
-  it("stops at T3 Connect when this device cannot reach the relay", () => {
+  it("stops at Parity Connect when this device cannot reach the relay", () => {
     const failure = mapManagedRelayError(
       new ManagedRelayRequestFailedError({
         action: "connect relay environment",
@@ -116,7 +116,7 @@ describe("presentConnectionDiagnosis", () => {
         cause: new TypeError("Failed to fetch"),
       }),
     );
-    expect(diagnose(backoff(failure))?.headline).toBe("This device can't reach T3 Connect");
+    expect(diagnose(backoff(failure))?.headline).toBe("This device can't reach Parity Connect");
     expect(results(backoff(failure))).toEqual([
       "device:ok",
       "relay:failed",
@@ -125,7 +125,7 @@ describe("presentConnectionDiagnosis", () => {
     ]);
   });
 
-  it("does not blame this device's network when T3 Connect answered with an error", () => {
+  it("does not blame this device's network when Parity Connect answered with an error", () => {
     const failure = mapManagedRelayError(
       new ManagedRelayRequestFailedError({
         action: "connect relay environment",
@@ -134,7 +134,7 @@ describe("presentConnectionDiagnosis", () => {
       }),
     );
     const diagnosis = diagnose(backoff(failure));
-    expect(diagnosis?.headline).toBe("T3 Connect returned an error");
+    expect(diagnosis?.headline).toBe("Parity Connect returned an error");
     expect(diagnosis?.steps.join(" ")).not.toContain("this device");
   });
 
@@ -200,7 +200,7 @@ describe("presentConnectionDiagnosis", () => {
     if (diagnosis === null) throw new Error("expected a diagnosis");
     const text = connectionDiagnosisText("Mac mini", diagnosis);
     expect(text).toContain("Mac mini tunnel: FAILED");
-    expect(text).toContain("T3 Code on Mac mini: not checked");
+    expect(text).toContain("Par3 on Mac mini: not checked");
     expect(text).toContain("Cause: tunnel_down");
     expect(text).toContain("Attempts: 3");
   });

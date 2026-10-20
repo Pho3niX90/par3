@@ -10,12 +10,12 @@ main-agent token totals when available.
 Events do not include prompts, responses, file contents, authentication tokens, conversation IDs,
 raw provider events, or child-agent output. Child-agent token use is excluded from the totals.
 
-T3 Code also sends relay connection traces to Axiom to diagnose T3 Connect connectivity.
+Par3 also sends relay connection traces to Axiom to diagnose Parity Connect connectivity.
 
 To disable product events and relay tracing, set `T3CODE_TELEMETRY_ENABLED=false` in the server's
 environment before starting it. Relay tracing also stops when `T3CODE_OTEL_SDK_DISABLED` or
 `OTEL_SDK_DISABLED` turns OpenTelemetry export off. The web app in a browser, including one the
-`t3` CLI opens, does not read these variables.
+`par3` CLI opens, does not read these variables.
 
 The desktop app reads `T3CODE_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
