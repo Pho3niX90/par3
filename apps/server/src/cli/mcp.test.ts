@@ -17,6 +17,7 @@ import * as ServerConfig from "../config.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { mcpServerSecretName } from "../settingsSecrets.ts";
+import { McpServerInputError } from "./mcp.ts";
 
 const runCli = (args: ReadonlyArray<string>) =>
   Command.runWith(cli, { version: "0.0.0" })(args).pipe(
@@ -125,20 +126,18 @@ describe("par3 mcp", () => {
       const secretsDir = NodePath.join(baseDir, "userdata", "secrets");
       const before = NodeFS.readdirSync(secretsDir);
 
-      const result = yield* Effect.exit(
-        runCli([
-          "mcp",
-          "add",
-          "--base-dir",
-          baseDir,
-          "-H",
-          "Authorization: Bearer x",
-          "linear",
-          "https://b.test/mcp",
-        ]),
-      );
+      const error = yield* runCli([
+        "mcp",
+        "add",
+        "--base-dir",
+        baseDir,
+        "-H",
+        "Authorization: Bearer x",
+        "linear",
+        "https://b.test/mcp",
+      ]).pipe(Effect.flip);
 
-      assert.equal(result._tag, "Failure");
+      assert.instanceOf(error, McpServerInputError);
       assert.lengthOf(readSettings(baseDir).mcpServers, 1);
       assert.deepEqual(NodeFS.readdirSync(secretsDir), before);
     }),
@@ -147,11 +146,36 @@ describe("par3 mcp", () => {
   it.effect("refuses headers on a stdio server", () =>
     Effect.gen(function* () {
       const baseDir = makeBaseDir();
-      const result = yield* Effect.exit(
-        runCli(["mcp", "add", "--base-dir", baseDir, "-H", "X: y", "local", "my-server"]),
-      );
-      assert.equal(result._tag, "Failure");
+      const error = yield* runCli([
+        "mcp",
+        "add",
+        "--base-dir",
+        baseDir,
+        "-H",
+        "X: y",
+        "local",
+        "my-server",
+      ]).pipe(Effect.flip);
+      assert.instanceOf(error, McpServerInputError);
       assert.isFalse(NodeFS.existsSync(settingsPathFor(baseDir)));
+    }),
+  );
+
+  it.effect("does not echo a malformed header, which may be a token", () =>
+    Effect.gen(function* () {
+      const baseDir = makeBaseDir();
+      const error = yield* runCli([
+        "mcp",
+        "add",
+        "--base-dir",
+        baseDir,
+        "-H",
+        "Bearer sk-secret",
+        "linear",
+        "https://a.test/mcp",
+      ]).pipe(Effect.flip);
+      assert.instanceOf(error, McpServerInputError);
+      assert.notInclude(error.message, "sk-secret");
     }),
   );
 

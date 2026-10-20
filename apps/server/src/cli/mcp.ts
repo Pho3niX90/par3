@@ -141,9 +141,7 @@ const parseHeader = (header: string) => {
   const name = header.slice(0, separator).trim();
   const value = header.slice(separator + 1).trim();
   return separator === -1 || name.length === 0 || value.length === 0
-    ? Effect.fail(
-        new McpServerInputError({ detail: `Expected a header as "Name: value", got "${header}".` }),
-      )
+    ? Effect.fail(new McpServerInputError({ detail: 'Expected each --header as "Name: value".' }))
     : Effect.succeed({ name, value });
 };
 
