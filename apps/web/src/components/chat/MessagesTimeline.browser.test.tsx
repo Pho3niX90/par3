@@ -43,6 +43,13 @@ vi.mock(import("~/state/query"), async (original) => ({
   })) as never,
 }));
 
+// The first Mermaid render loads pele and its flowchart chunk, which can be slow on a busy
+// release runner. Pay that while the file loads, not inside a test.
+{
+  const pele = await import("pele/lazy");
+  await pele.load("flowchart");
+}
+
 const ENVIRONMENT_ID = EnvironmentId.make("environment-local");
 const CREATED_AT = "2026-03-17T19:12:28.000Z";
 

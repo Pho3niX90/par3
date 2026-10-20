@@ -1108,7 +1108,7 @@ function MarkdownMermaidCodeBlock({
               </pre>
             }
           >
-            <MermaidDiagram source={code} theme={theme} onExpand={onExpand} />
+            <MermaidDiagram source={code} onExpand={onExpand} />
           </Suspense>
           {searching ? (
             <pre ref={sourceRevealRef} hidden aria-hidden>
