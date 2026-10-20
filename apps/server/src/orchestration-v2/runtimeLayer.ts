@@ -4,7 +4,9 @@ import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as Crypto from "effect/Crypto";
+import * as Schedule from "effect/Schedule";
 import { CommandId } from "@t3tools/contracts";
+import { forkParked } from "../serverActivation.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
@@ -348,6 +350,8 @@ const layerSpecInvalidation = Layer.effectDiscard(
       ),
       Effect.forkScoped,
     );
+    // Polling avoids Windows directory handles that prevent worktree cleanup.
+    yield* forkParked(specs.refreshBindings.pipe(Effect.repeat(Schedule.spaced("2 seconds"))));
   }),
 ).pipe(Layer.provide(Layer.merge(layerSpecService, layerThreadManagementProvided)));
 const layerEffectExecutorProvided = EffectWorker.layerExecutor.pipe(

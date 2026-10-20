@@ -14,6 +14,9 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Context from "effect/Context";
+import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
+import * as Option from "effect/Option";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -347,6 +350,55 @@ it.layer(layerTest)("SpecService", (it) => {
       assert.isFalse(updated.approvalValid);
       assert.isNull(updated.approval);
       assert.deepEqual(updated.evidence, []);
+    }),
+  );
+
+  it.effect("refreshes bound requirements and publishes the threads requiring interruption", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspaceRoot = yield* scopedWorkspace;
+      const projectId = ProjectId.make("project:spec-bound-refresh");
+      const threadId = ThreadId.make("thread:spec-bound-refresh");
+      yield* createProject(projectId, workspaceRoot);
+      threads.set(threadId, { projectId, workspacePath: workspaceRoot, activeRunId: null });
+      const created = yield* service.mutate(
+        createSpec(projectId, "bound-refresh", "command:bound-refresh:create"),
+        human,
+      );
+      const approved = yield* reviewAndApprove(
+        service,
+        projectId,
+        created.slug,
+        created.revision,
+        "bound-refresh",
+      );
+      yield* bind(
+        service,
+        projectId,
+        threadId,
+        created.slug,
+        "implementation",
+        approved.revision,
+        "bound-refresh",
+      );
+      const invalidation = yield* service.invalidations.pipe(
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      );
+      yield* fs.writeFileString(
+        path.join(workspaceRoot, "specs", created.slug, "spec.md"),
+        `${content}\nChanged requirements.`,
+      );
+
+      yield* service.refreshBindings;
+
+      assert.deepEqual(yield* Fiber.join(invalidation), Option.some([threadId]));
+      const result = yield* service.query({ projectId, slug: created.slug });
+      assert.isFalse(result.detail?.approvalValid);
+      assert.isNull(result.detail?.approval);
+      assert.equal(result.detail?.status, "review");
     }),
   );
 

@@ -20,8 +20,6 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
-import * as Schedule from "effect/Schedule";
-import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -92,6 +90,7 @@ export class SpecService extends Context.Service<
       driver?: string;
     }) => Effect.Effect<{ document: SpecDocument; role: SpecRole } | undefined, SpecError>;
     readonly invalidations: Stream.Stream<readonly ThreadId[]>;
+    readonly refreshBindings: Effect.Effect<void>;
   }
 >()("t3/specs/SpecService") {}
 
@@ -103,7 +102,6 @@ const make = Effect.gen(function* () {
   const projects = yield* ProjectStore.ProjectStoreV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const settings = yield* ServerSettings.ServerSettingsService;
-  const scope = yield* Scope.Scope;
   const changes = yield* PubSub.unbounded<void>();
   const invalidated = yield* PubSub.unbounded<readonly ThreadId[]>();
   const locks = new Map<string, Semaphore.Semaphore>();
@@ -899,28 +897,31 @@ const make = Effect.gen(function* () {
   );
   for (const record of pending)
     yield* persistFiles(record.workspace_path, record.slug).pipe(Effect.catch(() => Effect.void));
-  // Poll instead of fs.watch: watchers hold directory handles that block deleting worktrees on Windows,
-  // and only specs bound to a thread can have work to interrupt.
-  const pollBound = Effect.gen(function* () {
-    const bound = yield* db(
-      sql<{
-        project_id: ProjectId;
-        workspace_path: string;
-        slug: string;
-      }>`SELECT DISTINCT project_id, workspace_path, slug FROM spec_bindings`,
-    );
-    for (const row of bound)
-      yield* locked(row.workspace_path, refresh(row.project_id, row.workspace_path, row.slug)).pipe(
-        Effect.catch(() => Effect.void),
+  // Only bound specs can have active work to interrupt. The production runtime schedules these reads.
+  const refreshBindings = Effect.fn("SpecService.refreshBindings")(
+    function* () {
+      const bound = yield* db(
+        sql<{
+          project_id: ProjectId;
+          workspace_path: string;
+          slug: string;
+        }>`SELECT DISTINCT project_id, workspace_path, slug FROM spec_bindings`,
       );
-  }).pipe(Effect.catch(() => Effect.void));
-  yield* pollBound.pipe(Effect.repeat(Schedule.spaced("2 seconds")), Effect.forkIn(scope));
+      for (const row of bound)
+        yield* locked(
+          row.workspace_path,
+          refresh(row.project_id, row.workspace_path, row.slug),
+        ).pipe(Effect.catch(() => Effect.void));
+    },
+    Effect.catch(() => Effect.void),
+  );
   return SpecService.of({
     query,
     mutate,
     binding,
     beforeRun,
     inherit,
+    refreshBindings: refreshBindings(),
     invalidations: Stream.fromPubSub(invalidated),
     subscribe: (input) =>
       Stream.unwrap(
@@ -949,5 +950,6 @@ export const layerDisabled = Layer.succeed(
     inherit: () => Effect.void,
     beforeRun: () => Effect.succeed(undefined),
     invalidations: Stream.empty,
+    refreshBindings: Effect.void,
   }),
 );
