@@ -64,21 +64,20 @@ export class McpServerInputError extends Schema.TaggedError<McpServerInputError>
   }
 }
 
-const runWithServerConfig = <A, E, R>(
+const runWithServerConfig = Effect.fn("cli.mcp.run_with_server_config")(function* <A, E, R>(
   flags: CliAuthLocationFlags,
   run: (config: ServerConfig.ServerConfig["Service"]) => Effect.Effect<A, E, R>,
-) =>
-  Effect.gen(function* () {
-    const config = yield* resolveCliAuthConfig(flags, yield* GlobalFlag.LogLevel);
-    return yield* run(config).pipe(
-      Effect.provide(
-        ServerSecretStore.layer.pipe(
-          Layer.provideMerge(ServerConfig.layer(config)),
-          Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
-        ),
+) {
+  const config = yield* resolveCliAuthConfig(flags, yield* GlobalFlag.LogLevel);
+  return yield* run(config).pipe(
+    Effect.provide(
+      ServerSecretStore.layer.pipe(
+        Layer.provideMerge(ServerConfig.layer(config)),
+        Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
       ),
-    );
-  });
+    ),
+  );
+});
 
 const readSettings = Effect.fn(function* (settingsPath: string) {
   const fs = yield* FileSystem.FileSystem;
