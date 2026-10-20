@@ -113,6 +113,32 @@ returns to the remembered selection.
 
 Leaving reasoning level or service tier unset uses the provider's own configuration.
 
+## Sidekick
+
+Give a thread a sidekick to pair its model with a cheaper one. The thread's own
+model becomes the lead: it plans, writes briefs, reviews the result and commits.
+The sidekick explores, implements and runs tests as delegated work, which you can
+follow under **Agents**. Most of the tokens are then spent by the cheaper model,
+and the lead never reads the sidekick's intermediate output.
+
+Choose a model from **Sidekick** next to the model picker, from the compact
+composer menu, with **Set sidekick…** in the command palette, or from a thread's
+settings on mobile. Choose **None** to turn it off. The sidekick must be a
+different model from the lead, and providers that can't lead a sidekick don't
+show the control.
+
+A change applies to work delegated after it. Tasks already running keep their
+model, and each delegated task shows the model it ran. When the sidekick's
+provider is disabled or signed out, it shows as inactive with the reason, and
+the lead won't delegate to it until you fix or clear it. Your own instructions
+in a message always take precedence over the lead's sidekick routine, and plan
+mode doesn't delegate.
+
+To compare costs, open **Usage**: the breakdown shows tokens and cost per model,
+so the lead's and the sidekick's shares appear separately. Copilot bills per
+request rather than per token, so a pair that uses Copilot can't be measured
+there; the lead batches its briefs to make fewer requests.
+
 ## Quote an assistant response
 
 On web and desktop, select text within one assistant response and choose

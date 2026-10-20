@@ -1,3 +1,4 @@
+import { sidekickDriverTraits } from "@t3tools/contracts";
 import type { ProviderDriverKind, ServerProvider } from "@t3tools/contracts";
 
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
@@ -12,6 +13,7 @@ export const withInstanceIdentity =
     readonly continuationGroupKey: string;
   }) =>
   (snapshot: ServerProviderDraft): ServerProvider => ({
+    ...sidekickDriverTraits(input.driverKind),
     ...snapshot,
     instanceId: input.instanceId,
     driver: input.driverKind,

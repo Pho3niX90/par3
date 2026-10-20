@@ -285,6 +285,7 @@ const turnInput = Effect.fnUntraced(function* (
   const threadId = providerThread.appThreadId ?? THREAD_ID;
   const selection = modelSelection(providerThread.providerInstanceId);
   const appThread: OrchestrationV2AppThread = {
+    sidekickModelSelection: null,
     id: threadId,
     projectId: ProjectId.make("project-muse-test"),
     title: "Muse test",
@@ -1526,6 +1527,64 @@ describe("MuseAdapterV2", () => {
       assert.strictEqual(terminal.status, "failed");
       assert.strictEqual(terminal.threadDisposition, "reusable");
       yield* startConversation(harness, fake, 2);
+    }).pipe(Effect.scoped, Effect.provide(testLayer)),
+  );
+
+  it.effect("sends T3 instructions per native session and sidekick updates when they change", () =>
+    Effect.gen(function* () {
+      yield* (yield* McpProviderSessions.McpProviderSessions).set({
+        environmentId: EnvironmentId.make("test-environment"),
+        threadId: THREAD_ID,
+        providerSessionId: "test-session",
+        providerInstanceId: INSTANCE_ID,
+        endpoint: "http://127.0.0.1:43210/mcp",
+        authorizationHeader: "Bearer thread-scoped-test-token",
+        browserToolsAvailable: true,
+      });
+      const fake = yield* makeFakeMuse();
+      fake.host.initializeResult.grantedCapabilities.push("sessionMcp");
+      const harness = yield* makeHarness(fake);
+      const luna = { label: "Luna · Codex", billingModel: "per_token" } as const;
+      const runTurn = Effect.fnUntraced(function* (ordinal: number, sidekick: typeof luna | null) {
+        yield* harness.runtime.startTurn({
+          ...(yield* turnInput(harness.providerThread, ordinal, harness.policy)),
+          sidekick,
+        });
+        const call = yield* fake.takeCall("turn/start");
+        yield* fake.emit("turn/completed", { turnId: call.commandId, terminal: "completed" });
+        yield* harness.takeEvent("turn.terminal");
+        const input = call.params.input as ReadonlyArray<{ readonly text?: string }>;
+        return input.map((part) => part.text ?? "").join("\n");
+      });
+
+      const first = yield* runTurn(1, luna);
+      assert.include(first, "<t3_code_orchestration_instructions>");
+      assert.include(first, "Par3 orchestration");
+      assert.include(first, "This thread has a sidekick: Luna · Codex.");
+      assert.notInclude(yield* runTurn(2, luna), "<t3_code_orchestration_instructions>");
+      const off = yield* runTurn(3, null);
+      assert.include(off, "Par3 sidekick mode is now off");
+      assert.notInclude(off, "Par3 orchestration");
+
+      yield* harness.runtime.compactThread!(
+        yield* turnInput(harness.providerThread, 4, harness.policy),
+      );
+      const compact = yield* fake.takeCall("session/compact");
+      yield* fake.emit("item/completed", {
+        turnId: compact.commandId,
+        item: {
+          itemId: "compaction-1",
+          turnId: compact.commandId,
+          kind: "compaction",
+          revision: 1,
+          status: "completed",
+          outcome: "compacted",
+        },
+      });
+      assert.strictEqual((yield* harness.takeEvent("turn.terminal")).status, "completed");
+      const afterCompaction = yield* runTurn(5, null);
+      assert.include(afterCompaction, "Par3 orchestration");
+      assert.notInclude(afterCompaction, "Par3 sidekick mode");
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
   );
 

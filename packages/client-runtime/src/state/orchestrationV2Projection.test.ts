@@ -64,6 +64,7 @@ function commandItem(id: string, output = "done", ordinal = 1): OrchestrationV2T
 }
 const emptyProjection = {
   thread: {
+    sidekickModelSelection: null,
     id: threadId,
     projectId: ProjectId.make("project-reducer"),
     title: "Reducer",

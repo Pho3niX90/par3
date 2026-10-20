@@ -59,6 +59,7 @@ import {
   type ProviderSessionId,
   RunId,
   RuntimeMode,
+  sameModelSelection,
   ThreadLinkedPullRequest,
   ThreadId,
   type TurnItemId,
@@ -468,6 +469,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.runtime-mode.set":
     case "thread.interaction-mode.set":
     case "thread.model-selection.set":
+    case "thread.sidekick.set":
     case "provider-session.detach":
     case "message.dispatch":
     case "notification.delivery.accept":
@@ -2432,6 +2434,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       title: command.title,
       providerInstanceId: command.modelSelection.instanceId,
       modelSelection: command.modelSelection,
+      sidekickModelSelection: command.sidekickModelSelection ?? null,
       runtimeMode: command.runtimeMode,
       interactionMode: command.interactionMode,
       branch: command.branch,
@@ -2623,6 +2626,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.runtime-mode.set"
           | "thread.interaction-mode.set"
           | "thread.model-selection.set"
+          | "thread.sidekick.set"
           | "provider.switch";
       }
     >,
@@ -2644,6 +2648,26 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandType: command.type,
         cause: `Thread ${command.threadId} is deleted.`,
       });
+    }
+    if (command.type === "thread.sidekick.set" && command.sidekickModelSelection !== null) {
+      const sidekick = command.sidekickModelSelection;
+      if (sameModelSelection(sidekick, thread.modelSelection)) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The sidekick must be a different model from the thread's own.",
+        });
+      }
+      yield* providerAdapters.get(sidekick.instanceId).pipe(
+        Effect.mapError(
+          (cause) =>
+            new OrchestratorProviderAdapterError({
+              commandId: command.commandId,
+              providerInstanceId: sidekick.instanceId,
+              cause,
+            }),
+        ),
+      );
     }
     if (
       command.type === "thread.pull-request.watch" &&
@@ -3452,6 +3476,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             modelSelection: command.modelSelection,
             updatedAt: now,
           };
+        case "thread.sidekick.set":
+          return {
+            ...thread,
+            sidekickModelSelection: command.sidekickModelSelection,
+            updatedAt: now,
+          };
       }
     })();
     if (
@@ -3519,6 +3549,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             : ("thread.provider-switched" as const);
         case "provider.switch":
           return "thread.provider-switched" as const;
+        // The model-selection event already carries the whole thread, so
+        // projections and clients pick the sidekick up with no new event.
+        case "thread.sidekick.set":
+          return "thread.model-selection-updated" as const;
       }
     })();
     yield* emit(
@@ -7031,6 +7065,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         driver: targetAdapter.driver,
         providerInstanceId: command.modelSelection.instanceId,
         childThreadId,
+        model: command.modelSelection.model,
         prompt: command.task,
         result: null,
       };
@@ -7083,7 +7118,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         threadId: childThreadId,
         senderThreadId: command.parentThreadId,
         messageId: childMessageId,
-        text: command.task,
+        text: command.messageText ?? command.task,
         attachments: [],
         modelSelection: command.modelSelection,
         dispatchMode:
@@ -7200,6 +7235,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         task.childThreadId === child.id &&
         task.id === (child.forkedFrom?.type === "node" ? child.forkedFrom.nodeId : undefined),
     );
+    if (command.followupCompletionWake !== undefined) {
+      const childRuns = (yield* projectionStore.getThreadRecords(command.threadId, ["runs"])).runs;
+      if (
+        original?.result == null ||
+        childRuns.some((run) => isBlockingRun(run) || run.status === "queued")
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause:
+            "The delegated child still has work in progress. Wait for its result before continuing it.",
+        });
+      }
+    }
     if (original === undefined || original.result === null) return;
     const owner =
       parent.runs.filter(isBlockingRun).toSorted((a, b) => b.ordinal - a.ordinal)[0] ??
@@ -7221,7 +7270,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       modelSelection: run.modelSelection,
       prompt: command.text,
       title: child.title,
-      completionWake: "always",
+      completionWake: command.followupCompletionWake ?? "always",
       completionDelivery: { state: "pending", observedByRunId: null },
       status: run.status === "queued" ? (run.queueHeld === true ? "idle" : "pending") : "running",
       progress: undefined,
@@ -7268,6 +7317,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       driver: task.driver,
       providerInstanceId: task.providerInstanceId,
       childThreadId: child.id,
+      model: run.modelSelection.model,
       prompt: command.text,
       result: null,
     };
@@ -11303,6 +11353,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.runtime-mode.set":
       case "thread.interaction-mode.set":
       case "thread.model-selection.set":
+      case "thread.sidekick.set":
       case "provider.switch":
         yield* dispatchThreadMutation(command, events, effects);
         break;

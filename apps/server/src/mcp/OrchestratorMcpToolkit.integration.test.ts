@@ -84,6 +84,7 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
+import * as ThreadSidekick from "../orchestration-v2/ThreadSidekick.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import { delegatedTaskRun, hasPendingChildRuns } from "./OrchestratorMcpService.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -730,6 +731,9 @@ describe("orchestrator MCP toolkit", () => {
             Layer.provide(ServerSettings.layerTest()),
             Layer.provide(layerScheduledTaskStub),
             Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
+            Layer.provide(
+              Layer.mock(ThreadSidekick.ThreadSidekick)({ status: () => Effect.succeed(null) }),
+            ),
             Layer.provide(
               Layer.mock(ProjectService.ProjectService)({
                 getById: (id) =>
@@ -1806,14 +1810,56 @@ describe("orchestrator MCP toolkit", () => {
 
             yield* expectOffersToStay(0);
 
-            const childFollowupCall = yield* invoke("t3_thread_send", {
-              threadId: delegated.childThreadId,
-              message: "Confirm the delegated API boundary remains inspected.",
+            const waitedFollowupInput = {
+              continueTaskId: delegated.taskId,
+              task: "Review the delegated API boundary once more.",
+              mode: "wait",
+              timeoutMs: 10_000,
+              clientRequestId: "delegated-child-waited-followup",
+            };
+            const waitedFollowup = yield* decodeDelegateTaskResult(
+              (yield* invoke("delegate_task", waitedFollowupInput)).structuredContent,
+            ).pipe(Effect.orDie);
+            expect(waitedFollowup).toMatchObject({
+              childThreadId: delegated.childThreadId,
+              status: "completed",
+              workState: "result_available",
+              waitTimedOut: false,
+            });
+            expect(waitedFollowup.taskId).not.toBe(delegated.taskId);
+            expect(waitedFollowup.summary).toContain(
+              "Review the delegated API boundary once more.",
+            );
+            expect(
+              (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
+                (task) => task.id === waitedFollowup.taskId,
+              ),
+            ).toMatchObject({ completionWake: "settled_only" });
+            const retriedFollowup = yield* decodeDelegateTaskResult(
+              (yield* invoke("delegate_task", waitedFollowupInput)).structuredContent,
+            ).pipe(Effect.orDie);
+            expect(retriedFollowup.taskId).toBe(waitedFollowup.taskId);
+            yield* expectOffersToStay(0);
+
+            const childFollowupCall = yield* invoke("delegate_task", {
+              continueTaskId: waitedFollowup.taskId,
+              task: "Confirm the delegated API boundary remains inspected.",
+              mode: "async",
               clientRequestId: "delegated-child-followup-1",
             });
-            const childFollowup = yield* decodeThreadSendResult(
+            const childFollowupTask = yield* decodeDelegateTaskResult(
               childFollowupCall.structuredContent,
             ).pipe(Effect.orDie);
+            const childFollowup = {
+              runId: childFollowupTask.childRunId,
+              taskId: childFollowupTask.taskId,
+            };
+            expect(childFollowupTask.childThreadId).toBe(delegated.childThreadId);
+            expect(
+              (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
+                (task) => task.id === childFollowupTask.taskId,
+              ),
+            ).toMatchObject({ completionWake: "always" });
             const childFollowupWaitCall = yield* invoke("t3_thread_wait", {
               threadId: delegated.childThreadId,
               runId: childFollowup.runId,
@@ -1862,6 +1908,13 @@ describe("orchestrator MCP toolkit", () => {
             const delegatedStatusDuringFollowup = yield* decodeDelegateTaskResult(
               delegatedStatusDuringFollowupCall.structuredContent,
             ).pipe(Effect.orDie);
+            const busyContinuation = yield* invoke("delegate_task", {
+              continueTaskId: delegated.taskId,
+              task: "This must not queue behind the running child.",
+              mode: "async",
+              clientRequestId: "delegated-child-busy-followup",
+            });
+            expect(declaredFailure(busyContinuation)).toMatchObject({ code: "task_still_running" });
             expect(delegatedStatusDuringFollowup).toMatchObject({
               childRunId: delegated.childRunId,
               status: "completed",

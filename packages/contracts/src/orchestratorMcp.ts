@@ -163,9 +163,21 @@ export type OrchestratorMcpTerminalDelegatedTaskStatus =
 
 export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   task: OrchestratorMcpPrompt.annotate({
-    description: "Self-contained task for one delegated child agent/subagent.",
+    description:
+      "Self-contained task for one delegated child agent/subagent, or the follow-up message when continueTaskId is set.",
   }),
-  target: Schema.optional(OrchestratorMcpTarget),
+  target: Schema.optional(
+    OrchestratorMcpTarget.annotate({
+      description:
+        "Omit to use this thread's sidekick when one is set (orchestrator_capabilities.defaultDelegationSelection), else this thread's own selection. Pass {} or a partial target to inherit from this thread instead of the sidekick. Not allowed with continueTaskId.",
+    }),
+  ),
+  continueTaskId: Schema.optional(
+    NodeId.annotate({
+      description:
+        "Follow up on a finished task's child in the same provider session instead of starting a new child. The task must be this thread's, with its result available; returns a new taskId tracked like any delegation. Use t3_thread_send only to steer a child that is still running.",
+    }),
+  ),
   title: Schema.optional(OrchestratorMcpTitle),
   role: Schema.optional(OrchestratorMcpTaskRole),
   isolation: Schema.optional(
@@ -332,6 +344,13 @@ export const OrchestratorMcpThreadPullRequest = Schema.Struct({
 });
 export type OrchestratorMcpThreadPullRequest = typeof OrchestratorMcpThreadPullRequest.Type;
 
+export const OrchestratorMcpSidekickSelection = Schema.Struct({
+  providerInstanceId: ProviderInstanceId,
+  model: Schema.String,
+  options: Schema.optional(Schema.Array(ProviderOptionSelection)),
+});
+export type OrchestratorMcpSidekickSelection = typeof OrchestratorMcpSidekickSelection.Type;
+
 export const OrchestratorMcpThreadListItem = Schema.Struct({
   threadId: ThreadId,
   title: Schema.String,
@@ -346,6 +365,7 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   linkedPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
   /** Missing on older servers. */
   pullRequests: Schema.optional(Schema.Array(OrchestratorMcpThreadPullRequest)),
+  sidekick: Schema.optional(Schema.NullOr(OrchestratorMcpSidekickSelection)),
   settled: Schema.Boolean,
   settledAt: Schema.NullOr(IsoDateTime),
   snoozed: Schema.Boolean,
@@ -395,6 +415,7 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   linkedPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
   /** Missing on older servers. */
   pullRequests: Schema.optional(Schema.Array(OrchestratorMcpThreadPullRequest)),
+  sidekick: Schema.optional(Schema.NullOr(OrchestratorMcpSidekickSelection)),
   titleRegeneration: Schema.NullOr(ThreadTitleRegeneration),
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
@@ -532,6 +553,28 @@ export const OrchestratorMcpCapabilitiesResult = Schema.Struct({
   inheritedOptions: Schema.optional(Schema.Array(ProviderOptionSelection)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
+  sidekick: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        ...OrchestratorMcpSidekickSelection.fields,
+        label: Schema.String,
+        billingModel: Schema.Literals(["per_token", "per_request"]),
+        active: Schema.Boolean,
+        inactiveReason: Schema.NullOr(Schema.String),
+      }),
+    ),
+  ).annotate({
+    description:
+      "This thread's sidekick: the cheaper model delegate_task uses when target is omitted. Null when none is set. When active is false, delegations without a target fail with inactiveReason.",
+  }),
+  defaultDelegationSelection: Schema.optional(
+    Schema.Struct({
+      ...OrchestratorMcpSidekickSelection.fields,
+      source: Schema.Literals(["sidekick", "lead"]),
+    }),
+  ).annotate({
+    description: "What delegate_task without a target runs on.",
+  }),
   providers: Schema.Array(OrchestratorMcpProviderCapability),
   features: Schema.Struct({
     appOwnedSubagents: Schema.Boolean,
@@ -680,6 +723,7 @@ export class OrchestratorMcpFailure extends Schema.TaggedError<OrchestratorMcpFa
       "interaction_mode_escalation_denied",
       "task_not_found",
       "task_not_cancellable",
+      "task_still_running",
       "thread_not_found",
       "run_not_found",
       "thread_not_sendable",

@@ -33,6 +33,7 @@ const forkCreatedAt = DateTime.makeUnsafe("2026-07-24T09:10:00.000Z");
 
 function makeSourceThread(): OrchestrationV2AppThread {
   return {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: sourceThreadId,

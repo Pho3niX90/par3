@@ -118,6 +118,7 @@ const seedOwner = Effect.fn(function* (
     updatedAt: now,
   };
   const thread: OrchestrationV2AppThread = {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: threadId,

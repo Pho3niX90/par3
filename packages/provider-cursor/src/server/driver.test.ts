@@ -276,6 +276,7 @@ it.layer(layerTest)("CursorDriver", (it) => {
           attemptId: RunAttemptId.make(`cursor-window-attempt-${ordinal}`),
           rootNodeId: NodeId.make(`cursor-window-root-${ordinal}`),
           appThread: {
+            sidekickModelSelection: null,
             id: threadId,
             projectId: ProjectId.make("cursor-window-project"),
             createdBy: "user",

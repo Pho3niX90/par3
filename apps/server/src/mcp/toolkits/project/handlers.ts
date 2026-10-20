@@ -139,6 +139,9 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           projectId,
           title: input.title,
           modelSelection,
+          ...(input.sidekickModelSelection === undefined
+            ? {}
+            : { sidekickModelSelection: input.sidekickModelSelection }),
           runtimeMode,
           interactionMode,
           workspaceStrategy: input.workspaceStrategy ?? { type: "root" },

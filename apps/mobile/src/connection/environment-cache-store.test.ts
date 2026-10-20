@@ -44,6 +44,7 @@ const SHELL_SNAPSHOT: OrchestrationV2ShellSnapshot = {
   ],
   threads: [
     {
+      sidekickModelSelection: null,
       id: THREAD_ID,
       projectId: PROJECT_ID,
       title: "Thread",
@@ -96,6 +97,7 @@ const THREAD_SNAPSHOT: OrchestrationV2ThreadDetailSnapshot = {
   snapshotSequence: 4,
   projection: {
     thread: {
+      sidekickModelSelection: null,
       id: THREAD_ID,
       projectId: PROJECT_ID,
       title: "Thread",

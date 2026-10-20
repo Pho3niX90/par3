@@ -1932,6 +1932,9 @@ export const layerWsRpc = (
                       ? {}
                       : { generateTitle: input.generateTitle }),
                     modelSelection: input.modelSelection,
+                    ...(input.sidekickModelSelection == null
+                      ? {}
+                      : { sidekickModelSelection: input.sidekickModelSelection }),
                     runtimeMode: input.runtimeMode,
                     interactionMode: input.interactionMode,
                     workspaceStrategy: input.workspaceStrategy,
@@ -1972,6 +1975,13 @@ export const layerWsRpc = (
                   })),
                   Effect.catchTags({
                     AttachmentClaimError: (cause) =>
+                      new OrchestrationV2ThreadLaunchError({
+                        commandId: input.commandId,
+                        projectId: input.projectId,
+                        message: cause.message,
+                        cause,
+                      }),
+                    ThreadSidekickInvalidError: (cause) =>
                       new OrchestrationV2ThreadLaunchError({
                         commandId: input.commandId,
                         projectId: input.projectId,

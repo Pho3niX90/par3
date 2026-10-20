@@ -8,6 +8,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import {
   AuthOrchestrationOperateScope,
+  CommandId,
+  ORCHESTRATION_V2_WS_METHODS,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
   AuthSettingsWriteScope,
@@ -61,6 +63,39 @@ const setup = Effect.gen(function* () {
 });
 
 describe("command permissions", () => {
+  it.effect("checks the destination grant for sidekick changes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const command = createEnvironmentRpcCommand(runtime, {
+          label: "test.sidekick",
+          tag: ORCHESTRATION_V2_WS_METHODS.dispatchCommand,
+          execute: () => Effect.succeed({ sequence: 1 }),
+        });
+        const input = {
+          type: "thread.sidekick.set" as const,
+          commandId: CommandId.make("sidekick-permission"),
+          threadId: ThreadId.make("thread"),
+          sidekickModelSelection: null,
+        };
+        registry.set(sessions(env), AsyncResult.success(grant(false)));
+        expect(registry.get(command.permissionAtom(env))).toBe(false);
+        expect(
+          (yield* Effect.promise(() => command.run(registry, { environmentId: env, input })))._tag,
+        ).toBe("Failure");
+        registry.set(sessions(env), AsyncResult.success(grant(true)));
+        expect(registry.get(command.permissionAtom(env))).toBe(true);
+        expect(
+          (yield* Effect.promise(() => command.run(registry, { environmentId: env, input })))._tag,
+        ).toBe("Success");
+        registry.set(sessions(other), AsyncResult.success(grant(false)));
+        expect(
+          (yield* Effect.promise(() => command.run(registry, { environmentId: other, input })))
+            ._tag,
+        ).toBe("Failure");
+      }),
+    ),
+  );
   it.effect("requires the destination preview grant to close a browser tab", () =>
     Effect.scoped(
       Effect.gen(function* () {

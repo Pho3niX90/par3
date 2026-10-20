@@ -3265,11 +3265,16 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
       status: live?.status ?? item.status,
       startedAt: live?.startedAt ?? item.startedAt,
       completedAt: live?.completedAt ?? item.completedAt,
-      model: live?.model ?? live?.modelSelection?.model,
+      model: item.model ?? live?.model ?? live?.modelSelection?.model,
     };
   });
   const summary = subagentGroupSummary(agents);
-  const label = `${members.length} ${members.length === 1 ? "subagent" : "subagents"}`;
+  // Follow-ups to one child add a task each; count children so a long session reads as who worked.
+  const childCount = new Set(members.map((item) => item.childThreadId ?? item.subagentId)).size;
+  const label =
+    childCount === members.length
+      ? `${members.length} ${members.length === 1 ? "subagent" : "subagents"}`
+      : `${childCount} ${childCount === 1 ? "subagent" : "subagents"} · ${members.length} tasks`;
   const statusSummary = summarizeSubagentStatuses(agents.map(({ status }) => status));
   const toggleExpanded = (open: boolean) => {
     ctx.onToggleWorkEntry(row.id, expanded);

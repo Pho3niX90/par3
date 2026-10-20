@@ -3718,6 +3718,7 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
             providerInstanceId,
             occurredAt: createdAt,
             payload: {
+              sidekickModelSelection: null,
               createdBy: "user",
               creationSource: "web",
               id: threadId,
@@ -5410,6 +5411,7 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
             providerInstanceId,
             occurredAt: createdAt,
             payload: {
+              sidekickModelSelection: null,
               createdBy: "user",
               creationSource: "web",
               id: threadId,

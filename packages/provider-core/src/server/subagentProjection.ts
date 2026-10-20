@@ -65,6 +65,8 @@ export function makeSubagentChildThread(input: {
     historyOrigin: undefined,
     providerInstanceId: input.providerInstanceId,
     modelSelection: input.modelSelection,
+    // A child never routes its own delegations to a sidekick automatically.
+    sidekickModelSelection: null,
     activeProviderThreadId: input.activeProviderThreadId,
     lineage: {
       parentThreadId: input.parentThread.id,

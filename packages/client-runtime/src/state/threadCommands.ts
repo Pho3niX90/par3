@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
 import {
   WS_METHODS,
+  ORCHESTRATION_V2_WS_METHODS,
   type EnvironmentId,
   type OrchestrationV2ShellSnapshot,
 } from "@t3tools/contracts";
@@ -38,6 +39,7 @@ import {
   type RevertThreadCheckpointInput,
   type SetThreadInteractionModeInput,
   type SetThreadRuntimeModeInput,
+  type SetThreadSidekickInput,
   type PinThreadInput,
   type ReorderPinnedThreadInput,
   type ReorderActiveThreadInput,
@@ -74,6 +76,7 @@ import {
   revertThreadCheckpoint,
   setThreadInteractionMode,
   setThreadRuntimeMode,
+  setThreadSidekick,
   pinThread,
   reorderPinnedThread,
   reorderActiveThread,
@@ -120,6 +123,7 @@ export type {
   RevertThreadCheckpointInput,
   SetThreadInteractionModeInput,
   SetThreadRuntimeModeInput,
+  SetThreadSidekickInput,
   PinThreadInput,
   ReorderPinnedThreadInput,
   ReorderActiveThreadInput,
@@ -290,6 +294,13 @@ export function createThreadEnvironmentAtoms<R, E>(
     setInteractionMode: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-interaction-mode",
       execute: (input: SetThreadInteractionModeInput) => setThreadInteractionMode(input),
+      scheduler,
+      concurrency,
+    }),
+    setSidekick: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:set-sidekick",
+      tag: ORCHESTRATION_V2_WS_METHODS.dispatchCommand,
+      execute: (input: SetThreadSidekickInput) => setThreadSidekick(input),
       scheduler,
       concurrency,
     }),

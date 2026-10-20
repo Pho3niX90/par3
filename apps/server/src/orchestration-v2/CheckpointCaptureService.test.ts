@@ -174,6 +174,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
           threadId,
           occurredAt: now,
           payload: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: threadId,
@@ -389,6 +390,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
         threadId: stoppedThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: stoppedThreadId,
@@ -495,6 +497,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
         threadId: cancelledThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: cancelledThreadId,

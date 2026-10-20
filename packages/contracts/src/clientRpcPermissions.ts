@@ -13,6 +13,7 @@ import { WS_METHODS } from "./rpc.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
+  [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: AuthOrchestrationOperateScope,
   [WS_METHODS.previewClose]: AuthPreviewOperateScope,
   [WS_METHODS.serverRunStorageCleanup]: AuthSettingsWriteScope,
   [WS_METHODS.serverCheckOtlpEndpoint]: AuthSettingsWriteScope,
@@ -61,6 +62,16 @@ export function clientRpcRequiredScopes(
   method: string,
   input: unknown,
 ): readonly AuthEnvironmentScope[] {
+  // Thread commands migrate to the client guard individually; existing callers
+  // still rely on server authorization until their command boundary is migrated.
+  if (method === ORCHESTRATION_V2_WS_METHODS.dispatchCommand && input !== undefined) {
+    return typeof input === "object" &&
+      input !== null &&
+      "type" in input &&
+      input.type === "thread.sidekick.set"
+      ? [AuthOrchestrationOperateScope]
+      : [];
+  }
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);
     if (payload.mode === "worktree" && payload.threadId !== undefined)

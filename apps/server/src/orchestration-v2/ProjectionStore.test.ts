@@ -107,6 +107,7 @@ const addRolledBackRecoveryCandidate = Effect.fn("addRolledBackRecoveryCandidate
     threadId,
     occurredAt: now,
     payload: {
+      sidekickModelSelection: null,
       createdBy: "user",
       creationSource: "web",
       id: threadId,
@@ -574,6 +575,7 @@ const addOrphanedRecoveryCandidate = Effect.fn("addOrphanedRecoveryCandidate")(f
     threadId,
     occurredAt: now,
     payload: {
+      sidekickModelSelection: null,
       createdBy: "user",
       creationSource: "web",
       id: threadId,
@@ -709,6 +711,7 @@ const threadWorktreePathsIncludeArchivedOnRequest = Effect.gen(function* () {
   const create = (id: string, input: { worktreePath: string | null; archived?: boolean }) => {
     const threadId = ThreadId.make(id);
     const thread = {
+      sidekickModelSelection: null,
       createdBy: "user" as const,
       creationSource: "web" as const,
       id: threadId,
@@ -750,7 +753,10 @@ const threadWorktreePathsIncludeArchivedOnRequest = Effect.gen(function* () {
     type: "thread.deleted",
     threadId: deleted.id,
     occurredAt: now,
-    payload: { ...deleted, deletedAt: now },
+    payload: {
+      ...deleted,
+      deletedAt: now,
+    },
   });
 
   assert.deepEqual(yield* store.getThreadWorktreePaths(), [
@@ -860,6 +866,7 @@ const backgroundThreadUpdatesKeepTimestamp = Effect.gen(function* () {
   const createdAt = DateTime.makeUnsafe("2026-10-06T14:00:00.000Z");
   const threadId = ThreadId.make("thread:background-updates");
   const thread = {
+    sidekickModelSelection: null,
     createdBy: "user" as const,
     creationSource: "web" as const,
     id: threadId,
@@ -915,7 +922,10 @@ const backgroundThreadUpdatesKeepTimestamp = Effect.gen(function* () {
     type: "thread.pull-request-synced",
     threadId,
     occurredAt: DateTime.add(createdAt, { minutes: 45 }),
-    payload: { ...thread, pullRequests: [link] },
+    payload: {
+      ...thread,
+      pullRequests: [link],
+    },
   });
   const synced = yield* readActivity;
   assert.deepEqual(synced.updatedAt, createdAt);
@@ -1065,6 +1075,7 @@ const assertProjectScopedShells = Effect.fn("assertProjectScopedShells")(functio
       threadId: input.threadId,
       occurredAt: now,
       payload: {
+        sidekickModelSelection: null,
         createdBy: "user",
         creationSource: "web",
         id: input.threadId,
@@ -1398,6 +1409,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -1489,6 +1501,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -1663,6 +1676,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -2024,6 +2038,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           threadId,
           occurredAt: now,
           payload: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: threadId,
@@ -2252,6 +2267,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -2961,6 +2977,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const targetThreadId = ThreadId.make("thread:bounded-provider-scope:target");
       const unrelatedThreadId = ThreadId.make("thread:bounded-provider-scope:unrelated");
       const makeThread = (threadId: ThreadId) => ({
+        sidekickModelSelection: null,
         createdBy: "user" as const,
         creationSource: "web" as const,
         id: threadId,
@@ -3067,6 +3084,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -3147,6 +3165,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -3225,6 +3244,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           threadId,
           occurredAt: now,
           payload: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: threadId,
@@ -3319,6 +3339,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const threadId = ThreadId.make("thread:projection-read-state");
       const projectId = ProjectId.make("project:projection-read-state");
       const thread = {
+        sidekickModelSelection: null,
         createdBy: "user" as const,
         creationSource: "web" as const,
         id: threadId,
@@ -3358,7 +3379,10 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         type: "thread.visited",
         threadId,
         occurredAt: visitedOccurredAt,
-        payload: { ...thread, lastVisitedAt: createdAt },
+        payload: {
+          ...thread,
+          lastVisitedAt: createdAt,
+        },
       });
 
       const visited = yield* projectionStore.getThreadProjection(threadId);
@@ -3388,6 +3412,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const runId = RunId.make("run:projection-activity");
       const rootNodeId = NodeId.make("node:projection-activity");
       const thread = {
+        sidekickModelSelection: null,
         createdBy: "user" as const,
         creationSource: "web" as const,
         id: threadId,
@@ -3482,6 +3507,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const rootNodeId = NodeId.make("node:projection-delegated-completion-root");
       const taskId = NodeId.make("node:projection-delegated-completion-task");
       const thread = {
+        sidekickModelSelection: null,
         createdBy: "user" as const,
         creationSource: "web" as const,
         id: threadId,
@@ -3653,6 +3679,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -3896,6 +3923,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const now = yield* DateTime.now;
       const threadId = ThreadId.make("thread:shell-actionable-plan");
       const thread = {
+        sidekickModelSelection: null,
         createdBy: "user" as const,
         creationSource: "web" as const,
         id: threadId,
@@ -4004,7 +4032,10 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         type: "thread.interaction-mode-updated",
         threadId,
         occurredAt: DateTime.add(now, { minutes: 2 }),
-        payload: { ...thread, interactionMode: "plan" },
+        payload: {
+          ...thread,
+          interactionMode: "plan",
+        },
       });
       for (const shell of yield* shells) assert.isTrue(shell.hasActionableProposedPlan);
     }),
@@ -4022,6 +4053,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const orphanedThreadId = yield* addOrphanedRecoveryCandidate("recovery-candidates");
       const projectId = ProjectId.make("project:recovery-candidates");
       const makeThread = (threadId: ThreadId) => ({
+        sidekickModelSelection: null,
         createdBy: "user" as const,
         creationSource: "web" as const,
         id: threadId,
@@ -4598,6 +4630,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         "provider-session:projection-shared-provider-session",
       );
       const makeThread = (threadId: ThreadId) => ({
+        sidekickModelSelection: null,
         createdBy: "user" as const,
         creationSource: "web" as const,
         id: threadId,
@@ -4731,6 +4764,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           threadId,
           occurredAt: now,
           payload: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: threadId,
@@ -4912,6 +4946,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           threadId,
           occurredAt: now,
           payload: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: threadId,
@@ -5160,6 +5195,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -5279,6 +5315,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId: sourceThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "system",
           creationSource: "server",
           id: sourceThreadId,
@@ -5313,6 +5350,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId: targetThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: targetThreadId,
@@ -5441,6 +5479,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,
@@ -5852,6 +5891,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId: sourceThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: sourceThreadId,
@@ -5885,6 +5925,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId: targetThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: targetThreadId,
@@ -6407,6 +6448,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId: nestedThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: nestedThreadId,
@@ -6545,6 +6587,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId: emptyMiddleThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: emptyMiddleThreadId,
@@ -6605,6 +6648,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId: emptyLeafThreadId,
         occurredAt: now,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: emptyLeafThreadId,
@@ -6733,6 +6777,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           threadId,
           occurredAt: now,
           payload: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: threadId,
@@ -6878,6 +6923,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const runId = RunId.make("run:watched-pull-request");
       const at = DateTime.makeUnsafe("2026-10-05T12:00:00.000Z");
       const thread = {
+        sidekickModelSelection: null,
         createdBy: "user" as const,
         creationSource: "web" as const,
         id: threadId,
@@ -6949,7 +6995,10 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           type: "thread.pull-request-synced",
           threadId,
           occurredAt: at,
-          payload: { ...thread, pullRequests },
+          payload: {
+            ...thread,
+            pullRequests,
+          },
         });
       const project = { title: "Project" };
       const environmentId = EnvironmentId.make("environment:watched-pull-request");
@@ -7025,6 +7074,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         threadId,
         occurredAt: completedAt,
         payload: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,

@@ -91,6 +91,7 @@ function makeProjection(): OrchestrationV2ThreadProjection {
 
   return {
     thread: {
+      sidekickModelSelection: null,
       id: THREAD_ID,
       projectId: ProjectId.make("project-perf"),
       title: "Thread",

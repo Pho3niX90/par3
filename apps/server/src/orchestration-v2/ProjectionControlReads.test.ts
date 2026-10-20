@@ -47,6 +47,7 @@ function fixtureEvents(now: DateTime.Utc): ReadonlyArray<OrchestrationV2DomainEv
       id: EventId.make("control:thread"),
       type: "thread.created",
       payload: {
+        sidekickModelSelection: null,
         id: threadId,
         projectId: ProjectId.make("project:control-reads"),
         title: "Control reads",

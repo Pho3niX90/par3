@@ -75,6 +75,7 @@ import {
 } from "@t3tools/provider-grok/testing";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import type { T3SidekickLeadState } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { makeTurnInput } from "./AcpAdapterV2.testkit.ts";
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import {
@@ -603,9 +604,13 @@ const makeInstructionCompactionHarness = Effect.fnUntraced(function* (
   const providerThread = yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
   const now = yield* DateTime.now;
   let ordinal = 0;
-  return Effect.fnUntraced(function* (messageText: string, expectedStatus = "completed") {
-    yield* runtime.startTurn(
-      makeTurnInput({
+  return Effect.fnUntraced(function* (
+    messageText: string,
+    expectedStatus = "completed",
+    sidekick: T3SidekickLeadState | null = null,
+  ) {
+    yield* runtime.startTurn({
+      ...makeTurnInput({
         threadId,
         providerThread,
         instanceId,
@@ -614,7 +619,8 @@ const makeInstructionCompactionHarness = Effect.fnUntraced(function* (
         ordinal: ++ordinal,
         messageText,
       }),
-    );
+      sidekick,
+    });
     const terminal = yield* runtime.events.pipe(
       Stream.filter((event) => event.type === "turn.terminal"),
       Stream.runHead,
@@ -1236,6 +1242,42 @@ describe("AcpAdapterV2", () => {
         assertReinjectedInstructions(yield* runTurn("Continue work."), "Continue work.");
         assert.equal((yield* runTurn("Finish work."))[0]?.text, "Finish work.");
       }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.live("sends sidekick instructions on change, off, and after native compact", () =>
+    Effect.gen(function* () {
+      const luna: T3SidekickLeadState = { label: "Luna · Codex", billingModel: "per_token" };
+      const nova: T3SidekickLeadState = { label: "Nova · Copilot", billingModel: "per_request" };
+      const runTurn = yield* makeInstructionCompactionHarness({});
+      const promptText = (blocks: Array<{ type: "text"; text: string }>) => blocks[0]?.text ?? "";
+
+      const first = promptText(yield* runTurn("Start work.", "completed", luna));
+      assert.include(first, "Par3 orchestration");
+      assert.include(first, "This thread has a sidekick: Luna · Codex.");
+      assert.equal(
+        promptText(yield* runTurn("Same sidekick.", "completed", luna)),
+        "Same sidekick.",
+      );
+
+      const changed = promptText(yield* runTurn("New sidekick.", "completed", nova));
+      assert.include(changed, "This thread has a sidekick: Nova · Copilot.");
+      assert.include(changed, "billed per request");
+      assert.notInclude(changed, "Par3 orchestration");
+
+      const off = promptText(yield* runTurn("Sidekick off."));
+      assert.include(off, "Par3 sidekick mode is now off");
+      assert.equal(promptText(yield* runTurn("Still off.")), "Still off.");
+
+      const enabled = promptText(yield* runTurn("Sidekick back.", "completed", luna));
+      assert.include(enabled, "This thread has a sidekick: Luna · Codex.");
+
+      assert.deepEqual(yield* runTurn("/compact", "completed", luna), [
+        { type: "text", text: "/compact" },
+      ]);
+      const afterCompact = promptText(yield* runTurn("After compact.", "completed", luna));
+      assert.include(afterCompact, "Par3 orchestration");
+      assert.include(afterCompact, "This thread has a sidekick: Luna · Codex.");
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
   it.live("reapplies a selection after a switch away from it failed partway", () =>

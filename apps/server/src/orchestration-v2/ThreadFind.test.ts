@@ -73,6 +73,7 @@ const thread = (
   providerInstanceId,
   occurredAt: at(0),
   payload: {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: threadId,

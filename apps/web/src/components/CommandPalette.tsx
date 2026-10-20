@@ -49,6 +49,7 @@ import {
   type EnvironmentMachineKind,
   type FilesystemBrowseResult,
   type ProjectId,
+  type ProviderInstanceId,
   type SourceControlDiscoveryResult,
   SourceControlProviderKind,
   type SourceControlRepositoryInfo,
@@ -73,6 +74,7 @@ import {
   MoonIcon,
   PaletteIcon,
   PencilRulerIcon,
+  UsersIcon,
   RotateCcwIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -80,6 +82,15 @@ import {
   TextSearchIcon,
 } from "lucide-react";
 import { requestPlanModeToggle } from "./chat/planModeActionBus";
+import { requestSidekickChange } from "./chat/sidekickActionBus";
+import {
+  providerCanLeadSidekick,
+  resolveSidekickPairing,
+  SIDEKICK_PER_REQUEST_HINT,
+  sidekickOptionGroups,
+  sidekickOptionKey,
+} from "../sidekick";
+import { useComposerDraftStore } from "../composerDraftStore";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
 import {
   useDeferredValue,
@@ -834,6 +845,102 @@ function OpenCommandPaletteDialog(props: {
   const themeCards = useThemeCards();
   const providers = useAtomValue(primaryServerProvidersAtom);
   const providersByEnvironment = useEnvironmentProviders();
+  const canSetSidekick = useAtomValue(
+    threadEnvironment.setSidekick.permissionAtom(
+      (activeThread ?? activeDraftThread)?.environmentId ?? null,
+    ),
+  );
+  const activeDraftComposerModel = useComposerDraftStore((store) => {
+    if (paletteRouteTarget?.kind !== "draft") return null;
+    const draft = store.getComposerDraft(paletteRouteTarget.draftId);
+    return draft?.activeProvider
+      ? (draft.modelSelectionByProvider[draft.activeProvider] ?? null)
+      : null;
+  });
+  // The composer owns the change so drafts and threads take the same path; the palette lists choices.
+  function buildSidekickPaletteItem(): CommandPaletteSubmenuItem | null {
+    if (paletteRouteTarget === null) return null;
+    if (activeThread && !canSetSidekick) return null;
+    const target = activeThread ?? activeDraftThread;
+    if (!target) return null;
+    const environment = environments.find(
+      (candidate) => candidate.environmentId === target.environmentId,
+    );
+    const serverConfig = environment?.serverConfig;
+    if (serverConfig?.environment.capabilities.threadSidekick !== true) return null;
+    const entries = applyProviderInstanceSettings(
+      deriveProviderInstanceEntries(providersByEnvironment.get(target.environmentId) ?? []),
+      serverConfig.settings,
+      target.projectId,
+    );
+    const lead = activeThread?.modelSelection ?? activeDraftComposerModel;
+    const current = activeThread
+      ? (activeThread.sidekickModelSelection ?? null)
+      : (activeDraftThread?.sidekickModelSelection ?? null);
+    const leadEntry = lead
+      ? entries.find((entry) => entry.instanceId === lead.instanceId)
+      : undefined;
+    if (current === null && lead && leadEntry && !providerCanLeadSidekick(leadEntry.snapshot)) {
+      return null;
+    }
+    // A draft whose lead the palette cannot see compares against nothing; launch drops a clash.
+    const leadRef = lead ?? { instanceId: "" as ProviderInstanceId, model: "" };
+    const pairing = resolveSidekickPairing({ selection: current, lead: leadRef, entries });
+    const selectedKey = pairing ? sidekickOptionKey(pairing.selection) : null;
+    const currentLabel = <span className="shrink-0 text-xs text-muted-foreground/70">Current</span>;
+    return {
+      kind: "submenu",
+      value: "action:set-sidekick",
+      searchTerms: ["sidekick", "delegate", "subagent", "cheaper model", "pair"],
+      title: "Set sidekick…",
+      description: pairing
+        ? pairing.problem
+          ? `${pairing.label} (inactive: ${pairing.problem})`
+          : pairing.label
+        : "No sidekick",
+      icon: <UsersIcon className={ITEM_ICON_CLASS} />,
+      addonIcon: <UsersIcon className={ADDON_ICON_CLASS} />,
+      shortcutCommand: "composer.sidekick",
+      groups: [
+        {
+          value: "sidekick-none",
+          label: "Sidekick",
+          items: [
+            {
+              kind: "action",
+              value: "sidekick:none",
+              title: "None",
+              description: "Delegated tasks use the lead's model",
+              searchTerms: ["none", "off", "clear", "sidekick"],
+              icon: <UsersIcon className={ITEM_ICON_CLASS} />,
+              ...(selectedKey === null ? { titleTrailingContent: currentLabel } : {}),
+              run: async () => {
+                requestSidekickChange(null);
+              },
+            },
+          ],
+        },
+        ...sidekickOptionGroups({ entries, lead: leadRef }).map((group) => ({
+          value: `sidekick-group:${group.entry.instanceId}`,
+          label: group.entry.displayName,
+          items: group.options.map((option) => ({
+            kind: "action" as const,
+            value: `sidekick:${sidekickOptionKey(option)}`,
+            title: option.name,
+            ...(group.perRequest ? { description: SIDEKICK_PER_REQUEST_HINT } : {}),
+            searchTerms: [option.name, option.model, group.entry.displayName, "sidekick"],
+            icon: <UsersIcon className={ITEM_ICON_CLASS} />,
+            ...(selectedKey === sidekickOptionKey(option)
+              ? { titleTrailingContent: currentLabel }
+              : {}),
+            run: async () => {
+              requestSidekickChange({ instanceId: option.instanceId, model: option.model });
+            },
+          })),
+        })),
+      ],
+    };
+  }
   const providerEntryByEnvironmentAndInstanceId = new Map<string, ProviderInstanceEntry>(
     environments.flatMap((environment) => {
       const serverConfig = environment.serverConfig;
@@ -1688,6 +1795,9 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  const sidekickPaletteItem = buildSidekickPaletteItem();
+  if (sidekickPaletteItem !== null) actionItems.push(sidekickPaletteItem);
 
   // Read once per open: the palette is a snapshot of the composer, not a live view of it.
   const promptLinkTarget = paletteRouteTarget

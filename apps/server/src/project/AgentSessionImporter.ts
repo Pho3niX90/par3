@@ -293,6 +293,7 @@ const make = Effect.gen(function* () {
           const createdAt = dateTime(thread.createdAt);
           const updatedAt = dateTime(thread.updatedAt);
           const appThread: OrchestrationV2AppThread = {
+            sidekickModelSelection: null,
             createdBy: "system",
             creationSource: "server",
             id: threadId,

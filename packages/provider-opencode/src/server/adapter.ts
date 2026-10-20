@@ -63,7 +63,10 @@ import {
   summarizeNativeProtocolPayload,
 } from "@t3tools/provider-core/server/nativeProtocolLogging";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { t3OrchestrationSystemPrompt } from "@t3tools/provider-core/server/orchestrationInstructions";
+import {
+  sidekickInstructions,
+  t3OrchestrationSystemPrompt,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -3228,8 +3231,14 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 );
                 return;
               }
+              // OpenCode stores `system` on each user message and builds the request from the
+              // latest one, so per-turn content such as the sidekick playbook disappears once
+              // a later prompt omits it; no explicit "off" text is needed.
               const systemPrompt = [
                 orchestrationSystemPrompt,
+                hasT3Mcp && turnInput.sidekick != null
+                  ? sidekickInstructions(turnInput.sidekick)
+                  : undefined,
                 buildRuntimeInstructions({
                   harness: "OpenCode",
                   model: turnInput.modelSelection.model,

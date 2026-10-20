@@ -1935,6 +1935,38 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(store.getDraftThread(draftId)?.branch).toBe("feature/pinned");
   });
 
+  it("keeps a draft's sidekick through reloads and drops it when the draft changes environment", () => {
+    const sidekick = {
+      instanceId: ProviderInstanceId.make("codex"),
+      model: "gpt-mini",
+      options: [{ id: "reasoningEffort", value: "high" }],
+    };
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.setDraftThreadContext(draftId, {
+      sidekickModelSelection: { ...sidekick, options: [{ id: "reasoningEffort", value: "low" }] },
+    });
+    store.setDraftThreadContext(draftId, { sidekickModelSelection: sidekick });
+    store.setDraftThreadContext(draftId, { runtimeMode: "full-access" });
+
+    const merge = useComposerDraftStore.persist.getOptions().merge!;
+    const reloaded = merge(
+      JSON.parse(
+        JSON.stringify(partializeComposerDraftStoreState(useComposerDraftStore.getState())),
+      ),
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(Object.values(reloaded.draftThreadsByThreadKey)[0]?.sidekickModelSelection).toEqual(
+      sidekick,
+    );
+
+    store.setDraftThreadContext(draftId, { projectRef: remoteProjectRef });
+    expect(store.getDraftThread(draftId)?.sidekickModelSelection).toBeUndefined();
+    store.setDraftThreadContext(draftId, { sidekickModelSelection: sidekick });
+    store.setDraftThreadContext(draftId, { sidekickModelSelection: null });
+    expect(store.getDraftThread(draftId)?.sidekickModelSelection).toBeUndefined();
+  });
+
   it("pins manual workspace choices and can return to automatic routing without losing the prompt", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, { threadId });

@@ -4,6 +4,7 @@ import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/Th
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
 import { subscribePlanModeToggle } from "./chat/planModeActionBus";
+import { subscribeSidekickChange } from "./chat/sidekickActionBus";
 import {
   isThreadWokeUnseen,
   mergeDirectPreviewAnnotation,
@@ -1087,6 +1088,8 @@ export default function ChatView(props: ChatViewProps) {
   const setThreadInteractionMode = useOrchestrationCommand(threadEnvironment.setInteractionMode, {
     reportFailure: false,
   });
+  const setThreadSidekick = useOrchestrationCommand(threadEnvironment.setSidekick);
+  const canSetSidekick = useAtomValue(threadEnvironment.setSidekick.permissionAtom(environmentId));
   const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
     reportFailure: false,
   });
@@ -3706,6 +3709,32 @@ export default function ChatView(props: ChatViewProps) {
     scheduleComposerFocus();
   };
   const handleInteractionModeChangeStable = useStableCallback(handleInteractionModeChange);
+  const sidekickSupported =
+    attachmentEnvironmentConfig?.environment.capabilities.threadSidekick === true &&
+    (isLocalDraftThread || canSetSidekick);
+  const sidekickModelSelection = isServerThread
+    ? (activeThreadShell?.sidekickModelSelection ?? null)
+    : (draftThread?.sidekickModelSelection ?? null);
+  // Applies to the thread's next delegations; children already running keep their model.
+  const handleSidekickChange = (selection: ModelSelection | null) => {
+    if (isServerThread && activeThreadId !== null) {
+      void setThreadSidekick({
+        environmentId,
+        input: { threadId: activeThreadId, sidekickModelSelection: selection },
+      });
+    } else if (isLocalDraftThread) {
+      setDraftThreadContext(composerDraftTarget, { sidekickModelSelection: selection });
+    }
+    scheduleComposerFocus();
+  };
+  const handleSidekickChangeStable = useStableCallback(handleSidekickChange);
+  useEffect(
+    () =>
+      subscribeSidekickChange((selection) => {
+        if (sidekickSupported) handleSidekickChangeStable(selection);
+      }),
+    [handleSidekickChangeStable, sidekickSupported],
+  );
   const toggleInteractionMode = () => {
     if (!interactionModeEnabled) return;
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
@@ -5876,6 +5905,7 @@ export default function ChatView(props: ChatViewProps) {
       "composer.host": openComposerControl("composer.host"),
       "composer.effort": openComposerControl("composer.effort"),
       "composer.mode": openComposerControl("composer.mode"),
+      "composer.sidekick": openComposerControl("composer.sidekick"),
       "composer.workspace": openComposerControl("composer.workspace"),
       "composer.cycleHost": ({ event }) => {
         if (!canChangeEnvironment) return false;
@@ -6912,6 +6942,9 @@ export default function ChatView(props: ChatViewProps) {
                         projectId: activeProject.id,
                         title,
                         modelSelection: target.selection,
+                        sidekickModelSelection: sidekickSupported
+                          ? (draftThread?.sidekickModelSelection ?? null)
+                          : null,
                         runtimeMode,
                         interactionMode: target.interactionMode,
                         branch: activeThreadBranch,
@@ -7186,6 +7219,9 @@ export default function ChatView(props: ChatViewProps) {
                       projectId: activeProject.id,
                       title,
                       modelSelection: threadCreateModelSelection,
+                      sidekickModelSelection: sidekickSupported
+                        ? (draftThread?.sidekickModelSelection ?? null)
+                        : null,
                       runtimeMode,
                       interactionMode: sendInteractionMode,
                       branch: activeThreadBranch,
@@ -8605,6 +8641,9 @@ export default function ChatView(props: ChatViewProps) {
                               toggleInteractionMode={toggleInteractionModeStable}
                               handleRuntimeModeChange={handleRuntimeModeChangeStable}
                               handleInteractionModeChange={handleInteractionModeChangeStable}
+                              sidekickModelSelection={sidekickModelSelection}
+                              sidekickSupported={sidekickSupported}
+                              onSidekickChange={handleSidekickChangeStable}
                               focusComposer={focusComposerStable}
                               scheduleComposerFocus={scheduleComposerFocusStable}
                               setThreadError={setThreadError}

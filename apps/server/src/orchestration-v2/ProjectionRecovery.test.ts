@@ -63,6 +63,7 @@ const createThread = Effect.fn(function* (
   const now = yield* DateTime.now;
   const threadId = ThreadId.make(`thread:recovery:${name}`);
   const thread: OrchestrationV2AppThread = {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: threadId,

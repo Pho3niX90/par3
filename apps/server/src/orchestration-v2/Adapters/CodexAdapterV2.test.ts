@@ -59,6 +59,10 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import packageJson from "../../../package.json" with { type: "json" };
 import * as ServerConfig from "../../config.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import {
+  SIDEKICK_OFF_INSTRUCTIONS,
+  sidekickInstructions,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as EffectWorker from "../EffectWorker.ts";
@@ -1626,6 +1630,7 @@ function makeCodexTestAppThread(input: {
   readonly now: DateTime.Utc;
 }): OrchestrationV2AppThread {
   return {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: input.threadId,
@@ -3294,6 +3299,119 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ),
     ),
   );
+
+  it.effect("keeps the sidekick playbook in context while on and sends the off notice once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const nativeThreadId = "sidekick-thread";
+        const luna = { label: "Luna · Codex", billingModel: "per_token" } as const;
+        const turns = [
+          { sidekick: luna, context: sidekickInstructions(luna) },
+          // Codex sends an unchanged entry only once, so it stays on every turn.
+          { sidekick: luna, context: sidekickInstructions(luna) },
+          { sidekick: null, context: SIDEKICK_OFF_INSTRUCTIONS },
+          { sidekick: null, context: undefined },
+        ];
+        const paramsByTurn = yield* Effect.forEach(turns, (turn, index) =>
+          CodexAdapterV2.buildCodexTurnStartParams({
+            nativeThreadId,
+            codexInput: [{ type: "text", text: `turn ${index + 1}` }],
+            runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
+            modelSelection: CODEX_TEST_MODEL_SELECTION,
+            hasT3Mcp: true,
+            ...(turn.context === undefined ? {} : { sidekickContext: turn.context }),
+          }),
+        );
+        assert.equal(paramsByTurn[0]?.additionalContext?.t3_code_sidekick?.kind, "application");
+        assert.isUndefined(paramsByTurn[3]?.additionalContext?.t3_code_sidekick);
+        const turnId = (index: number) => `sidekick-turn-${index + 1}`;
+        const entries = codexReplayPreamble({
+          nativeThreadId,
+          nativeTurnId: turnId(0),
+          prompt: "turn 1",
+        });
+        const turnEntries = (index: number): Array<CodexReplay.CodexAppServerReplayEntry> => [
+          {
+            type: "expect_outbound",
+            label: `turn ${index + 1} turn/start`,
+            frame: { id: 3 + index, method: "turn/start", params: paramsByTurn[index] },
+          },
+          {
+            type: "emit_inbound",
+            label: `turn ${index + 1} turn/start`,
+            frame: {
+              id: 3 + index,
+              result: { turn: makeCodexReplayTurn({ id: turnId(index), status: "inProgress" }) },
+            },
+          },
+          ...(["inProgress", "completed"] as const).map(
+            (status): CodexReplay.CodexAppServerReplayEntry => ({
+              type: "emit_inbound",
+              label: `turn ${index + 1} ${status}`,
+              frame: {
+                method: status === "inProgress" ? "turn/started" : "turn/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turn: makeCodexReplayTurn({ id: turnId(index), status }),
+                },
+              },
+            }),
+          ),
+        ];
+        const transcript = makeCodexReplayTranscript({
+          scenario: "sidekick-context",
+          entries: [...entries.slice(0, 5), ...turns.flatMap((_, index) => turnEntries(index))],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        yield* (yield* McpProviderSessions.McpProviderSessions).set({
+          environmentId: EnvironmentId.make("test"),
+          threadId: harness.threadId,
+          providerSessionId: "sidekick-session",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          endpoint: "http://127.0.0.1:43123/mcp",
+          authorizationHeader: "Bearer test",
+          browserToolsAvailable: true,
+        });
+        for (const [index, turn] of turns.entries()) {
+          yield* harness.runtime.startTurn({
+            ...makeCodexTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make(`sidekick-attempt-${index + 1}`),
+              text: `turn ${index + 1}`,
+            }),
+            runOrdinal: index + 1,
+            providerTurnOrdinal: index + 1,
+            sidekick: turn.sidekick,
+          });
+          yield* awaitUntil(
+            () => harness.terminalEvents().length === index + 1,
+            `turn ${index + 1} terminal`,
+          );
+        }
+        assert.deepEqual(
+          harness.terminalEvents().map((event) => event.status),
+          ["completed", "completed", "completed", "completed"],
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it("picks the sidekick context from the state the native thread last received", () => {
+    const luna = { label: "Luna · Codex", billingModel: "per_token" } as const;
+    const haiku = { label: "Haiku · Claude", billingModel: "per_request" } as const;
+    assert.equal(CodexAdapterV2.codexSidekickContext(undefined, luna), sidekickInstructions(luna));
+    assert.equal(CodexAdapterV2.codexSidekickContext(luna, luna), sidekickInstructions(luna));
+    assert.equal(CodexAdapterV2.codexSidekickContext(luna, haiku), sidekickInstructions(haiku));
+    assert.equal(CodexAdapterV2.codexSidekickContext(haiku, null), SIDEKICK_OFF_INSTRUCTIONS);
+    assert.isUndefined(CodexAdapterV2.codexSidekickContext(null, null));
+    assert.isUndefined(CodexAdapterV2.codexSidekickContext(undefined, null));
+  });
 
   it.effect("compacts Codex with the native RPC and completes the compaction turn", () =>
     Effect.scoped(

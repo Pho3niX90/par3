@@ -32,6 +32,7 @@ export interface PullRequestTestThread {
 
 export function v2PullRequestThread(thread: PullRequestTestThread): OrchestrationV2ThreadShell {
   return {
+    sidekickModelSelection: null,
     id: thread.id,
     projectId: thread.projectId,
     title: thread.title,

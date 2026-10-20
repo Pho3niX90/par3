@@ -39,6 +39,7 @@ const createThread = Effect.fn(function* (
   const store = yield* ProjectionStore.ProjectionStoreV2;
   const threadId = ThreadId.make(`thread:settlement:${name}`);
   const thread: OrchestrationV2AppThread = {
+    sidekickModelSelection: null,
     createdBy: "user",
     creationSource: "web",
     id: threadId,

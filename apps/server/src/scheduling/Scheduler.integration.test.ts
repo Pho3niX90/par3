@@ -37,6 +37,7 @@ it.effect.each(["on time", "after restart"])(
       const now = yield* DateTime.now;
       const resetAt = DateTime.formatIso(DateTime.add(now, { seconds: 60 }));
       const thread: OrchestrationV2ThreadShell = {
+        sidekickModelSelection: null,
         id: ThreadId.make("thread:limited"),
         projectId: ProjectId.make("project:test"),
         title: "Limited",

@@ -710,6 +710,7 @@ describe("skipUnchangedThreadShells", () => {
     id: string,
     overrides: Partial<OrchestrationV2ThreadShell> = {},
   ): OrchestrationV2ThreadShell => ({
+    sidekickModelSelection: null,
     id: ThreadId.make(id),
     projectId: ProjectId.make("project-a"),
     title: "Thread",

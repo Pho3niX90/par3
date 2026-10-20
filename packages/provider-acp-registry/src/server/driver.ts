@@ -2,6 +2,7 @@ import {
   officialAcpRegistryIconUrlForAgentId,
   ProviderDriverKind,
   resolveOfficialAcpRegistryIconUrl,
+  sidekickDriverTraits,
   TextGenerationError,
   type AcpRegistryOperationError,
   type ServerProvider,
@@ -203,6 +204,7 @@ function baseSnapshot(
       : (resolveOfficialAcpRegistryIconUrl(input.probe?.probe.icon) ??
         officialAcpRegistryIconUrlForAgentId(input.settings.agentId));
   return {
+    ...sidekickDriverTraits(DRIVER_KIND),
     instanceId: input.instanceId,
     driver: DRIVER_KIND,
     ...(input.displayName ? { displayName: input.displayName } : {}),

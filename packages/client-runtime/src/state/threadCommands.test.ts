@@ -46,6 +46,7 @@ const SNAPSHOT: OrchestrationV2ShellSnapshot = {
   projects: [],
   threads: [
     {
+      sidekickModelSelection: null,
       id: THREAD_ID,
       projectId: ProjectId.make("project"),
       title: "Remote thread",

@@ -346,6 +346,7 @@ describe("AntigravityAdapterV2 workspace changes", () => {
       yield* session
         .startTurn({
           appThread: {
+            sidekickModelSelection: null,
             createdBy: "user",
             creationSource: "web",
             id: threadId,
@@ -680,6 +681,7 @@ describe("AntigravityAdapterV2 html_render pages", () => {
       const now = yield* DateTime.now;
       yield* session.startTurn({
         appThread: {
+          sidekickModelSelection: null,
           createdBy: "user",
           creationSource: "web",
           id: threadId,

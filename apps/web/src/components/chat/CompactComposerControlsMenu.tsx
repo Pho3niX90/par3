@@ -22,6 +22,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   }>;
   showInteractionModeToggle: boolean;
   traitsMenuContent?: ReactNode;
+  sidekickMenuContent?: ReactNode;
   size?: "sm" | "xs";
   /**
    * The resting strip keeps this menu mounted out of flow while every block
@@ -44,9 +45,11 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             size={size}
             className="shrink-0"
             aria-label="More composer controls"
-            data-composer-shortcut={
-              props.traitsMenuContent ? "composer.mode composer.effort" : "composer.mode"
-            }
+            data-composer-shortcut={[
+              "composer.mode",
+              ...(props.traitsMenuContent ? ["composer.effort"] : []),
+              ...(props.sidekickMenuContent ? ["composer.sidekick"] : []),
+            ].join(" ")}
           />
         }
       >
@@ -89,6 +92,12 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
+        {props.sidekickMenuContent ? (
+          <>
+            <MenuDivider />
+            {props.sidekickMenuContent}
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

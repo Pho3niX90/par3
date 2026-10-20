@@ -28,6 +28,7 @@ export function makeThreadProjectionFixture(): OrchestrationV2ThreadProjection {
   const providerInstanceId = ProviderInstanceId.make("codex");
   return {
     thread: {
+      sidekickModelSelection: null,
       id,
       projectId: ProjectId.make("project-test"),
       title: "Thread",
@@ -93,6 +94,7 @@ export function makeThreadFixture(overrides: ThreadFixtureOverrides = {}): Threa
       ? null
       : DateTime.makeUnsafe(overrides.deletedAt);
   const shell = presentThreadShell(environmentId, {
+    sidekickModelSelection: null,
     id,
     projectId,
     title: overrides.title ?? "Thread",

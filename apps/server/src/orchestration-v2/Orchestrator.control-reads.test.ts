@@ -1231,3 +1231,112 @@ it.effect("explicit settle clears snooze atomically and stays idempotent after r
     assert.deepInclude((yield* projections.getThreadProjection(threadId)).thread, active);
   }).pipe(Effect.provide(layerTest)),
 );
+
+it.effect("sets and clears a sidekick through the model-selection event", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:sidekick-set");
+    const sidekick = { instanceId, model: "gpt-5.1-codex-mini" };
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-sidekick-set"),
+      threadId,
+      projectId: ProjectId.make("project:sidekick"),
+      title: "Sidekick",
+      modelSelection,
+      sidekickModelSelection: sidekick,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    assert.deepEqual(
+      (yield* projections.getThreadProjection(threadId)).thread.sidekickModelSelection,
+      sidekick,
+    );
+
+    const cleared = yield* orchestrator.dispatch({
+      type: "thread.sidekick.set",
+      commandId: CommandId.make("clear-sidekick"),
+      threadId,
+      sidekickModelSelection: null,
+    });
+    assert.deepEqual(
+      cleared.storedEvents.map(({ event }) => event.type),
+      ["thread.model-selection-updated"],
+    );
+    assert.isNull((yield* projections.getThreadProjection(threadId)).thread.sidekickModelSelection);
+
+    const sameAsLead = yield* orchestrator
+      .dispatch({
+        type: "thread.sidekick.set",
+        commandId: CommandId.make("sidekick-same-as-lead"),
+        threadId,
+        sidekickModelSelection: modelSelection,
+      })
+      .pipe(Effect.result);
+    assert.isTrue(Result.isFailure(sameAsLead));
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("a sidekick brief reaches only the child message, and the child has no sidekick", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const parentThreadId = ThreadId.make("thread:sidekick-parent");
+    const sidekick = { instanceId, model: "gpt-5.1-codex-mini" };
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-sidekick-parent"),
+      threadId: parentThreadId,
+      projectId: ProjectId.make("project:sidekick"),
+      title: "Lead",
+      modelSelection,
+      sidekickModelSelection: sidekick,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("start-sidekick-parent"),
+      threadId: parentThreadId,
+      messageId: MessageId.make("message:sidekick-parent"),
+      text: "Build it",
+      attachments: [],
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const parentRun = (yield* projections.getThreadProjection(parentThreadId)).runs[0]!;
+    yield* orchestrator.dispatch({
+      type: "delegated_task.request",
+      commandId: CommandId.make("delegate-sidekick"),
+      parentThreadId,
+      parentRunId: parentRun.id,
+      parentNodeId: parentRun.rootNodeId!,
+      task: "Add the parser",
+      messageText: "Sidekick preamble\n\nAdd the parser",
+      modelSelection: sidekick,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdBy: "agent",
+      creationSource: "mcp",
+    });
+    const parent = yield* projections.getThreadProjection(parentThreadId);
+    const childThreadId = parent.subagents[0]!.childThreadId!;
+    const child = yield* projections.getThreadProjection(childThreadId);
+    assert.equal(child.thread.title, "Add the parser");
+    assert.isNull(child.thread.sidekickModelSelection);
+    assert.equal(child.messages[0]?.text, "Sidekick preamble\n\nAdd the parser");
+    const taskItem = parent.turnItems.find((item) => item.type === "subagent");
+    assert.equal(taskItem?.type === "subagent" ? taskItem.model : undefined, sidekick.model);
+    assert.equal(taskItem?.type === "subagent" ? taskItem.prompt : undefined, "Add the parser");
+  }).pipe(Effect.provide(layerTest)),
+);

@@ -44,6 +44,7 @@ function records(
   const nodeId = NodeId.make("root-node");
   return {
     thread: {
+      sidekickModelSelection: null,
       id: threadId,
       projectId: ProjectId.make("project"),
       title: "Idle thread",

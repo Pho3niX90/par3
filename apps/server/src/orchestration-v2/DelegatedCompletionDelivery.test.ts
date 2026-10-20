@@ -976,6 +976,7 @@ const seedRestartCancelledChild = (input: {
           threadId: childThreadId,
           occurredAt: input.now,
           payload: {
+            sidekickModelSelection: null,
             createdBy: "agent",
             creationSource: "server",
             id: childThreadId,
