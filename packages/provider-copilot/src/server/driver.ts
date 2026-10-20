@@ -77,198 +77,200 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
   },
   configSchema: CopilotSettings,
   defaultConfig: (): CopilotSettings => decodeCopilotSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
-    Effect.gen(function* () {
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const httpClient = yield* HttpClient.HttpClient;
-      const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
-      const fileSystem = yield* FileSystem.FileSystem;
-      const crypto = yield* Crypto.Crypto;
-      const path = yield* Path.Path;
-      const processEnv = yield* mergeProviderInstanceEnvironment(environment);
-      const continuationIdentity = defaultProviderContinuationIdentity({
-        driverKind: DRIVER_KIND,
-        instanceId,
-      });
-      const stampIdentity = withInstanceIdentity({
-        instanceId,
-        driverKind: DRIVER_KIND,
-        displayName,
-        accentColor,
-        continuationGroupKey: continuationIdentity.continuationKey,
-      });
-      const effectiveConfig = { ...config, enabled } satisfies CopilotSettings;
+  create: Effect.fn("CopilotDriver.create")(function* ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+  }) {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const httpClient = yield* HttpClient.HttpClient;
+    const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const crypto = yield* Crypto.Crypto;
+    const path = yield* Path.Path;
+    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const continuationIdentity = defaultProviderContinuationIdentity({
+      driverKind: DRIVER_KIND,
+      instanceId,
+    });
+    const stampIdentity = withInstanceIdentity({
+      instanceId,
+      driverKind: DRIVER_KIND,
+      displayName,
+      accentColor,
+      continuationGroupKey: continuationIdentity.continuationKey,
+    });
+    const effectiveConfig = { ...config, enabled } satisfies CopilotSettings;
 
-      const launchEnv = copilotLaunchEnvironment(effectiveConfig, processEnv);
+    const launchEnv = copilotLaunchEnvironment(effectiveConfig, processEnv);
 
-      const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
-        resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
-          binaryPath: effectiveConfig.binaryPath,
-          env: launchEnv,
-        }).pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-        ),
-      );
-
-      // Models Copilot advertises, from a one-shot discovery session and from every started
-      // session. The version check never opens a session itself.
-      const advertisedModels = yield* SubscriptionRef.make<ReadonlyArray<CopilotAdvertisedModel>>(
-        [],
-      );
-
-      const textGeneration = yield* makeCopilotTextGeneration(effectiveConfig, launchEnv).pipe(
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        Effect.provideService(Crypto.Crypto, crypto),
-      );
-
-      const orchestrationAdapter = yield* makeCopilotAdapterV2ForInstance(
-        {
-          instanceId,
-          displayName,
-          accentColor,
-          environment,
-          enabled,
-          config: effectiveConfig,
-        },
-        {
-          onModelsAdvertised: (models) =>
-            SubscriptionRef.get(advertisedModels).pipe(
-              Effect.flatMap((known) =>
-                known.length === 0
-                  ? Effect.logInfo("GitHub Copilot advertised models to a session.", {
-                      count: models.length,
-                    })
-                  : Effect.void,
-              ),
-              Effect.andThen(SubscriptionRef.set(advertisedModels, models)),
-            ),
-        },
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: "Failed to build GitHub Copilot orchestration adapter.",
-              cause,
-            }),
-        ),
-      );
-
-      const checkProvider = checkCopilotProviderStatus(effectiveConfig, launchEnv).pipe(
-        Effect.map(stampIdentity),
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      );
-
-      const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
-      const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<CopilotSettings>>({
-        resolveMaintenance,
-        getSettings: snapshotSettings.getSettings,
-        streamSettings: snapshotSettings.streamSettings,
-        haveSettingsChanged: haveProviderSnapshotSettingsChanged,
-        initialSnapshot: (settings) =>
-          buildInitialCopilotProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
-        checkProvider,
-        enrichSnapshot: ({ settings, snapshot: currentSnapshot, getSnapshot, publishSnapshot }) => {
-          const { customModels } = settings.provider;
-          // Both publishers rebuild the model list from the latest advertisement, so whichever
-          // publishes last never drops models the other one added.
-          const publishWithAdvertisedModels = (next: ServerProvider) =>
-            SubscriptionRef.get(advertisedModels).pipe(
-              Effect.flatMap((models) =>
-                publishSnapshot(applyAdvertisedCopilotModels(next, models, customModels)),
-              ),
-            );
-          const enrichment = resolveMaintenance().pipe(
-            Effect.flatMap((maintenanceCapabilities) =>
-              enrichCopilotSnapshot({
-                snapshot: currentSnapshot,
-                maintenanceCapabilities,
-                enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-                publishSnapshot: publishWithAdvertisedModels,
-              }),
-            ),
-            Effect.provideService(HttpClient.HttpClient, httpClient),
-            Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
-          );
-          // `changes` replays the current value, so a refresh that rebuilt the snapshot from the
-          // version probe lists the advertised models again straight away.
-          const advertisedModelUpdates = SubscriptionRef.changes(advertisedModels).pipe(
-            Stream.filter((models) => models.length > 0),
-            Stream.runForEach(() => getSnapshot.pipe(Effect.flatMap(publishWithAdvertisedModels))),
-          );
-          // Once per driver instance, as soon as the CLI is found working, so the picker has the
-          // CLI's models before the first thread. A started session advertises them as well.
-          const discoverModels =
-            currentSnapshot.installed && currentSnapshot.status === "ready"
-              ? SubscriptionRef.get(advertisedModels).pipe(
-                  Effect.flatMap((known) =>
-                    known.length > 0
-                      ? Effect.void
-                      : probeCopilotModels({
-                          makeRuntime: Effect.gen(function* () {
-                            const cwd = yield* fileSystem.makeTempDirectoryScoped({
-                              prefix: "t3-copilot-models-",
-                            });
-                            return yield* makeCopilotAcpRuntime({
-                              copilotSettings: effectiveConfig,
-                              environment: launchEnv,
-                              cwd,
-                              clientInfo: { name: "t3-code-model-discovery", version: "0.0.0" },
-                              clientCapabilities: {
-                                fs: { readTextFile: false, writeTextFile: false },
-                                terminal: false,
-                              },
-                              // Never start a login flow from a background check.
-                              authenticateOnAuthRequired: false,
-                            });
-                          }).pipe(
-                            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-                            Effect.provideService(Crypto.Crypto, crypto),
-                          ),
-                        }).pipe(
-                          Effect.flatMap((models) =>
-                            models.length > 0
-                              ? Effect.logInfo("GitHub Copilot model discovery found models.", {
-                                  count: models.length,
-                                }).pipe(
-                                  Effect.andThen(SubscriptionRef.set(advertisedModels, models)),
-                                )
-                              : Effect.void,
-                          ),
-                        ),
-                  ),
-                )
-              : Effect.void;
-          return Effect.all([enrichment, advertisedModelUpdates, discoverModels], {
-            concurrency: "unbounded",
-            discard: true,
-          });
-        },
+    const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
+      resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
+        binaryPath: effectiveConfig.binaryPath,
+        env: launchEnv,
       }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: "Failed to build GitHub Copilot snapshot.",
-              cause,
-            }),
-        ),
-      );
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+      ),
+    );
 
-      return {
+    // Models Copilot advertises, from a one-shot discovery session and from every started
+    // session. The version check never opens a session itself.
+    const advertisedModels = yield* SubscriptionRef.make<ReadonlyArray<CopilotAdvertisedModel>>([]);
+
+    const textGeneration = yield* makeCopilotTextGeneration(effectiveConfig, launchEnv).pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.provideService(Crypto.Crypto, crypto),
+    );
+
+    const orchestrationAdapter = yield* makeCopilotAdapterV2ForInstance(
+      {
         instanceId,
-        driverKind: DRIVER_KIND,
-        continuationIdentity,
         displayName,
         accentColor,
+        environment,
         enabled,
-        snapshot,
-        orchestrationAdapter,
-        textGeneration,
-      };
-    }),
+        config: effectiveConfig,
+      },
+      {
+        onModelsAdvertised: (models) =>
+          SubscriptionRef.get(advertisedModels).pipe(
+            Effect.flatMap((known) =>
+              known.length === 0
+                ? Effect.logInfo("GitHub Copilot advertised models to a session.", {
+                    count: models.length,
+                  })
+                : Effect.void,
+            ),
+            Effect.andThen(SubscriptionRef.set(advertisedModels, models)),
+          ),
+      },
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Failed to build GitHub Copilot orchestration adapter.",
+            cause,
+          }),
+      ),
+    );
+
+    const checkProvider = checkCopilotProviderStatus(effectiveConfig, launchEnv).pipe(
+      Effect.map(stampIdentity),
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+    );
+
+    const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
+    const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<CopilotSettings>>({
+      resolveMaintenance,
+      getSettings: snapshotSettings.getSettings,
+      streamSettings: snapshotSettings.streamSettings,
+      haveSettingsChanged: haveProviderSnapshotSettingsChanged,
+      initialSnapshot: (settings) =>
+        buildInitialCopilotProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+      checkProvider,
+      enrichSnapshot: ({ settings, snapshot: currentSnapshot, getSnapshot, publishSnapshot }) => {
+        const { customModels } = settings.provider;
+        // Both publishers rebuild the model list from the latest advertisement, so whichever
+        // publishes last never drops models the other one added.
+        const publishWithAdvertisedModels = (next: ServerProvider) =>
+          SubscriptionRef.get(advertisedModels).pipe(
+            Effect.flatMap((models) =>
+              publishSnapshot(applyAdvertisedCopilotModels(next, models, customModels)),
+            ),
+          );
+        const enrichment = resolveMaintenance().pipe(
+          Effect.flatMap((maintenanceCapabilities) =>
+            enrichCopilotSnapshot({
+              snapshot: currentSnapshot,
+              maintenanceCapabilities,
+              enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+              publishSnapshot: publishWithAdvertisedModels,
+            }),
+          ),
+          Effect.provideService(HttpClient.HttpClient, httpClient),
+          Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
+        );
+        // `changes` replays the current value, so a refresh that rebuilt the snapshot from the
+        // version probe lists the advertised models again straight away.
+        const advertisedModelUpdates = SubscriptionRef.changes(advertisedModels).pipe(
+          Stream.filter((models) => models.length > 0),
+          Stream.runForEach(() => getSnapshot.pipe(Effect.flatMap(publishWithAdvertisedModels))),
+        );
+        // Once per driver instance, as soon as the CLI is found working, so the picker has the
+        // CLI's models before the first thread. A started session advertises them as well.
+        const discoverModels =
+          currentSnapshot.installed && currentSnapshot.status === "ready"
+            ? SubscriptionRef.get(advertisedModels).pipe(
+                Effect.flatMap((known) =>
+                  known.length > 0
+                    ? Effect.void
+                    : probeCopilotModels({
+                        makeRuntime: Effect.gen(function* () {
+                          const cwd = yield* fileSystem.makeTempDirectoryScoped({
+                            prefix: "t3-copilot-models-",
+                          });
+                          return yield* makeCopilotAcpRuntime({
+                            copilotSettings: effectiveConfig,
+                            environment: launchEnv,
+                            cwd,
+                            clientInfo: { name: "t3-code-model-discovery", version: "0.0.0" },
+                            clientCapabilities: {
+                              fs: { readTextFile: false, writeTextFile: false },
+                              terminal: false,
+                            },
+                            // Never start a login flow from a background check.
+                            authenticateOnAuthRequired: false,
+                          });
+                        }).pipe(
+                          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+                          Effect.provideService(Crypto.Crypto, crypto),
+                        ),
+                      }).pipe(
+                        Effect.flatMap((models) =>
+                          models.length > 0
+                            ? Effect.logInfo("GitHub Copilot model discovery found models.", {
+                                count: models.length,
+                              }).pipe(Effect.andThen(SubscriptionRef.set(advertisedModels, models)))
+                            : Effect.void,
+                        ),
+                      ),
+                ),
+              )
+            : Effect.void;
+        return Effect.all([enrichment, advertisedModelUpdates, discoverModels], {
+          concurrency: "unbounded",
+          discard: true,
+        });
+      },
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Failed to build GitHub Copilot snapshot.",
+            cause,
+          }),
+      ),
+    );
+
+    return {
+      instanceId,
+      driverKind: DRIVER_KIND,
+      continuationIdentity,
+      displayName,
+      accentColor,
+      enabled,
+      snapshot,
+      orchestrationAdapter,
+      textGeneration,
+    };
+  }),
 };

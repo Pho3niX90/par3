@@ -52,27 +52,30 @@ const decodeReleaseIndex = Schema.decodeUnknownEffect(Schema.fromJsonString(Rele
 const RELEASE_INDEX_TIMEOUT = Duration.seconds(30);
 const RELEASE_INDEX_MAX_PAGES = 10;
 
-const resolveNewestVersion = Effect.fn("cli.update.resolve_newest")(function* (
+export const resolveNewestVersion = Effect.fn("cli.update.resolve_newest")(function* (
   channel: CliReleaseChannel,
 ) {
   const httpClient = yield* HttpClient.HttpClient;
+  const environment = yield* HostProcess.Environment;
+  const githubToken = environment.GH_TOKEN?.trim() || environment.GITHUB_TOKEN?.trim() || undefined;
   for (let page = 1; page <= RELEASE_INDEX_MAX_PAGES; page += 1) {
-    const body = yield* httpClient
-      .execute(
-        HttpClientRequest.get(cliReleaseIndexPageUrl(page)).pipe(
-          HttpClientRequest.setHeader("Accept", "application/vnd.github+json"),
-        ),
-      )
-      .pipe(
-        Effect.flatMap(HttpClientResponse.filterStatusOk),
-        Effect.flatMap((response) => response.text),
-        Effect.mapError(() => new CliUpdateError({ reason: "Could not list Par3 releases." })),
-        Effect.timeoutOrElse({
-          duration: RELEASE_INDEX_TIMEOUT,
-          orElse: () =>
-            Effect.fail(new CliUpdateError({ reason: "Timed out listing Par3 releases." })),
-        }),
-      );
+    const request = HttpClientRequest.get(cliReleaseIndexPageUrl(page)).pipe(
+      HttpClientRequest.setHeader("Accept", "application/vnd.github+json"),
+    );
+    const authenticatedRequest =
+      githubToken === undefined
+        ? request
+        : HttpClientRequest.setHeader(request, "Authorization", `Bearer ${githubToken}`);
+    const body = yield* httpClient.execute(authenticatedRequest).pipe(
+      Effect.flatMap(HttpClientResponse.filterStatusOk),
+      Effect.flatMap((response) => response.text),
+      Effect.mapError(() => new CliUpdateError({ reason: "Could not list Par3 releases." })),
+      Effect.timeoutOrElse({
+        duration: RELEASE_INDEX_TIMEOUT,
+        orElse: () =>
+          Effect.fail(new CliUpdateError({ reason: "Timed out listing Par3 releases." })),
+      }),
+    );
     const releases = yield* decodeReleaseIndex(body).pipe(
       Effect.mapError(
         () => new CliUpdateError({ reason: "The Par3 release index had an unexpected shape." }),
@@ -174,15 +177,14 @@ export const resolveLauncherPath = Effect.gen(function* () {
   const cwd = yield* HostProcess.WorkingDirectory;
   const environment = yield* HostProcess.Environment;
   const platform = yield* HostProcess.Platform;
-  const throughAlias = (launcher: string) =>
-    Effect.gen(function* () {
-      if (path.basename(launcher) !== LAUNCHER_ALIAS) return launcher;
-      const target = yield* fs.readLink(launcher).pipe(Effect.option);
-      const primary = path.join(path.dirname(launcher), LAUNCHER_NAME);
-      return Option.isSome(target) && path.resolve(path.dirname(launcher), target.value) === primary
-        ? primary
-        : launcher;
-    });
+  const throughAlias = Effect.fn("update.throughAlias")(function* (launcher: string) {
+    if (path.basename(launcher) !== LAUNCHER_ALIAS) return launcher;
+    const target = yield* fs.readLink(launcher).pipe(Effect.option);
+    const primary = path.join(path.dirname(launcher), LAUNCHER_NAME);
+    return Option.isSome(target) && path.resolve(path.dirname(launcher), target.value) === primary
+      ? primary
+      : launcher;
+  });
   if (invokedAs.includes("/") || invokedAs.includes("\\")) {
     return yield* throughAlias(path.resolve(cwd, invokedAs));
   }
@@ -520,18 +522,16 @@ const runUpdate = Effect.fn("cli.update.run")(function* (input: {
     targetEntryPath: runtime.entryPath,
   });
 
-  // The service switch runs in this process against the target version: the downloaded runtime
-  // has already proven it runs (the `--version` check above), and doing it here rather than
-  // through the target's own CLI means a downgrade to a version without today's commands still
-  // works.
-  let serviceUpdated = false;
+  // Use today's service manager for the target version. Inside the service it hands off to
+  // the target CLI, so stopping this process cannot interrupt the switch.
+  let servicePlan: BootService.BootServicePlan | undefined;
   if (serviceInstalled && !serviceCurrent) {
     yield* Console.log(
       restartService
         ? "Restarting the background service..."
         : "Updating the background service...",
     );
-    yield* BootService.BootService.pipe(
+    servicePlan = yield* BootService.BootService.pipe(
       Effect.flatMap((target) =>
         target.install({ allowDowngrade: input.allowDowngrade, start: restartService }),
       ),
@@ -549,7 +549,6 @@ const runUpdate = Effect.fn("cli.update.run")(function* (input: {
           }),
       ),
     );
-    serviceUpdated = restartService;
   }
 
   progress.success(`Installed Par3 ${targetVersion}`);
@@ -558,7 +557,11 @@ const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   } else {
     yield* Console.log(`  Run ${runtime.entryPath}\n`);
   }
-  if (serviceUpdated) {
+  if (servicePlan?.handedOff === true) {
+    yield* Console.log(
+      `  Background service switching to ${targetVersion} from a separate systemd unit, since this session runs inside it and disconnects when it restarts. Result: ${servicePlan.logPath}`,
+    );
+  } else if (servicePlan !== undefined && restartService) {
     yield* Console.log(`  Background service restarted on ${targetVersion}`);
   } else if (serviceInstalled && serviceCurrent) {
     yield* Console.log(`  Background service already on ${targetVersion}`);

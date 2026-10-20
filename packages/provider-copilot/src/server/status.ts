@@ -109,61 +109,58 @@ export function applyAdvertisedCopilotModels<
     : { ...snapshot, models: copilotModelsFromSettings(customModels, advertisedModels) };
 }
 
-export function buildInitialCopilotProviderSnapshot(
-  copilotSettings: CopilotSettings,
-): Effect.Effect<ServerProviderDraft> {
-  return Effect.gen(function* () {
-    const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
-    const models = copilotModelsFromSettings(copilotSettings.customModels);
+export const buildInitialCopilotProviderSnapshot = Effect.fn(
+  "CopilotProviderStatus.buildInitialCopilotProviderSnapshot",
+)(function* (copilotSettings: CopilotSettings): Effect.fn.Return<ServerProviderDraft> {
+  const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+  const models = copilotModelsFromSettings(copilotSettings.customModels);
 
-    if (!copilotSettings.enabled) {
-      return buildServerProvider({
-        presentation: COPILOT_PRESENTATION,
-        enabled: false,
-        checkedAt,
-        models,
-        probe: {
-          installed: false,
-          version: null,
-          status: "warning",
-          auth: { status: "unknown" },
-          message: "GitHub Copilot is disabled in T3 Code settings.",
-        },
-      });
-    }
-
+  if (!copilotSettings.enabled) {
     return buildServerProvider({
       presentation: COPILOT_PRESENTATION,
-      enabled: true,
+      enabled: false,
       checkedAt,
       models,
       probe: {
-        installed: true,
+        installed: false,
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Checking GitHub Copilot CLI availability...",
+        message: "GitHub Copilot is disabled in T3 Code settings.",
       },
     });
-  });
-}
+  }
 
-const runCopilotCliCommand = (
+  return buildServerProvider({
+    presentation: COPILOT_PRESENTATION,
+    enabled: true,
+    checkedAt,
+    models,
+    probe: {
+      installed: true,
+      version: null,
+      status: "warning",
+      auth: { status: "unknown" },
+      message: "Checking GitHub Copilot CLI availability...",
+    },
+  });
+});
+
+const runCopilotCliCommand = Effect.fn("CopilotProviderStatus.runCopilotCliCommand")(function* (
   copilotSettings: CopilotSettings,
   args: ReadonlyArray<string>,
   environment: NodeJS.ProcessEnv,
-) =>
-  Effect.gen(function* () {
-    const command = copilotSettings.binaryPath || "copilot";
-    const spawnCommand = yield* resolveSpawnCommand(command, args, { env: environment });
-    return yield* spawnAndCollect(
-      command,
-      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        env: environment,
-        shell: spawnCommand.shell,
-      }),
-    );
-  });
+) {
+  const command = copilotSettings.binaryPath || "copilot";
+  const spawnCommand = yield* resolveSpawnCommand(command, args, { env: environment });
+  return yield* spawnAndCollect(
+    command,
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      env: environment,
+      shell: spawnCommand.shell,
+    }),
+  );
+});
 
 export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus")(function* (
   copilotSettings: CopilotSettings,

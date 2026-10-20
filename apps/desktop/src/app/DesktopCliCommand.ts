@@ -89,15 +89,17 @@ export const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => false),
     );
 
-  const isOurLink = (link: string) =>
-    Effect.gen(function* () {
+  const isOurLink = Effect.fn("DesktopCliCommand.isOurLink")(
+    function* (link: string) {
       yield* fs.readLink(link);
       // The launcher is a few KB; never read a large binary another `par3` links to.
       const info = yield* fs.stat(link);
       if (info.type !== "File" || Number(info.size) > 16_384) return false;
       const content = yield* fs.readFileString(link);
       return content.includes(DesktopCliShim.MARKER);
-    }).pipe(Effect.orElseSucceed(() => false));
+    },
+    Effect.orElseSucceed(() => false),
+  );
 
   const powershell = (env: Record<string, string>) =>
     Effect.scoped(
@@ -163,19 +165,18 @@ export const make = Effect.gen(function* () {
    * dangle once its launcher is gone, so a link to this home's old launcher
    * counts too.
    */
-  const removeOurLinks = (name: string) =>
-    Effect.gen(function* () {
-      for (const directory of unixCandidates(environment.homeDirectory, environment.platform)) {
-        const link = path.join(directory, name);
-        const target = yield* fs.readLink(link).pipe(Effect.option);
-        if (Option.isNone(target)) continue;
-        const ours =
-          (yield* isOurLink(link)) || path.resolve(directory, target.value) === legacyLauncher;
-        if (ours) {
-          yield* fs.remove(link).pipe(Effect.mapError(() => fail(`Could not remove ${link}.`)));
-        }
+  const removeOurLinks = Effect.fn("DesktopCliCommand.removeOurLinks")(function* (name: string) {
+    for (const directory of unixCandidates(environment.homeDirectory, environment.platform)) {
+      const link = path.join(directory, name);
+      const target = yield* fs.readLink(link).pipe(Effect.option);
+      if (Option.isNone(target)) continue;
+      const ours =
+        (yield* isOurLink(link)) || path.resolve(directory, target.value) === legacyLauncher;
+      if (ours) {
+        yield* fs.remove(link).pipe(Effect.mapError(() => fail(`Could not remove ${link}.`)));
       }
-    });
+    }
+  });
 
   const state: DesktopCliCommand["Service"]["state"] = Effect.gen(function* () {
     if (!environment.isPackaged) {
