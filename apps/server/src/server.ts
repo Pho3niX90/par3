@@ -14,16 +14,12 @@ import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentHttpApi, type RepositoryIdentity } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import type * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import type * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
-import type * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import type { ChildProcessSpawner } from "effect/process";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
@@ -1092,17 +1088,4 @@ const layerMakeServer = Layer.unwrap(
   }),
 ).pipe(Layer.provide(ProcessRunner.layer));
 
-// Spelled out because inferring this from the full layer graph sits at TypeScript's
-// instantiation limit: from the CLI's side it degrades to `any` and hides missing services.
-type ServerRuntimeServices =
-  | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
-  | FileSystem.FileSystem
-  | Path.Path
-  | ServerConfig.ServerConfig;
-
-export const runServer: Effect.Effect<
-  never,
-  Layer.Error<typeof layerMakeServer>,
-  ServerRuntimeServices
-> = Layer.launch(layerMakeServer);
+export const runServer = Layer.launch(layerMakeServer);

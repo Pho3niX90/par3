@@ -102,7 +102,7 @@ import {
   HttpServerRespondable,
   HttpServerResponse,
 } from "effect/http";
-import { RpcSerialization, RpcServer } from "effect/rpc";
+import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from "effect/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
@@ -194,6 +194,11 @@ import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
+import type { ChildProcessSpawner } from "effect/process";
+import type * as AntigravityInstallation from "./provider/AntigravityInstallation.ts";
+import type * as CodexInstallation from "./provider/CodexInstallation.ts";
+import type * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
+import type * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -1184,7 +1189,103 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
   },
 );
 
-export const layerWsRpc = (
+// Spelled out because inferring it from the handler record exceeds TypeScript's
+// instantiation depth wherever the server composes this layer, which silently
+// types the server's requirements as `any`. Typecheck flags a missing service here.
+type WsRpcServices =
+  | AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator
+  | AcpRegistrySupport.AcpRegistryCatalog
+  | AgentSessionImporter.AgentSessionImporter
+  | AgentSessionScanner.AgentSessionScanner
+  | AnalyticsService.AnalyticsService
+  | AntigravityInstallation.AntigravityInstallation
+  | BackgroundPolicy.BackgroundPolicy
+  | CheckpointDiffQuery.CheckpointDiffQuery
+  | ChildProcessSpawner.ChildProcessSpawner
+  | CodexInstallation.CodexInstallation
+  | CommandOutputHub.CommandOutputHub
+  | Crypto.Crypto
+  | DatabaseStorage.DatabaseStorage
+  | DeviceService.DeviceService
+  | DirectEndpoints.DirectEndpoints
+  | EnvironmentAuth.EnvironmentAuth
+  | EnvironmentTheme.EnvironmentThemeService
+  | ExternalLauncher.ExternalLauncher
+  | FileSystem.FileSystem
+  | GitWorkflowService.GitWorkflowService
+  | HostResources.HostResources
+  | JiraIssues.JiraIssues
+  | Keybindings.Keybindings
+  | ManagedProjectFolders.ManagedProjectFolders
+  | McpAppRequests.McpAppRequests
+  | McpGateway.McpGateway
+  | ModelManifest.ModelManifest
+  | OrchestrationEventStore.OrchestrationEventStore
+  | Orchestrator.OrchestratorV2
+  | OtlpEndpointCheck.OtlpEndpointCheck
+  | PairingGrantStore.PairingGrantStore
+  | Path.Path
+  | PortScanner.PortDiscovery
+  | PreviewManager.PreviewManager
+  | ProcessDiagnostics.ProcessDiagnostics
+  | ProcessResourceMonitor.ProcessResourceMonitor
+  | ProjectCloneTracker.ProjectCloneTracker
+  | ProjectEnrichmentService.ProjectEnrichmentService
+  | ProjectFaviconResolver.ProjectFaviconResolver
+  | ProjectService.ProjectService
+  | ProjectSetupScriptRunner.ProjectSetupScriptRunner
+  | ProjectStore.ProjectStoreV2
+  | ProviderAuthService.ProviderAuthService
+  | ProviderInstanceRegistry.ProviderInstanceRegistry
+  | ProviderLatestVersions.ProviderLatestVersions
+  | ProviderMaintenanceRunner.ProviderMaintenanceRunner
+  | ProviderRegistry.ProviderRegistry
+  | ProviderSessionManager.ProviderSessionManagerV2
+  | PullRequestReviewGuideService.PullRequestReviewGuideService
+  | PullRequestService.PullRequestService
+  | PullRequestSyncReactor.PullRequestSyncReactor
+  | RelayClient.RelayClient
+  | RemoteOpenTargets.RemoteOpenTargets
+  | RepositoryIdentityResolver.RepositoryIdentityResolver
+  | ResourceTelemetry.ResourceTelemetry
+  | ReviewService.ReviewService
+  | ScheduledTasks.ScheduledTaskService
+  | SecretRequests.SecretRequests
+  | ServerConfig.ServerConfig
+  | ServerEnvironment.ServerEnvironment
+  | ServerLifecycleEvents.ServerLifecycleEvents
+  | ServerRuntimeStartup.ServerRuntimeStartup
+  | ServerSecretStore.ServerSecretStore
+  | ServerSelfUpdate.ServerSelfUpdate
+  | ServerSettings.ServerSettingsService
+  | SessionStore.SessionStore
+  | SourceControlDiscovery.SourceControlDiscovery
+  | SourceControlRepositoryService.SourceControlRepositoryService
+  | SpecService.SpecService
+  | SqlClient.SqlClient
+  | StorageCleanup.StorageCleanup
+  | TerminalManager.TerminalManager
+  | ThreadLaunchService.ThreadLaunchService
+  | ThreadManagementService.ThreadManagementService
+  | ThreadRepositories.ThreadRepositories
+  | ThreadSearch.ThreadSearch
+  | TraceDiagnostics.TraceDiagnostics
+  | UsageLimitSources.UsageLimitSources
+  | UsageService.UsageService
+  | VcsProvisioningService.VcsProvisioningService
+  | VcsStatusBroadcaster.VcsStatusBroadcaster
+  | WorkspaceEntries.WorkspaceEntries
+  | WorkspaceFileSystem.WorkspaceFileSystem
+  | WorkspacePaths.WorkspacePaths
+  | WorktreeSetupTracker.WorktreeSetupTracker;
+
+type WsRpcLayer = Layer.Layer<
+  Rpc.ToHandler<RpcGroup.Rpcs<typeof ServerWsRpcGroup>>,
+  never,
+  WsRpcServices
+>;
+
+const makeLayerWsRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
@@ -3158,6 +3259,21 @@ export const layerWsRpc = (
       return handlers;
     }),
   );
+
+type IsTrue<T extends true> = T;
+// Inferred inside this module, where it fits the depth limit: the handlers may
+// need only the services listed in WsRpcServices and must not fail to build.
+type _WsRpcServicesCovered = IsTrue<
+  [Layer.Services<ReturnType<typeof makeLayerWsRpc>>] extends [WsRpcServices]
+    ? [Layer.Error<ReturnType<typeof makeLayerWsRpc>>] extends [never]
+      ? true
+      : false
+    : false
+>;
+
+export const layerWsRpc = makeLayerWsRpc as unknown as (
+  ...args: Parameters<typeof makeLayerWsRpc>
+) => WsRpcLayer;
 
 // RpcServer's default sends a socket-level Defect frame instead, and the client
 // ends every pending request on the socket with it.
