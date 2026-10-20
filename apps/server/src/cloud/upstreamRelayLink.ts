@@ -34,7 +34,7 @@ export const dropUpstreamRelayLink = Effect.gen(function* () {
     discard: true,
   });
   yield* Effect.logInfo("Dropped a Parity Connect link left over from T3 Connect", {
-    relayUrl: storedRelayUrl,
+    relayHost: new URL(storedRelayUrl.trim()).hostname,
   });
   return true;
 }).pipe(
