@@ -112,6 +112,9 @@ it("shows a short script as highlighted code with nothing to open", async () => 
   // A cold grammar load can outlast waitFor's default timeout on CI runners.
   await getSyntaxHighlighterPromise("javascript");
   await render(SHORT_SCRIPT);
+  await act(async () => {
+    await getSyntaxHighlighterPromise("javascript");
+  });
   expect(host.querySelector('[data-language="javascript"]')?.textContent).toContain("SCRIPTONLY");
   await vi.waitFor(() => expect(host.querySelector(".chat-markdown-shiki")).not.toBeNull());
   expect(foldToggle()).toBeUndefined();
