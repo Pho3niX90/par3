@@ -409,11 +409,26 @@ export const make = Effect.gen(function* () {
             });
           }
 
+          const truncated = stat.size > PROJECT_READ_FILE_MAX_BYTES;
+          const contents = yield* Effect.try({
+            // A capped preview may end inside a valid UTF-8 character. Keep the BOM for copies.
+            try: () =>
+              new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(fileBytes, {
+                stream: truncated,
+              }),
+            catch: () =>
+              new WorkspaceBinaryFileError({
+                workspaceRoot: input.cwd,
+                relativePath: input.relativePath,
+                resolvedPath: realTargetPath,
+              }),
+          });
+
           return {
             relativePath: target.relativePath,
-            contents: new TextDecoder("utf-8").decode(fileBytes),
+            contents,
             byteLength: stat.size,
-            truncated: stat.size > PROJECT_READ_FILE_MAX_BYTES,
+            truncated,
           };
         }),
       (handle) =>

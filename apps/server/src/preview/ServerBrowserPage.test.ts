@@ -5,7 +5,16 @@ import {
   type CDPSession,
   type Page,
 } from "playwright-core";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 
 import { presentAsChrome } from "./ServerBrowserContexts.ts";
 import * as ServerBrowserPage from "./ServerBrowserPage.ts";
@@ -408,6 +417,7 @@ it("captures the native display viewport after page script reassigns the globals
       zoom: 1,
       offset: { x: 0, y: 0 },
     });
+    const staleFrame = await cdp.send("Page.captureScreenshot", { format: "png" });
     // Window bounds are ignored by headless Chromium on some hosts; a metrics override resizes
     // the page everywhere, and Playwright's viewportSize() stays stale as it would on desktop.
     await cdp.send("Emulation.setDeviceMetricsOverride", {
@@ -421,7 +431,20 @@ it("captures the native display viewport after page script reassigns the globals
       width: 390,
       height: 844,
     });
-    expect(await snapshotSize()).toEqual({ width: 585, height: 1266 });
+    const send = cdp.send.bind(cdp);
+    let captureCount = 0;
+    const captureSpy = vi.spyOn(cdp, "send").mockImplementation((...args) => {
+      if (args[0] === "Page.captureScreenshot" && captureCount++ === 0) {
+        return Promise.resolve(staleFrame);
+      }
+      return send(...args);
+    });
+    try {
+      expect(await snapshotSize()).toEqual({ width: 585, height: 1266 });
+      expect(captureCount).toBe(2);
+    } finally {
+      captureSpy.mockRestore();
+    }
   } finally {
     await browser.close();
   }

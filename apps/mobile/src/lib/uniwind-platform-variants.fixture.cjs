@@ -61,6 +61,7 @@ async function main() {
   });
   const { loadBundler, uniwindRequire, uniwindRoot } =
     createUniwindCompilerLoader(uniwindPackageJson);
+  const uniwindVersion = JSON.parse(fs.readFileSync(uniwindPackageJson, "utf8")).version;
   const { ProcessorBuilder } = loadBundler("bundler/css-processor/processor.js");
   const { addMetaToStylesTemplate } = loadBundler(
     "bundler/css-processor/addMetaToStylesTemplate.js",
@@ -103,14 +104,17 @@ async function main() {
     // conditions they were built from live on the processor's style metadata.
     for (const [className, entries] of Object.entries(compiled)) {
       styles[className] = entries.map(({ index }) => {
-        const {
-          platform: guard,
-          conditions,
-          active,
-          focus,
-          disabled,
-          dataAttributes,
-        } = processor.stylesheets[className][index].meta;
+        const meta = processor.stylesheets?.[className]?.[index]?.meta;
+        if (
+          !meta ||
+          !Array.isArray(meta.conditions) ||
+          !meta.conditions.every((condition) => typeof condition === "string")
+        ) {
+          throw new Error(
+            `Unexpected Uniwind ${uniwindVersion} metadata for ${className}[${index}]`,
+          );
+        }
+        const { platform: guard, conditions, active, focus, disabled, dataAttributes } = meta;
         return {
           platform: guard,
           responsive: conditions.some((condition) => condition.includes("rt.screen.width")),

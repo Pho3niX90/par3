@@ -15,14 +15,18 @@ export type AddProjectTarget = Pick<EnvironmentOption, "environmentId" | "label"
  */
 export function useAddProjectTargets(
   project: EnvironmentProject | null,
-  projectEnvironments: readonly Pick<EnvironmentOption, "environmentId">[] | undefined,
+  projectEnvironments:
+    | readonly Pick<EnvironmentOption, "environmentId" | "projectId">[]
+    | undefined,
 ): readonly AddProjectTarget[] {
   const { environments } = useEnvironments();
   const canClone = useEnvironmentsWithScope(environments, AuthSourceControlWriteScope);
   if (!project?.repositoryIdentity?.locator.remoteUrl) return [];
   const hasProject = new Set([
     project.environmentId,
-    ...(projectEnvironments ?? []).map((env) => env.environmentId),
+    ...(projectEnvironments ?? [])
+      .filter((env) => env.projectId !== null)
+      .map((env) => env.environmentId),
   ]);
   return environments
     .filter(

@@ -363,6 +363,53 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
       }),
     );
 
+    it.effect("rejects invalid UTF-8 even when it contains no NUL bytes", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* fileSystem.writeFile(path.join(cwd, "secret.env"), Uint8Array.from([0x61, 0xff]));
+
+        const error = yield* workspaceFileSystem
+          .readFile({ cwd, relativePath: "secret.env" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceBinaryFileError);
+        expect("contents" in error).toBe(false);
+      }),
+    );
+
+    it.effect("preserves UTF-8 text and its byte-order mark for file copies", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        const contents = "\uFEFFNAME=café\n";
+        yield* writeTextFile(cwd, ".env", contents);
+
+        const result = yield* workspaceFileSystem.readFile({ cwd, relativePath: ".env" });
+
+        expect(result.contents).toBe(contents);
+        expect(result.byteLength).toBe(new TextEncoder().encode(contents).length);
+        expect(result.truncated).toBe(false);
+      }),
+    );
+
+    it.effect("does not treat a UTF-8 character split by the preview cap as binary", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        const prefix = "a".repeat(1024 * 1024 - 1);
+        yield* writeTextFile(cwd, "large.txt", `${prefix}€`);
+
+        const result = yield* workspaceFileSystem.readFile({ cwd, relativePath: "large.txt" });
+
+        expect(result.contents).toHaveLength(prefix.length);
+        expect(result.contents.slice(-4)).toBe("aaaa");
+        expect(result.truncated).toBe(true);
+      }),
+    );
+
     it.effect("preserves the real cause and path for I/O failures", () =>
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
