@@ -99,6 +99,9 @@ export class ProviderTurnStartServiceV2 extends Context.Service<
   ProviderTurnStartServiceV2Shape
 >()("t3/orchestration-v2/ProviderTurnStartService/ProviderTurnStartServiceV2") {}
 
+const withTurnPreamble = (preamble: string, userText: string) =>
+  preamble === "" ? userText : `${preamble}\n\nUser message:\n${userText}`;
+
 export const layer: Layer.Layer<
   ProviderTurnStartServiceV2,
   never,
@@ -1243,13 +1246,12 @@ export const layer: Layer.Layer<
             ...(noteContinuation ? promptedInput : turnInput),
             message: {
               ...turnInput.message,
-              text: [
-                specRun ? specInstructions(specRun.document, specRun.role) : "",
-                context,
-                `User message:\n${userText}`,
-              ]
-                .filter(Boolean)
-                .join("\n\n"),
+              text: withTurnPreamble(
+                [specRun ? specInstructions(specRun.document, specRun.role) : "", context]
+                  .filter((part) => part !== "")
+                  .join("\n\n"),
+                userText,
+              ),
             },
           }).pipe(
             // A pending marker would make the next turn abandon this native

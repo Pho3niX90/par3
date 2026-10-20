@@ -30,6 +30,7 @@ const [
   Auth,
   Config,
   Settings,
+  Specs,
 ] = await Promise.all([
   app("orchestration-v2/ProviderTurnStartService"),
   app("orchestration-v2/ProjectionStore"),
@@ -44,6 +45,7 @@ const [
   app("provider/ProviderAuthService"),
   app("config"),
   app("serverSettings"),
+  app("specs/SpecService"),
 ]);
 let current;
 let fullReads = 0;
@@ -94,6 +96,7 @@ const dependencies = Layer.mergeAll(
     getRuntimeRecoveryProjection: () => Effect.sync(() => current),
   }),
   Layer.mock(Sessions.ProviderSessionManagerV2)({ open: () => Effect.succeed(session) }),
+  Specs.layerDisabled,
   Layer.mock(Policy.RuntimePolicyV2)({
     resolve: () =>
       Effect.succeed({ cwd: "/synthetic", interactionMode: "default", runtimeMode: "full-access" }),
@@ -136,7 +139,13 @@ function fixture(index) {
   );
   refs.push(new WeakRef(history));
   return {
-    thread: { id: "thread", projectId: "project", branch: null, worktreePath: null },
+    thread: {
+      id: "thread",
+      projectId: "project",
+      branch: null,
+      worktreePath: null,
+      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: "thread" },
+    },
     runs: [
       {
         id: runId,
