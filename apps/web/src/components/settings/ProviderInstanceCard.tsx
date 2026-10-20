@@ -62,6 +62,7 @@ import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { AcpSessionManagementSection } from "./AcpSessionManagementSection";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
+import { ProviderSkillsSection } from "./ProviderSkillsSection";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
 import {
   getProviderVersionAdvisoryPresentation,
@@ -1249,6 +1250,10 @@ export function ProviderInstanceCard({
           projects={acpProjects}
           readOnly={readOnly}
         />
+      ) : null}
+
+      {enabled && liveProvider !== undefined ? (
+        <ProviderSkillsSection instanceId={instanceId} provider={liveProvider} />
       ) : null}
 
       {driverOption !== undefined ? (
