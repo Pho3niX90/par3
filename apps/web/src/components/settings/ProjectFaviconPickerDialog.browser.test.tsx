@@ -58,6 +58,7 @@ import {
 
 let root: Root;
 let container: HTMLDivElement;
+const releaseAssets: Array<() => void> = [];
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -75,6 +76,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  for (const release of releaseAssets.splice(0)) release();
   container.remove();
   Reflect.deleteProperty(navigator, "platform");
   vi.unstubAllGlobals();
@@ -146,7 +148,12 @@ const imageUrl = `data:image/svg+xml,${encodeURIComponent(
 
 function addFiles(paths: string[]) {
   state.entries = paths.map((path) => ({ path, kind: "file" }));
-  for (const path of paths) state.assets.set(path, Atom.make<AssetResult>(AsyncResult.initial()));
+  for (const path of paths) {
+    const asset = Atom.make<AssetResult>(AsyncResult.initial());
+    state.assets.set(path, asset);
+    // Publishing a response must survive a render before the thumbnail subscribes.
+    releaseAssets.push(appAtomRegistry.mount(asset));
+  }
 }
 
 function fileRow(path: string) {

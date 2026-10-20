@@ -19,6 +19,7 @@ const noop = () => undefined;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("BASE_UI_ANIMATIONS_DISABLED", true);
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -27,10 +28,6 @@ beforeEach(() => {
       unobserve() {}
     },
   );
-  Object.defineProperty(Element.prototype, "getAnimations", {
-    configurable: true,
-    value: () => [],
-  });
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   addFiles.mockClear();
   container = document.createElement("div");
@@ -203,12 +200,8 @@ describe("right panel new-tab shortcut", () => {
     expect(document.querySelector('[role="menu"]')).not.toBeNull();
     await press("Escape");
     expect(document.querySelector('[role="menu"]:not([data-closed])')).toBeNull();
-    // The menu hands focus back to its trigger once its close finishes, a few frames later.
-    // Timers are fake here, so advance them instead of polling in real time.
+    await act(() => vi.runOnlyPendingTimersAsync());
     const trigger = container.querySelector('[aria-label="Add panel surface"]');
-    for (let frame = 0; frame < 10 && document.activeElement !== trigger; frame++) {
-      await act(() => vi.advanceTimersToNextFrame());
-    }
     expect(document.activeElement).toBe(trigger);
     input.remove();
   });
