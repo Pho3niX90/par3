@@ -60,15 +60,12 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
     reportFailure: true,
   });
 
+  const updatedAt = spec?.updatedAt;
   const formattedDate = useMemo(() => {
-    if (!spec) return "";
-    try {
-      const d = new Date(spec.updatedAt);
-      return isNaN(d.getTime()) ? spec.updatedAt : d.toLocaleDateString();
-    } catch {
-      return spec.updatedAt;
-    }
-  }, [spec?.updatedAt]);
+    if (!updatedAt) return "";
+    const d = new Date(updatedAt);
+    return isNaN(d.getTime()) ? updatedAt : d.toLocaleDateString();
+  }, [updatedAt]);
 
   const handleReviewAction = async (action: "approve" | "reject" | "reopen" | "request-review") => {
     if (!spec || !canMutate) return;
@@ -77,9 +74,8 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       await runMutation(spec.slug, spec.revision, { action });
     } catch (err: any) {
       Alert.alert("Action failed", err?.message ?? "Unable to complete review action");
-    } finally {
-      setIsActing(false);
     }
+    setIsActing(false);
   };
 
   const submitRequestChanges = async () => {
@@ -92,9 +88,8 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       setRequestChangesVisible(false);
     } catch (err: any) {
       Alert.alert("Failed to request changes", err?.message ?? "Unable to request changes");
-    } finally {
-      setIsActing(false);
     }
+    setIsActing(false);
   };
 
   const handleStartImplementation = async () => {
@@ -109,13 +104,13 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       return;
     }
 
+    const modelSelection = currentProject?.defaultModelSelection ?? {
+      instanceId: ProviderInstanceId.make("codex"),
+      model: "gpt-5.4",
+    };
     setIsActing(true);
     try {
       const newThreadId = uuidv4() as ThreadId;
-      const modelSelection = currentProject?.defaultModelSelection ?? {
-        instanceId: ProviderInstanceId.make("codex"),
-        model: "gpt-5.4",
-      };
 
       // 1. Create normal thread WITHOUT start
       const createResult = await createThread({
@@ -133,7 +128,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       });
 
       if (createResult._tag === "Failure") {
-        throw new Error("Failed to create thread for implementation");
+        Alert.alert("Failed to start implementation", "Failed to create thread for implementation");
+        setIsActing(false);
+        return;
       }
 
       // 2. Bind spec before first send
@@ -153,9 +150,8 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
         "Failed to start implementation",
         err?.message ?? "Could not create bound thread",
       );
-    } finally {
-      setIsActing(false);
     }
+    setIsActing(false);
   };
 
   const handleConfirmEvidence = async (evidenceId: string) => {
@@ -168,9 +164,8 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       });
     } catch (err: any) {
       Alert.alert("Failed to confirm evidence", err?.message ?? "Could not confirm evidence");
-    } finally {
-      setIsActing(false);
     }
+    setIsActing(false);
   };
 
   const handleUnbindThread = async (threadId: ThreadId) => {
@@ -187,9 +182,8 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       );
     } catch (err: any) {
       Alert.alert("Failed to unbind thread", err?.message ?? "Could not unbind thread");
-    } finally {
-      setIsActing(false);
     }
+    setIsActing(false);
   };
 
   if (!spec && isPending) {

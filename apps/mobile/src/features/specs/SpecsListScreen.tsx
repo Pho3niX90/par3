@@ -186,12 +186,8 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
 function SpecSummaryCard(props: { readonly spec: SpecSummary; readonly onPress: () => void }) {
   const { spec, onPress } = props;
   const formattedDate = React.useMemo(() => {
-    try {
-      const d = new Date(spec.updatedAt);
-      return isNaN(d.getTime()) ? spec.updatedAt : d.toLocaleDateString();
-    } catch {
-      return spec.updatedAt;
-    }
+    const d = new Date(spec.updatedAt);
+    return isNaN(d.getTime()) ? spec.updatedAt : d.toLocaleDateString();
   }, [spec.updatedAt]);
 
   return (

@@ -23,19 +23,14 @@ import { Atom } from "effect/reactivity";
 
 import { randomUUID } from "../lib/utils";
 import { useEnvironmentQuery } from "../state/query";
-import {
-  serverEnvironment,
-  specsLive,
-  specsMutate,
-  specsQuery,
-} from "../state/server";
+import { serverEnvironment, specsLive, specsMutate, specsQuery } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
 
 const FALSE_ATOM = Atom.make(false).pipe(Atom.withLabel("web-specs-false"));
 
 export function useEnvironmentSupportsSpecMode(environmentId: EnvironmentId | null): boolean {
   const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
-  return config?.environment.capabilities.specMode === true;
+  return config?.environment?.capabilities.specMode === true;
 }
 
 function useSpecMutatePermission(

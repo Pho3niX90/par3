@@ -77,29 +77,31 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
       return;
     }
 
+    const specToUpdate = isEditing ? existingSpec : null;
+    const trimmedSupersedes = supersedes.trim();
+    const createPayload = {
+      action: "create",
+      title: trimmedTitle,
+      content,
+      ...(trimmedSupersedes ? { supersedes: trimmedSupersedes } : {}),
+    };
     setIsSaving(true);
     try {
-      if (isEditing && existingSpec) {
-        await runMutation(existingSpec.slug, existingSpec.revision, {
+      if (specToUpdate) {
+        await runMutation(specToUpdate.slug, specToUpdate.revision, {
           action: "update",
           title: trimmedTitle,
           content,
         });
         navigation.goBack();
       } else {
-        await runMutation(trimmedSlug, 0, {
-          action: "create",
-          title: trimmedTitle,
-          content,
-          ...(supersedes.trim() ? { supersedes: supersedes.trim() } : {}),
-        });
+        await runMutation(trimmedSlug, 0, createPayload);
         navigation.goBack();
       }
     } catch (err: any) {
       Alert.alert("Failed to save spec", err?.message ?? "An error occurred while saving.");
-    } finally {
-      setIsSaving(false);
     }
+    setIsSaving(false);
   };
 
   return (
