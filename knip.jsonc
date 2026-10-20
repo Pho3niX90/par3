@@ -18,8 +18,14 @@
     },
     "scripts": {
       // Knip loads its preprocessor through a CLI option; native verification and
-      // worktree setup (from t3.json) run directly.
-      "entry": ["knip-schemas.ts", "mobile-native-client.ts", "setup-worktree.ts"],
+      // worktree setup (from t3.json) run directly. The Harbor adapter uploads the
+      // sidekick eval driver into its container.
+      "entry": [
+        "knip-schemas.ts",
+        "mobile-native-client.ts",
+        "setup-worktree.ts",
+        "evals/sidekick/harbor-agent/driver.ts",
+      ],
       // The `par3` npm package's files: copied into the package, never imported.
       "ignore": ["npm-launcher/**"],
     },
