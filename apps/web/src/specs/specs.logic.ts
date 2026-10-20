@@ -141,7 +141,7 @@ export function specModeCreateDisabledReason(input: {
   return null;
 }
 
-export const SPEC_PAGE_SIZE = 25;
+const SPEC_PAGE_SIZE = 25;
 
 export function specPageLimit(pages: number): number {
   return Math.min(200, Math.max(1, pages) * SPEC_PAGE_SIZE);

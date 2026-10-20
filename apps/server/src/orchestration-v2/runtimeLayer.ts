@@ -60,7 +60,7 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as SpecService from "../specs/SpecService.ts";
 
-export const layerSpecService = SpecService.layer.pipe(
+const layerSpecService = SpecService.layer.pipe(
   Layer.provide(Layer.merge(ProjectStore.layer, ProjectionStore.layer)),
 );
 

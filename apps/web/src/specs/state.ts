@@ -3,10 +3,8 @@ import {
   CommandId,
   NonNegativeInt,
   SpecSlug,
-  specRoleSupported,
   type EnvironmentId,
   type ProjectId,
-  type ProviderDriverKind,
   type SpecDocument,
   type SpecMutationInput,
   type SpecQueryInput,
@@ -26,7 +24,6 @@ import { Atom } from "effect/reactivity";
 import { randomUUID } from "../lib/utils";
 import { useEnvironmentQuery } from "../state/query";
 import {
-  environmentServerConfigsAtom,
   serverEnvironment,
   specsLive,
   specsMutate,
@@ -34,30 +31,14 @@ import {
 } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
 
-export { specsLive, specsMutate, specsQuery, specRoleSupported };
-
 const FALSE_ATOM = Atom.make(false).pipe(Atom.withLabel("web-specs-false"));
-
-const anyEnvironmentSupportsSpecModeAtom = Atom.make((get): boolean => {
-  const configs = get(environmentServerConfigsAtom);
-  for (const config of configs.values()) {
-    if (config.environment.capabilities.specMode === true) {
-      return true;
-    }
-  }
-  return false;
-}).pipe(Atom.withLabel("web-any-environment-supports-spec-mode"));
-
-export function useAnyEnvironmentSupportsSpecMode(): boolean {
-  return useAtomValue(anyEnvironmentSupportsSpecModeAtom);
-}
 
 export function useEnvironmentSupportsSpecMode(environmentId: EnvironmentId | null): boolean {
   const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   return config?.environment.capabilities.specMode === true;
 }
 
-export function useSpecMutatePermission(
+function useSpecMutatePermission(
   environmentId: EnvironmentId | null,
   input?: SpecMutationInput,
 ): boolean {
@@ -175,7 +156,7 @@ export type SpecMutationPayload = DistributiveOmit<SpecMutationInput, "commandId
   readonly commandId?: CommandId;
 };
 
-export function withSpecMutationCommandId(payload: SpecMutationPayload): SpecMutationInput {
+function withSpecMutationCommandId(payload: SpecMutationPayload): SpecMutationInput {
   const commandId = payload.commandId ?? CommandId.make(`spec-cmd-${randomUUID()}`);
   return {
     ...payload,
@@ -296,12 +277,6 @@ export function formatSpecRoleLabel(role: SpecRole): string {
   }
 }
 
-export const PRIMARY_BINDABLE_SPEC_ROLES: ReadonlyArray<SpecRole> = [
-  "requirements",
-  "implementation",
-  "test",
-];
-
 export const ALL_SPEC_ROLES: ReadonlyArray<SpecRole> = [
   "requirements",
   "implementation",
@@ -309,24 +284,3 @@ export const ALL_SPEC_ROLES: ReadonlyArray<SpecRole> = [
   "researcher",
   "verifier",
 ];
-
-export const ALL_SPEC_STATUSES: ReadonlyArray<SpecStatus> = [
-  "draft",
-  "review",
-  "approved",
-  "in-progress",
-  "implemented",
-  "done",
-  "blocked",
-  "rejected",
-];
-
-export function isProviderSupportedForSpecRole(
-  provider: ProviderDriverKind | string | null | undefined,
-  role: SpecRole,
-): boolean {
-  if (!provider) {
-    return false;
-  }
-  return specRoleSupported(provider, role);
-}

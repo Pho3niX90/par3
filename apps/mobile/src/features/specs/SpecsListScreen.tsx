@@ -21,14 +21,16 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
   const navigation = useNavigation();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SpecStatus | "all">("all");
-  const [refreshing, setRefreshing] = useState(false);
 
   const projects = useProjects();
   const currentProject = projects.find(
     (p) => p.environmentId === props.environmentId && p.id === props.projectId,
   );
 
-  const { specs, isPending, error } = useProjectSpecs(props.environmentId, props.projectId);
+  const { specs, isPending, error, refresh } = useProjectSpecs(
+    props.environmentId,
+    props.projectId,
+  );
   const { canMutate } = useSpecPermissions(props.environmentId);
 
   const filteredSpecs = useMemo(() => {
@@ -45,11 +47,6 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
       return true;
     });
   }, [specs, statusFilter, searchQuery]);
-
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 600);
-  }, []);
 
   return (
     <View className="flex-1 bg-sheet">
@@ -153,15 +150,10 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
           paddingTop: 12,
           gap: 10,
         }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing || isPending} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={isPending} onRefresh={refresh} />}
       >
         {error !== null && specs.length === 0 ? (
-          <EmptyState
-            title="Couldn't load specs"
-            detail={error instanceof Error ? error.message : String(error)}
-          />
+          <EmptyState title="Couldn't load specs" detail={error} />
         ) : filteredSpecs.length === 0 ? (
           <EmptyState
             title="No specs found"
