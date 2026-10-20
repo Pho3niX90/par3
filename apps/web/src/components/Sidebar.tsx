@@ -78,6 +78,7 @@ import {
   CircleDashedIcon,
   CircleDotDashedIcon,
   ClockIcon,
+  CloudOffIcon,
   FolderIcon,
   GitBranchIcon,
   ListFilterIcon,
@@ -1699,43 +1700,49 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             icon: "waiting" as const,
             className: "text-muted-foreground",
           }
-        : status === "approval"
+        : status === "offline"
           ? {
-              label: "Approval",
-              icon: "approval" as const,
-              className: "text-warning-foreground",
+              label: "Offline",
+              icon: "offline" as const,
+              className: "text-muted-foreground",
             }
-          : status === "input"
+          : status === "approval"
             ? {
-                label: "Input",
-                icon: "input" as const,
-                className: "text-indigo-600 dark:text-indigo-300",
+                label: "Approval",
+                icon: "approval" as const,
+                className: "text-warning-foreground",
               }
-            : status === "limited"
+            : status === "input"
               ? {
-                  label: "Limited",
-                  icon: "failed" as const,
-                  className: "text-warning",
+                  label: "Input",
+                  icon: "input" as const,
+                  className: "text-indigo-600 dark:text-indigo-300",
                 }
-              : status === "failed"
+              : status === "limited"
                 ? {
-                    label: "Failed",
+                    label: "Limited",
                     icon: "failed" as const,
-                    className: "text-error",
+                    className: "text-warning",
                   }
-                : isWoke
+                : status === "failed"
                   ? {
-                      label: "Woke",
-                      icon: "woke" as const,
-                      className: "text-warning",
+                      label: "Failed",
+                      icon: "failed" as const,
+                      className: "text-error",
                     }
-                  : isUnread
+                  : isWoke
                     ? {
-                        label: "Done",
-                        icon: "done" as const,
-                        className: "text-success",
+                        label: "Woke",
+                        icon: "woke" as const,
+                        className: "text-warning",
                       }
-                    : null;
+                    : isUnread
+                      ? {
+                          label: "Done",
+                          icon: "done" as const,
+                          className: "text-success",
+                        }
+                      : null;
   const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
@@ -2369,6 +2376,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "waiting" ? (
                             <CircleDotDashedIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "offline" ? (
+                            <CloudOffIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "input" ? (
                             <MessageCircleQuestionIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "approval" ? (

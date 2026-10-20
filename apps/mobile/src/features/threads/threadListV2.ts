@@ -62,6 +62,7 @@ export type ThreadListV2Status =
   | "input"
   | "working"
   | "waiting"
+  | "offline"
   | "failed"
   | "limited"
   | "ready";
@@ -152,6 +153,29 @@ export function threadHasUnseenCompletion(
 }
 
 export function resolveThreadListV2Status(
+  thread: Pick<
+    EnvironmentThreadShell,
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "pendingSubagentRequest"
+    | "runtime"
+    | "blockedOnThreadWait"
+    | "environmentUnavailable"
+  >,
+): ThreadListV2Status {
+  const status = resolveConnectedThreadListV2Status(thread);
+  // Same stale-claim rule as web's resolveSidebarThreadStatus: live states from
+  // an unreachable environment's cache read as offline; failures stay.
+  if (
+    thread.environmentUnavailable &&
+    (status === "approval" || status === "input" || status === "working" || status === "waiting")
+  ) {
+    return "offline";
+  }
+  return status;
+}
+
+function resolveConnectedThreadListV2Status(
   thread: Pick<
     EnvironmentThreadShell,
     | "hasPendingApprovals"

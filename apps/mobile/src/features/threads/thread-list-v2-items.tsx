@@ -92,6 +92,12 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-foreground-muted",
     iconTintClassName: "accent-foreground-muted",
   },
+  offline: {
+    label: "Offline",
+    icon: "wifi.slash",
+    className: "text-foreground-muted",
+    iconTintClassName: "accent-foreground-muted",
+  },
   failed: {
     label: "Failed",
     icon: "exclamationmark.circle",

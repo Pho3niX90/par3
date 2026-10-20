@@ -1002,6 +1002,34 @@ describe("resolveSidebarThreadStatus", () => {
     ).toBe(false);
   });
 
+  it("reads live states as offline while the environment is unavailable", () => {
+    const unavailable = { ...idle, environmentUnavailable: true };
+    expect(resolveSidebarThreadStatus({ ...unavailable, runtime })).toBe("offline");
+    expect(resolveSidebarThreadStatus({ ...unavailable, runtime, hasPendingApprovals: true })).toBe(
+      "offline",
+    );
+    expect(resolveSidebarThreadStatus({ ...unavailable, runtime, blockedOnThreadWait: true })).toBe(
+      "offline",
+    );
+    // A cached failure is a historical fact, and quiet threads stay quiet.
+    expect(
+      resolveSidebarThreadStatus({ ...unavailable, runtime: { ...runtime, status: "failed" } }),
+    ).toBe("failed");
+    expect(resolveSidebarThreadStatus(unavailable)).toBe("ready");
+    expect(resolveSidebarV2TopStatus({ status: "offline", isUnread: true, isWoke: false })).toBe(
+      "offline",
+    );
+    expect(
+      shouldRecedeSidebarThread({
+        status: "offline",
+        isUnread: false,
+        isWoke: false,
+        isActive: false,
+        isSelected: false,
+      }),
+    ).toBe(true);
+  });
+
   it("reports failed only while the latest run failed", () => {
     expect(
       resolveSidebarThreadStatus({
@@ -1285,6 +1313,46 @@ describe("resolveThreadStatusPill", () => {
       updatedAt: "2026-03-09T10:00:00.000Z",
     },
   };
+
+  it("reads live pills as a static offline pill while the environment is unavailable", () => {
+    const unavailable = { ...baseThread, environmentUnavailable: true };
+    expect(resolveThreadStatusPill({ thread: unavailable })).toMatchObject({
+      label: "Offline",
+      pulse: false,
+    });
+    expect(
+      resolveThreadStatusPill({ thread: { ...unavailable, hasPendingApprovals: true } }),
+    ).toMatchObject({ label: "Offline", pulse: false });
+    expect(
+      resolveThreadStatusPill({
+        thread: { ...unavailable, runtime: { ...baseThread.runtime, status: "starting" } },
+      }),
+    ).toMatchObject({ label: "Offline", pulse: false });
+    expect(
+      resolveThreadStatusPill({
+        thread: { ...unavailable, runtime: { ...baseThread.runtime, status: "completed" } },
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps a failed pill while the environment is unavailable", () => {
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...baseThread,
+          environmentUnavailable: true,
+          latestRun: { ...makeLatestRun(), status: "failed" },
+          lastVisitedAt: "2026-03-09T10:04:00.000Z",
+          runtime: {
+            ...baseThread.runtime,
+            status: "failed",
+            activeRunId: null,
+            lastError: "Provider turn failed.",
+          },
+        },
+      }),
+    ).toMatchObject({ label: "Failed" });
+  });
 
   it("shows pending approval before all other statuses", () => {
     expect(

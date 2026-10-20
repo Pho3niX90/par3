@@ -9,10 +9,15 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import { Atom, AtomRegistry } from "effect/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { PrimaryConnectionTarget } from "../connection/model.ts";
+import {
+  AVAILABLE_CONNECTION_STATE,
+  ConnectionTransientError,
+  PrimaryConnectionTarget,
+  type SupervisorConnectionState,
+} from "../connection/model.ts";
 import { v2Now, v2ShellSnapshot, v2ThreadShell } from "./orchestrationV2TestFixtures.ts";
 import { applyShellStreamEvent } from "./shellReducer.ts";
 import { isThreadWorking } from "./threadInbox.ts";
@@ -44,15 +49,67 @@ function makeHarness(environmentIds: ReadonlyArray<EnvironmentId> = [environment
       ]),
     ),
   });
+  const connectionStateAtom = Atom.family((_environmentId: EnvironmentId) =>
+    Atom.make(AsyncResult.success<SupervisorConnectionState>(AVAILABLE_CONNECTION_STATE)),
+  );
   return {
     registry: AtomRegistry.make(),
     snapshotAtom,
     catalogValueAtom,
-    threads: createEnvironmentThreadShellAtoms({ catalogValueAtom, snapshotAtom }),
+    connectionStateAtom,
+    threads: createEnvironmentThreadShellAtoms({
+      catalogValueAtom,
+      connectionStateAtom,
+      snapshotAtom,
+    }),
   };
 }
 
 describe("v2 thread shell lists", () => {
+  it("marks cached shells of a failing environment without hiding them", () => {
+    const { registry, threads, connectionStateAtom } = makeHarness();
+    const ref = { environmentId, threadId: v2ThreadShell.id };
+    const unavailable = () => registry.get(threads.threadShellAtom(ref))?.environmentUnavailable;
+    const setConnection = (state: SupervisorConnectionState) =>
+      registry.set(connectionStateAtom(environmentId), AsyncResult.success(state));
+    const online = { ...AVAILABLE_CONNECTION_STATE, desired: true, network: "online" as const };
+    const refs = registry.get(threads.threadRefsAtom);
+    expect(refs.length).toBeGreaterThan(0);
+    expect(unavailable()).toBeUndefined();
+
+    // A first attempt has no failure yet, so it is not evidence of trouble.
+    setConnection({ ...online, phase: "connecting", stage: "preparing", attempt: 1 });
+    expect(unavailable()).toBeUndefined();
+
+    const backoff: SupervisorConnectionState = {
+      ...online,
+      phase: "backoff",
+      attempt: 1,
+      lastFailure: new ConnectionTransientError({
+        reason: "remote-unavailable",
+        detail: "Remote environment is unavailable.",
+      }),
+      retryAt: 1,
+    };
+    setConnection(backoff);
+    expect(unavailable()).toBe(true);
+    expect(registry.get(threads.threadRefsAtom)).toEqual(refs);
+    expect(
+      registry.get(threads.threadShellsAtom).every((thread) => thread.environmentUnavailable),
+    ).toBe(true);
+
+    // Retries keep the mark rather than flickering back to available.
+    setConnection({ ...backoff, phase: "connecting", stage: "preparing", attempt: 2 });
+    expect(unavailable()).toBe(true);
+
+    // The device itself being offline is plain cached browsing.
+    setConnection({ ...backoff, network: "offline", phase: "offline", retryAt: null });
+    expect(unavailable()).toBeUndefined();
+
+    setConnection({ ...online, phase: "connected", attempt: 2, generation: 1 });
+    expect(unavailable()).toBeUndefined();
+  });
+
   it("preserves ordered reference arrays when a middle thread changes", () => {
     const { registry, threads, snapshotAtom } = makeHarness();
     const snapshot = {
