@@ -1830,7 +1830,7 @@ export function makeClaudeUserMessage(input: {
  * Returns null for a native slash command, which must stay first, so the
  * update waits for the next prompt.
  */
-export function claudePromptWithSidekickUpdate(prompt: string, update: string): string | null {
+function claudePromptWithSidekickUpdate(prompt: string, update: string): string | null {
   if (prompt.trimStart().startsWith("/")) return null;
   return `<t3_code_instructions>\n${update}\n</t3_code_instructions>\n\n<user_request>\n${prompt}\n</user_request>`;
 }

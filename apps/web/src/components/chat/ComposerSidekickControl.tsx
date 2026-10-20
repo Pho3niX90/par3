@@ -45,7 +45,7 @@ export interface SidekickMenuInput {
   readonly onChange: (selection: ModelSelection | null) => void;
 }
 
-export function sidekickTriggerTooltip(pairing: SidekickPairing | null): string {
+function sidekickTriggerTooltip(pairing: SidekickPairing | null): string {
   if (pairing === null) return "No sidekick. Delegated tasks use the lead's model.";
   if (pairing.problem !== null) return `Sidekick inactive: ${pairing.problem}`;
   return pairing.perRequest

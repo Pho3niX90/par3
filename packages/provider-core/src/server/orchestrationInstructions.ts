@@ -47,7 +47,7 @@ export interface T3SidekickLeadState {
   readonly billingModel: "per_token" | "per_request";
 }
 
-export function sidekickStatesEqual(
+function sidekickStatesEqual(
   left: T3SidekickLeadState | null | undefined,
   right: T3SidekickLeadState | null | undefined,
 ): boolean {
