@@ -106,7 +106,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer term
           expect(await NodeFSP.readdir(versions)).toEqual([version]);
           expect(
             await NodeFSP.readFile(NodePath.join(root, "home/runtime/launchers"), "utf8"),
-          ).toBe(`${NodePath.join(root, "bin/t3")}\n`);
+          ).toBe(`${NodePath.join(root, "bin/par3")}\n`);
         }
       } finally {
         if (child.exitCode === null) child.kill();
