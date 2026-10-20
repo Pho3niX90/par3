@@ -167,10 +167,10 @@ describe("reconcileDesiredCloudLink", () => {
         ServerConfigModule.ServerConfig,
         ServerConfigModule.ServerConfig.of({} as ServerConfigModule.ServerConfig["Service"]),
       ),
-      Effect.provideService(
-        ServerSecretStore.ServerSecretStore,
-        makeSecretStore(unusedSecretStoreOperation),
-      ),
+      Effect.provideService(ServerSecretStore.ServerSecretStore, {
+        ...makeSecretStore(unusedSecretStoreOperation),
+        get: () => Effect.succeedNone,
+      }),
       Effect.provideService(
         ServerEnvironment.ServerEnvironment,
         ServerEnvironment.ServerEnvironment.of({

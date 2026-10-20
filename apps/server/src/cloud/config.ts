@@ -19,6 +19,20 @@ export const PUBLISH_AGENT_ACTIVITY_SECRET = "cloud-publish-agent-activity";
 export const HOLD_WEBHOOKS_WHILE_OFFLINE_SECRET = "cloud-hold-webhooks-while-offline";
 export const CLOUD_LINK_REVOKED = "cloud-link-revoked";
 
+/** Every secret a relay link writes; removing them all leaves the environment unlinked. */
+export const CLOUD_LINK_SECRETS = [
+  CLOUD_LINKED_USER_ID,
+  RELAY_URL_SECRET,
+  RELAY_ISSUER_SECRET,
+  RELAY_ENVIRONMENT_CREDENTIAL_SECRET,
+  CLOUD_MINT_PUBLIC_KEY,
+  CLOUD_ENDPOINT_RUNTIME_CONFIG,
+  CLOUD_ENDPOINT_CONFIRMED_ORIGIN,
+  PUBLISH_AGENT_ACTIVITY_SECRET,
+  HOLD_WEBHOOKS_WHILE_OFFLINE_SECRET,
+  CLOUD_LINK_REVOKED,
+] as const;
+
 export const encodeEndpointRuntimeConfigJson = Schema.encodeEffect(
   Schema.fromJsonString(RelayManagedEndpointRuntimeConfig),
 );
