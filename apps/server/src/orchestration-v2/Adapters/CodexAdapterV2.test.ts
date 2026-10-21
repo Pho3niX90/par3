@@ -1910,10 +1910,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             providerTurnOrdinal: index + 1,
             sidekick: turn.sidekick,
           });
-          yield* awaitUntil(
-            () => harness.terminalEvents().length === index + 1,
-            `turn ${index + 1} terminal`,
-          );
+          yield* harness.awaitTerminal(index + 1);
         }
         assert.deepEqual(
           harness.terminalEvents().map((event) => event.status),
