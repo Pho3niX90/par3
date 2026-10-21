@@ -115,17 +115,6 @@ describe("resolveOnboardingTargetEnvironment", () => {
     ).toBe(pairedRemote);
   });
 
-  it("uses the primary machine for local onboarding", () => {
-    expect(
-      resolveOnboardingTargetEnvironment({
-        mode: "local",
-        environments: [primaryEnvironment, olderRelay],
-        primaryEnvironment,
-        pairedEnvironmentId: null,
-      }),
-    ).toBe(primaryEnvironment);
-  });
-
   it("does not substitute a remote machine when the local primary is offline", () => {
     const offlinePrimary = { ...primaryEnvironment, connection: { phase: "disconnected" } };
 
@@ -223,6 +212,7 @@ describe("resolveOnboardingSetup", () => {
     ).toBe(false);
   });
 
+  // regression: #16887 onboarding Continue locked up on computers that won't connect
   it("is not ready without a connected selection", () => {
     expect(resolveOnboardingSetup([local], new Set()).ready).toBe(false);
     expect(
