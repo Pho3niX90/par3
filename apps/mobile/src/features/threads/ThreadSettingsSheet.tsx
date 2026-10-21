@@ -1340,7 +1340,7 @@ function ThreadSettingsSidekickContent(props: { readonly onSelected: () => void 
           </View>
         ))}
       <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">
-        {/* A selection the picker no longer offers stays visible so its reason shows and None clears it. */}
+        {/* A selection the picker no longer offers stays visible so its reason shows and Off clears it. */}
         {current !== null && !currentIsListed ? (
           <ChoiceRow
             description={sidekick.row.problem ?? undefined}
@@ -1353,7 +1353,7 @@ function ThreadSettingsSidekickContent(props: { readonly onSelected: () => void 
         <ChoiceRow
           description="Delegations use the lead's model."
           isLast
-          label="None"
+          label="Off"
           selected={current === null}
           onPress={() => choose(null)}
         />

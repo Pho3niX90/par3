@@ -897,8 +897,8 @@ function OpenCommandPaletteDialog(props: {
       description: pairing
         ? pairing.problem
           ? `${pairing.label} (inactive: ${pairing.problem})`
-          : pairing.label
-        : "No sidekick",
+          : `On: ${pairing.label}`
+        : "Off",
       icon: <UsersIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <UsersIcon className={ADDON_ICON_CLASS} />,
       shortcutCommand: "composer.sidekick",
@@ -910,7 +910,7 @@ function OpenCommandPaletteDialog(props: {
             {
               kind: "action",
               value: "sidekick:none",
-              title: "None",
+              title: "Off",
               description: "Delegated tasks use the lead's model",
               searchTerms: ["none", "off", "clear", "sidekick"],
               icon: <UsersIcon className={ITEM_ICON_CLASS} />,

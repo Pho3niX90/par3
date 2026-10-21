@@ -29,8 +29,8 @@ describe("Spec contracts", () => {
     expect(decodeStatus("blocked")).toBe("blocked");
   });
 
-  it("keeps Spec mode disabled by default", () => {
-    expect(decodeSettings({}).specModeEnabled).toBe(false);
+  it("enables Spec mode by default", () => {
+    expect(decodeSettings({}).specModeEnabled).toBe(true);
   });
 
   it("accepts typed mutation commands and keeps evidence confirmation server-owned", () => {
