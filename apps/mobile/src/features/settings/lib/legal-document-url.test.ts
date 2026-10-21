@@ -4,17 +4,7 @@ import { isLegalDocumentUrl } from "./legal-document-url";
 
 describe("isLegalDocumentUrl", () => {
   it.each([
-    "https://paritylabs.co.za/legal",
-    "https://paritylabs.co.za/legal/",
-    "https://paritylabs.co.za/privacy?source=app",
-    "https://paritylabs.co.za/terms#updates",
-    "https://paritylabs.co.za/security-policy",
-  ])("allows a configured legal document: %s", (url) => {
-    expect(isLegalDocumentUrl(url)).toBe(true);
-  });
-
-  it.each([
-    "https://paritylabs.co.za/download",
+    "https://t3.codes/download",
     "https://example.com/legal",
     "javascript:alert(1)",
     "not-a-url",

@@ -20,6 +20,11 @@ import {
   type RuntimeMode,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
+import {
+  recordLastUsedThreadSelection,
+  type LastUsedThreadSelection,
+  type LastUsedThreadSelectionByProjectKey,
+} from "@t3tools/client-runtime/last-used-thread-selection";
 import * as Schema from "effect/Schema";
 import { useEffect } from "react";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
@@ -412,6 +417,16 @@ const PersistedComposerDraftsSchema = Schema.Struct({
       Schema.Record(Schema.String, Schema.Array(ProviderOptionSelectionSchema)),
     ),
   ),
+  lastUsedThreadSelectionByProjectKey: Schema.optional(
+    Schema.Record(
+      Schema.String,
+      Schema.Struct({
+        modelSelection: ModelSelectionSchema,
+        runtimeMode: RuntimeModeSchema,
+        interactionMode: ProviderInteractionModeSchema,
+      }),
+    ),
+  ),
   cloudAccountId: Schema.optional(Schema.String),
   signedOutDrafts: Schema.optional(
     Schema.Record(
@@ -446,6 +461,12 @@ export const stickyComposerModelSelectionAtom = Atom.make<ModelSelection | null>
 export type ModelOptionMemoryState = Readonly<
   Record<string, Readonly<Record<string, ReadonlyArray<ProviderOptionSelection>>>>
 >;
+
+export const lastUsedThreadSelectionByProjectKeyAtom =
+  Atom.make<LastUsedThreadSelectionByProjectKey>({}).pipe(
+    Atom.keepAlive,
+    Atom.withLabel("mobile:last-used-thread-selection-by-project"),
+  );
 
 export const modelOptionMemoryAtom = Atom.make<ModelOptionMemoryState>({}).pipe(
   Atom.keepAlive,
@@ -617,6 +638,7 @@ export function decodePersistedComposerState(value: unknown): {
   readonly drafts: Record<string, ComposerDraft>;
   readonly stickyModelSelection: ModelSelection | null;
   readonly modelOptionMemory: ModelOptionMemoryState;
+  readonly lastUsedThreadSelectionByProjectKey: LastUsedThreadSelectionByProjectKey;
   readonly cloudDrafts: ComposerCloudDraftState;
 } {
   const parsed = decodePersistedComposerDraftsDocument(value);
@@ -650,6 +672,7 @@ export function decodePersistedComposerState(value: unknown): {
     ),
     stickyModelSelection: parsed.stickyModelSelection ?? null,
     modelOptionMemory: parsed.modelOptionMemory ?? {},
+    lastUsedThreadSelectionByProjectKey: parsed.lastUsedThreadSelectionByProjectKey ?? {},
     cloudDrafts: {
       accountId: parsed.cloudAccountId ?? null,
       signedOut: Object.fromEntries(
@@ -687,6 +710,7 @@ async function loadPersistedComposerState(): Promise<
         drafts: {},
         stickyModelSelection: null,
         modelOptionMemory: {},
+        lastUsedThreadSelectionByProjectKey: {},
         cloudDrafts: { accountId: null, signedOut: {} },
       };
     }
@@ -722,6 +746,13 @@ async function writePersistedComposerState(
       ...(stickyModelSelection ? { stickyModelSelection } : {}),
       ...(Object.keys(appAtomRegistry.get(modelOptionMemoryAtom)).length > 0
         ? { modelOptionMemory: appAtomRegistry.get(modelOptionMemoryAtom) }
+        : {}),
+      ...(Object.keys(appAtomRegistry.get(lastUsedThreadSelectionByProjectKeyAtom)).length > 0
+        ? {
+            lastUsedThreadSelectionByProjectKey: appAtomRegistry.get(
+              lastUsedThreadSelectionByProjectKeyAtom,
+            ),
+          }
         : {}),
       ...(cloudDrafts.accountId ? { cloudAccountId: cloudDrafts.accountId } : {}),
       ...(Object.keys(cloudDrafts.signedOut).length > 0
@@ -1012,6 +1043,14 @@ export function ensureComposerDraftsLoaded(): void {
     ) {
       appAtomRegistry.set(stickyComposerModelSelectionAtom, persisted.stickyModelSelection);
     }
+    if (Object.keys(persisted.lastUsedThreadSelectionByProjectKey).length > 0) {
+      // Selections recorded before hydration finished are newer than disk.
+      const current = appAtomRegistry.get(lastUsedThreadSelectionByProjectKeyAtom);
+      appAtomRegistry.set(lastUsedThreadSelectionByProjectKeyAtom, {
+        ...persisted.lastUsedThreadSelectionByProjectKey,
+        ...current,
+      });
+    }
     if (Object.keys(persisted.modelOptionMemory).length > 0) {
       const current = appAtomRegistry.get(modelOptionMemoryAtom);
       appAtomRegistry.set(modelOptionMemoryAtom, {
@@ -1253,6 +1292,19 @@ function updateComposerDrafts(
 
 export function setStickyComposerModelSelection(modelSelection: ModelSelection): void {
   appAtomRegistry.set(stickyComposerModelSelectionAtom, modelSelection);
+  schedulePersistComposerState();
+}
+
+export function setLastUsedThreadSelection(
+  logicalProjectKey: string,
+  selection: LastUsedThreadSelection,
+): void {
+  const current = appAtomRegistry.get(lastUsedThreadSelectionByProjectKeyAtom);
+  const next = recordLastUsedThreadSelection(current, logicalProjectKey, selection);
+  if (next === current) {
+    return;
+  }
+  appAtomRegistry.set(lastUsedThreadSelectionByProjectKeyAtom, next);
   schedulePersistComposerState();
 }
 
@@ -2066,6 +2118,16 @@ export function useComposerDraft(draftKey: string | null): ComposerDraft {
     ensureComposerDraftsLoaded();
   }, []);
   return draft;
+}
+
+export function useLastUsedThreadSelection(
+  logicalProjectKey: string | null,
+): LastUsedThreadSelection | null {
+  const byProjectKey = useAtomValue(lastUsedThreadSelectionByProjectKeyAtom);
+  useEffect(() => {
+    ensureComposerDraftsLoaded();
+  }, []);
+  return logicalProjectKey ? (byProjectKey[logicalProjectKey] ?? null) : null;
 }
 
 export function useStickyComposerModelSelection(): ModelSelection | null {

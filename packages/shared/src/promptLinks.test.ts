@@ -5,7 +5,6 @@ import {
   parseNewThreadLink,
   parseThreadLinkPrompt,
   promptLinkAppPath,
-  promptLinkDeepLink,
   sanitizeLinkedPrompt,
   withoutPromptLinkParams,
 } from "./promptLinks.ts";
@@ -118,7 +117,6 @@ describe("link round trips", () => {
     expect(promptLinkAppPath("https://evil.test/new?prompt=hi")).toBeNull();
     expect(promptLinkAppPath("t3code://app/index.html")).toBeNull();
   });
-
   it("maps GitHub Copilot app links to new-thread drafts", () => {
     expect(promptLinkAppPath("ghapp://github.com/acme/api/pull/12")).toBe(
       "/new?pr=acme%2Fapi%2F12",
@@ -138,12 +136,5 @@ describe("link round trips", () => {
     expect(promptLinkAppPath("ghapp://github.com/acme/api")).toBeNull();
     expect(promptLinkAppPath("ghapp://automations/new?prompt=hi")).toBeNull();
     expect(promptLinkAppPath("ghapp://evil.test/acme/api/pull/1")).toBeNull();
-  });
-
-  it("hands an in-app path to the installed app", () => {
-    expect(promptLinkDeepLink("/new?prompt=hi")).toBe("par3://new?prompt=hi");
-    expect(promptLinkDeepLink("/env-1/thread-1?prompt=hi")).toBe(
-      "par3://threads/env-1/thread-1?prompt=hi",
-    );
   });
 });

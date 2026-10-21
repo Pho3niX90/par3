@@ -71,6 +71,13 @@ Claude skills come from the config directory's `skills` folder and the project's
 `.claude/skills` folder. If both define the same name, the config-directory copy
 wins. Skills disabled in Claude's settings do not appear in the composer.
 
+To see what Claude loaded, open the instance in **Settings > Providers** and expand
+**Skills and commands**. Each skill shows where it came from: your config directory
+(User), the project, an `--add-dir` directory (Added directory), or an enabled plugin
+(Plugin). A skill missing from the composer is either absent from that list, because
+its plugin is not enabled or its folder is not in one of those places, or marked
+Disabled.
+
 Use `$` in the composer to select a skill. Enabled installed Claude plugins also
 contribute skills under names such as `plugin:review`. Skills marked `disable-model-invocation`
 can still be started by you. Invoke those one per message: Claude directly runs

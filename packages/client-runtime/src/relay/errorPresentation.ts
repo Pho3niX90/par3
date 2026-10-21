@@ -88,7 +88,7 @@ export function relayRequestFailureDetail(error: {
   return null;
 }
 
-export const RELAY_TUNNEL_RELEASED_MESSAGE =
+const RELAY_TUNNEL_RELEASED_MESSAGE =
   "Offline for a while, so its Parity Connect tunnel was removed. Start Par3 on that computer and update it to the latest version to reconnect.";
 
 export function relayOfflineReasonMessage(

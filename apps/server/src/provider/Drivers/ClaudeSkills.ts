@@ -14,9 +14,12 @@ import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 
 type ClaudeSkillScope = "user" | "project";
 
+type ClaudeSkillSource = "user" | "project" | "add-dir" | "plugin";
+
 type ClaudeSkillRoot = {
   readonly directory: string;
   readonly scope: ClaudeSkillScope;
+  readonly source: ClaudeSkillSource;
   readonly prefix?: string;
 };
 
@@ -124,7 +127,7 @@ function claudeManagedSettingsPath(
   return "/etc/claude-code/managed-settings.json";
 }
 
-export function skillOverrideSettingsPaths(
+function skillOverrideSettingsPaths(
   path: Path.Path,
   configDirPath: string,
   cwd: string | undefined,
@@ -381,13 +384,14 @@ const discoverPluginSkillRoots = Effect.fn("discoverPluginSkillRoots")(function*
     const hasDefaultDirectory = yield* fileSystem
       .exists(defaultDirectory)
       .pipe(Effect.orElseSucceed(() => false));
-    if (hasDefaultDirectory) roots.push({ directory: defaultDirectory, scope, prefix });
+    if (hasDefaultDirectory)
+      roots.push({ directory: defaultDirectory, scope, source: "plugin", prefix });
     const declared = manifest?.skills;
     if (declared === undefined && !hasDefaultDirectory) {
       const hasRootSkill = yield* fileSystem
         .exists(path.join(installPath, "SKILL.md"))
         .pipe(Effect.orElseSucceed(() => false));
-      if (hasRootSkill) roots.push({ directory: installPath, scope, prefix });
+      if (hasRootSkill) roots.push({ directory: installPath, scope, source: "plugin", prefix });
     }
 
     const canonicalInstallPath = yield* fileSystem
@@ -406,7 +410,7 @@ const discoverPluginSkillRoots = Effect.fn("discoverPluginSkillRoots")(function*
         canonicalDirectory !== undefined &&
         isInsideDirectory(path, canonicalInstallPath, canonicalDirectory)
       ) {
-        roots.push({ directory, scope, prefix });
+        roots.push({ directory, scope, source: "plugin", prefix });
       }
     }
   }
@@ -458,8 +462,16 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
   // Use the session's argument parser so discovery sees the same --add-dir value.
   const additionalDirectory = parseCliArgs(config.launchArgs ?? "").flags["add-dir"];
   const roots: ReadonlyArray<ClaudeSkillRoot> = [
-    { directory: path.join(configDirPath, "skills"), scope: "user" },
-    ...(cwd ? [{ directory: path.join(cwd, ".claude", "skills"), scope: "project" as const }] : []),
+    { directory: path.join(configDirPath, "skills"), scope: "user", source: "user" },
+    ...(cwd
+      ? [
+          {
+            directory: path.join(cwd, ".claude", "skills"),
+            scope: "project" as const,
+            source: "project" as const,
+          },
+        ]
+      : []),
     ...(additionalDirectory && (cwd || path.isAbsolute(additionalDirectory))
       ? [
           {
@@ -469,6 +481,7 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
               "skills",
             ),
             scope: "project" as const,
+            source: "add-dir" as const,
           },
         ]
       : []),
@@ -537,6 +550,7 @@ export const discoverClaudeSkills = Effect.fn("discoverClaudeSkills")(function* 
         path: skillPath,
         enabled: override?.enabled ?? true,
         scope: root.scope,
+        source: root.source,
         ...(frontmatter.kind === "parsed" && frontmatter.description
           ? { description: frontmatter.description }
           : {}),
