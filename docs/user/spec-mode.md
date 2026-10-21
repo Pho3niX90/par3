@@ -2,11 +2,11 @@
 
 Spec mode puts a reviewed requirements document between a request and the code. An agent drafts the spec, a person approves it, and only then can agents implement and verify it. Approval is enforced by the server, not by the prompt.
 
-## Turn it on
+## Start a spec
 
-Spec mode is off by default and set per project. Open the project's Settings and turn on **Spec mode**. The project then gets a **Specs** list, and the composer offers **Spec** next to Build and Plan, plus the `/spec` command.
+Spec mode is available in every project. The composer offers **Spec** next to Build and Plan, plus the `/spec` command, and each project has a **Specs** list. A thread follows the spec workflow only after you bind it to a spec, so other threads are unaffected.
 
-Turning it off hides the ways to start new spec work. Existing specs stay readable and reviewable, and threads already bound to a spec keep their restrictions.
+To hide it for a project, open the project's Settings and turn off **Spec mode**. That hides the ways to start new spec work. Existing specs stay readable and reviewable, and threads already bound to a spec keep their restrictions.
 
 ## The workflow
 

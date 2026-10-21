@@ -123,7 +123,7 @@ and the lead never reads the sidekick's intermediate output.
 
 Choose a model from **Sidekick** next to the model picker, from the compact
 composer menu, with **Set sidekick…** in the command palette, or from a thread's
-settings on mobile. Choose **None** to turn it off. The sidekick must be a
+settings on mobile. Choose **Off** to turn it off. The sidekick must be a
 different model from the lead, and providers that can't lead a sidekick don't
 show the control.
 

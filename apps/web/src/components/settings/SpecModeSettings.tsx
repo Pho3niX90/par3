@@ -30,7 +30,7 @@ export function SpecModeSettings() {
         settingKeys={["specModeEnabled"]}
         mixed={mixed}
         {...searchableSetting("spec-mode")}
-        description="Write requirements as specs that a person approves before agents implement them. Existing specs stay viewable when this is off."
+        description="Offer Spec in the composer for requirements a person approves before agents implement them. Only threads bound to a spec are affected. Existing specs stay viewable when this is off."
         resetAction={
           settings.specModeEnabled !== DEFAULT_SERVER_SETTINGS.specModeEnabled ? (
             <SettingResetButton
