@@ -260,6 +260,10 @@ it in build mode, or type feedback to **Refine** it. The arrow next to Implement
 starts the work in a new thread instead. Claude sometimes plans without being
 asked; its plan offers the same actions.
 
+Choose **Open plan** in the chat card, **Open** in the composer, or **Open plan** in the command palette to review the plan in the document panel. Use its outline to jump between sections. Choose **Edit** to revise the plan, or comment on individual sections and send the collected feedback. You can paste or attach screenshots in the editor and comments. **Implement** uses your edited plan; **Implement in new thread** starts the work in a separate thread. The export menu lets you copy, download, or save the plan to the workspace.
+
+Draft edits and comments stay on this device until you send them. Images are held only while the app is open; after reloading, attach them again.
+
 Turn plan mode off in **Settings → General → Plan mode** (on mobile, **Settings →
 Thread behavior → Composer**) to hide the control and send every turn in build mode.
 

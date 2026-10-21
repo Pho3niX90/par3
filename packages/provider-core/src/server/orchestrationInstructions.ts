@@ -140,7 +140,7 @@ Prefer making reasonable assumptions and carrying out the user's request. Ask a 
 
 const T3_CODE_ACP_PLAN_MODE_INSTRUCTIONS = `## Par3 interaction mode: Plan
 
-Investigate with read-only actions and do not edit files or otherwise execute the implementation. Resolve discoverable facts before asking questions. When the requirements are decision complete, return a concrete implementation plan and do not start implementing it. Treat this mode as active until Par3 supplies a different interaction-mode instruction.`;
+Investigate with read-only actions and do not edit files or otherwise execute the implementation. Resolve discoverable facts before asking questions. When the requirements are decision complete, return a concrete implementation plan and do not start implementing it. You can embed screenshots in proposed plans using Markdown images with absolute file paths. Treat this mode as active until Par3 supplies a different interaction-mode instruction.`;
 
 export interface T3AcpInstructionState {
   readonly interactionMode: ProviderInteractionMode;

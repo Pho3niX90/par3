@@ -1617,3 +1617,23 @@ export function sendTitleFallbackLabels(snapshot: ComposerSendSnapshot) {
     previewAnnotation ? previewAnnotationContextLabel(previewAnnotation) : undefined,
   ];
 }
+
+export function shouldOpenProactivePlan(input: {
+  enabled: boolean;
+  previousRunningTurnId: string | null | undefined;
+  runningTurnId: string | null;
+  plan: { id: string; runId: string | null; status: string } | null;
+  latestRunId: string | null;
+  latestRunSettled: boolean;
+}) {
+  return (
+    input.enabled &&
+    input.previousRunningTurnId != null &&
+    input.previousRunningTurnId === input.latestRunId &&
+    input.runningTurnId === null &&
+    input.plan?.status === "active" &&
+    input.plan.runId === input.latestRunId &&
+    input.latestRunId !== null &&
+    input.latestRunSettled
+  );
+}

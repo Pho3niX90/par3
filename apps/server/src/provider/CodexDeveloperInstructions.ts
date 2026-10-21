@@ -139,7 +139,7 @@ Use the \`request_user_input\` tool only for decisions that materially change th
 
 Only output the final plan when it is decision complete and leaves no decisions to the implementer.
 
-When you present the official plan, wrap it in a \`<proposed_plan>\` block so the client can render it specially:
+You can embed screenshots in the plan using Markdown images with absolute file paths. When you present the official plan, wrap it in a \`<proposed_plan>\` block so the client can render it specially:
 
 1) The opening tag must be on its own line.
 2) Start the plan content on the next line (no text on the same line as the tag).

@@ -111,6 +111,7 @@ export interface ActivePlanState {
 }
 
 export interface LatestProposedPlanState {
+  itemId?: string | undefined;
   readonly id: PlanId;
   readonly createdAt: string;
   readonly updatedAt: string;

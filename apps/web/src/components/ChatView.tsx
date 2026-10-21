@@ -1,5 +1,18 @@
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
+import { environmentThreadDetails } from "../state/threads";
+import { runPlanSubmission } from "../lib/planSubmission";
+import { proposedPlanItemId } from "../proposedPlan";
+import { collectReferencedPlanImages, pruneMissingImageReferences } from "../proposedPlan";
+import { toKindScopedComposerContextId } from "@t3tools/shared/composerContextReferences";
+import { planDraftKey, usePlanDraftStore } from "../planDraftStore";
+import { resolvePlanTurnAttachments } from "../lib/turnAttachments";
+import type { PlanAction } from "./plan/PlanPanel";
+import {
+  getProviderAttachmentLimitError,
+  type ChatAttachment,
+  type UploadChatAttachment,
+} from "@t3tools/contracts";
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
@@ -874,6 +887,13 @@ export default function ChatView(props: ChatViewProps) {
   const [localServerErrorsByThreadKey, setLocalServerErrorsByThreadKey] = useState<
     Record<string, LocalThreadErrorEntry>
   >({});
+  const planSubmissionInFlight = useRef(false);
+  const [planSubmitting, setPlanSubmitting] = useState(false);
+  const preparingPlanImages = usePlanDraftStore((state) =>
+    Object.entries(state.preparing).some(
+      ([key, count]) => key.startsWith(`${routeThreadKey}:`) && count > 0,
+    ),
+  );
   const [isConnecting, _setIsConnecting] = useState(false);
   const isRevertingCheckpoint = useComposerDraftStore((store) =>
     store.rewindingThreadKeys.has(routeThreadKey),
@@ -1764,6 +1784,9 @@ export default function ChatView(props: ChatViewProps) {
     }
     return findLatestProposedPlan(serverProjection, activeLatestRun?.runId ?? null);
   })();
+  // Providers don't always mark an earlier plan superseded across runs, so only the latest counts as current.
+  const currentProposedPlanId =
+    findLatestProposedPlan(serverProjection, activeLatestRun?.runId ?? null)?.id ?? null;
   const showPlanFollowUpPrompt = shouldShowPlanFollowUpPrompt({
     pendingUserInputCount: pendingUserInputs.length,
     interactionMode,
@@ -2988,6 +3011,12 @@ export default function ChatView(props: ChatViewProps) {
     runningTurnId: activeRunningTurnId,
     latestRun: activeLatestRun,
     latestRunSettled,
+    proposedPlan: activeProposedPlan
+      ? {
+          ...activeProposedPlan,
+          itemId: proposedPlanItemId(serverProjection, activeProposedPlan.id),
+        }
+      : null,
     turnDiffSummaries,
     isGitRepo: gitStatusQuery.data?.isRepo,
     linkedPullRequest: linkedThreadPullRequest,
@@ -4693,6 +4722,402 @@ export default function ChatView(props: ChatViewProps) {
     });
   };
 
+  async function onSubmitPlanFollowUp({
+    text,
+    context,
+    interactionMode: nextInteractionMode,
+    implementsPlan,
+    attachments = [],
+  }: {
+    text: string;
+    context?: ReturnType<typeof buildMessageContext>;
+    interactionMode: "default" | "plan";
+    /** Only Implement completes the plan; refining in build mode leaves it active. */
+    implementsPlan: boolean;
+    attachments?: (ChatAttachment | UploadChatAttachment)[];
+  }) {
+    if (
+      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+      !activeThread ||
+      !isServerThread ||
+      isSendBusy ||
+      isConnecting ||
+      sendInFlightRef.current
+    ) {
+      return false;
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    const sendCtx = composerRef.current?.getSendContext();
+    // Refining stays in plan mode, so it needs the toggle; implementing does not.
+    if (
+      !sendCtx?.providerAvailable ||
+      (nextInteractionMode === "plan" && !sendCtx.interactionModeEnabled)
+    ) {
+      return false;
+    }
+    const {
+      selectedProvider: ctxSelectedProvider,
+      selectedModel: ctxSelectedModel,
+      selectedProviderModels: ctxSelectedProviderModels,
+      selectedPromptEffort: ctxSelectedPromptEffort,
+      selectedModelSelection: ctxSelectedModelSelection,
+    } = sendCtx;
+
+    const threadIdForSend = activeThread.id;
+    const messageIdForSend = newMessageId();
+    const messageCreatedAt = new Date().toISOString();
+    const outgoingMessageText = formatOutgoingPrompt({
+      provider: ctxSelectedProvider,
+      model: ctxSelectedModel,
+      models: ctxSelectedProviderModels,
+      effort: ctxSelectedPromptEffort,
+      text: trimmed,
+    });
+
+    if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) return false;
+    const attachmentError = getProviderAttachmentLimitError(attachments);
+    if (attachmentError) {
+      setThreadError(threadIdForSend, attachmentError);
+      return false;
+    }
+    sendInFlightRef.current = true;
+    beginLocalDispatch({ preparingWorktree: false });
+    setThreadError(threadIdForSend, null);
+
+    anchorNewTurn(
+      scopedThreadKey(scopeThreadRef(activeThread.environmentId, threadIdForSend)),
+      messageIdForSend,
+    );
+
+    setOptimisticUserMessages((existing) => [
+      ...existing,
+      {
+        id: messageIdForSend,
+        role: "user",
+        text: outgoingMessageText,
+        ...(context ? { context } : {}),
+        runId: null,
+        createdAt: messageCreatedAt,
+        updatedAt: messageCreatedAt,
+        streaming: false,
+      },
+    ]);
+
+    const settingsResult = await persistThreadSettingsForNextTurn({
+      threadId: threadIdForSend,
+      createdAt: messageCreatedAt,
+      ...(localCheckoutBranchMismatch ? { branch: localCheckoutBranchMismatch.currentBranch } : {}),
+      runtimeMode,
+      interactionMode: nextInteractionMode,
+    });
+    let failure: AtomCommandResult<unknown, unknown> | null =
+      settingsResult._tag === "Failure" ? settingsResult : null;
+
+    if (failure === null) {
+      setComposerDraftInteractionMode(
+        scopeThreadRef(activeThread.environmentId, threadIdForSend),
+        nextInteractionMode,
+      );
+
+      const startResult = await startThreadTurn({
+        environmentId,
+        input: {
+          threadId: threadIdForSend,
+          message: {
+            messageId: messageIdForSend,
+            role: "user",
+            text: outgoingMessageText,
+            ...(context ? { context } : {}),
+            attachments,
+          },
+          modelSelection: ctxSelectedModelSelection,
+          titleSeed: activeThread.title,
+          runtimeMode,
+          interactionMode: nextInteractionMode,
+          ...(implementsPlan && activeProposedPlan
+            ? {
+                sourceProposedPlan: {
+                  threadId: activeThread.id,
+                  planId: activeProposedPlan.id,
+                },
+              }
+            : {}),
+          createdAt: messageCreatedAt,
+        },
+      });
+      failure = startResult._tag === "Failure" ? startResult : null;
+    }
+
+    if (failure === null) {
+      sendInFlightRef.current = false;
+      resetLocalDispatch();
+      return true;
+    }
+
+    setOptimisticUserMessages((existing) =>
+      existing.filter((message) => message.id !== messageIdForSend),
+    );
+    if (!isAtomCommandInterrupted(failure)) {
+      const error = squashAtomCommandFailure(failure);
+      setThreadError(
+        threadIdForSend,
+        error instanceof Error ? error.message : "Failed to send plan follow-up.",
+      );
+    }
+    sendInFlightRef.current = false;
+    resetLocalDispatch();
+    return false;
+  }
+
+  const onImplementPlanInNewThread = async (overrides?: {
+    markdown: string;
+    attachments: (ChatAttachment | UploadChatAttachment)[];
+    context: ReturnType<typeof buildMessageContext>;
+  }) => {
+    if (
+      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+      !activeThread ||
+      !activeProject ||
+      !activeProposedPlan ||
+      !isServerThread ||
+      isSendBusy ||
+      isConnecting ||
+      activeEnvironmentUnavailable ||
+      sendInFlightRef.current
+    ) {
+      return false;
+    }
+
+    const sendCtx = composerRef.current?.getSendContext();
+    if (!sendCtx?.providerAvailable) {
+      return false;
+    }
+    const {
+      selectedProvider: ctxSelectedProvider,
+      selectedModel: ctxSelectedModel,
+      selectedProviderModels: ctxSelectedProviderModels,
+      selectedPromptEffort: ctxSelectedPromptEffort,
+      selectedModelSelection: ctxSelectedModelSelection,
+    } = sendCtx;
+
+    const createdAt = new Date().toISOString();
+    const nextThreadId = newThreadId();
+    const planMarkdown =
+      overrides?.markdown ??
+      usePlanDraftStore.getState().drafts[planDraftKey(routeThreadKey, activeProposedPlan.id)]
+        ?.markdown ??
+      activeProposedPlan.planMarkdown;
+    const implementationPrompt = buildPlanImplementationPrompt(planMarkdown);
+    const outgoingImplementationPrompt = formatOutgoingPrompt({
+      provider: ctxSelectedProvider,
+      model: ctxSelectedModel,
+      models: ctxSelectedProviderModels,
+      effort: ctxSelectedPromptEffort,
+      text: implementationPrompt,
+    });
+    if (composerRef.current?.validateProviderInput(outgoingImplementationPrompt) === false)
+      return false;
+    const attachmentError = getProviderAttachmentLimitError(overrides?.attachments ?? []);
+    if (attachmentError) {
+      setThreadError(activeThread.id, attachmentError);
+      return false;
+    }
+    const nextThreadTitle = truncate(buildPlanImplementationThreadTitle(planMarkdown));
+    const nextThreadModelSelection: ModelSelection = ctxSelectedModelSelection;
+
+    sendInFlightRef.current = true;
+    beginLocalDispatch({ preparingWorktree: false });
+    const finish = () => {
+      sendInFlightRef.current = false;
+      resetLocalDispatch();
+    };
+
+    const createResult = await createThread({
+      environmentId,
+      input: {
+        threadId: nextThreadId,
+        projectId: activeProject.id,
+        title: nextThreadTitle,
+        modelSelection: nextThreadModelSelection,
+        runtimeMode: defaultRuntimeMode,
+        interactionMode: "default",
+        branch: activeThreadBranch,
+        worktreePath: activeThread.worktreePath,
+        createdAt,
+      },
+    });
+    let failure: AtomCommandResult<unknown, unknown> | null =
+      createResult._tag === "Failure" ? createResult : null;
+
+    if (failure === null) {
+      const startResult = await startThreadTurn({
+        environmentId,
+        input: {
+          threadId: nextThreadId,
+          message: {
+            messageId: newMessageId(),
+            role: "user",
+            text: outgoingImplementationPrompt,
+            attachments: overrides?.attachments ?? [],
+            ...(overrides?.context ? { context: overrides.context } : {}),
+          },
+          modelSelection: ctxSelectedModelSelection,
+          titleSeed: nextThreadTitle,
+          runtimeMode: defaultRuntimeMode,
+          interactionMode: "default",
+          sourceProposedPlan: {
+            threadId: activeThread.id,
+            planId: activeProposedPlan.id,
+          },
+          createdAt,
+        },
+      });
+      failure = startResult._tag === "Failure" ? startResult : null;
+    }
+
+    if (failure === null) {
+      const startedResult = await settlePromise(() =>
+        waitForStartedServerThread(scopeThreadRef(activeThread.environmentId, nextThreadId)),
+      );
+      failure = startedResult._tag === "Failure" ? startedResult : null;
+    }
+
+    if (failure === null) {
+      const navigateResult = await settlePromise(() =>
+        navigate({
+          to: "/$environmentId/$threadId",
+          params: {
+            environmentId: activeThread.environmentId,
+            threadId: nextThreadId,
+          },
+        }),
+      );
+      failure = navigateResult._tag === "Failure" ? navigateResult : null;
+    }
+
+    if (failure !== null) {
+      const cleanupResult = await deleteThread({
+        environmentId,
+        input: {
+          threadId: nextThreadId,
+        },
+      });
+      if (cleanupResult._tag === "Failure" && !isAtomCommandInterrupted(cleanupResult)) {
+        console.warn(
+          "Failed to clean up implementation thread after start failure.",
+          squashAtomCommandFailure(cleanupResult),
+        );
+      }
+      if (!isAtomCommandInterrupted(failure)) {
+        const error = squashAtomCommandFailure(failure);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not start implementation thread",
+            description:
+              error instanceof Error
+                ? error.message
+                : "An error occurred while creating the new thread.",
+          }),
+        );
+      }
+    }
+    finish();
+    return failure === null;
+  };
+  const isCurrentPlanActionStable = useStableCallback((threadKey: string, planId: string) => {
+    if (
+      routeThreadKey !== threadKey ||
+      !activeThreadRef ||
+      !latestRunSettled ||
+      isSendBusy ||
+      isConnecting ||
+      usePlanDraftStore.getState().preparing[planDraftKey(threadKey, planId)] ||
+      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
+    )
+      return false;
+    const projection =
+      appAtomRegistry.get(environmentThreadDetails.threadAtom(activeThreadRef))?.projection ?? null;
+    const currentPlan = projection?.plans.find(
+      (plan) => plan.kind === "proposed_plan" && plan.id === planId,
+    );
+    return (
+      currentPlan?.id === planId &&
+      currentPlan.status === "active" &&
+      activeProposedPlan?.id === planId
+    );
+  });
+  async function submitPlanAction(
+    action: PlanAction,
+    composerContext?: ReturnType<typeof buildMessageContext>,
+  ) {
+    return runPlanSubmission({
+      guard: planSubmissionInFlight,
+      onBusy: setPlanSubmitting,
+      isCurrent: () => isCurrentPlanActionStable(routeThreadKey, action.planId),
+      prepare: async () => {
+        const snapshot =
+          usePlanDraftStore.getState().drafts[planDraftKey(routeThreadKey, action.planId)];
+        const attachmentError = getProviderAttachmentLimitError(action.images);
+        if (attachmentError) {
+          setThreadError(activeThreadId, attachmentError);
+          return null;
+        }
+        const availableIds = new Set(
+          action.images.map((image) => toKindScopedComposerContextId("image", image.id)),
+        );
+        const markdown = pruneMissingImageReferences(action.markdown, availableIds);
+        const text =
+          action.kind === "feedback"
+            ? pruneMissingImageReferences(action.text, availableIds)
+            : buildPlanImplementationPrompt(markdown);
+        if (composerRef.current?.validateProviderInput(text) === false) return null;
+        const referencedIds = new Set(collectReferencedPlanImages(text));
+        const resolved = await resolvePlanTurnAttachments(
+          environmentId,
+          action.images.filter((image) =>
+            referencedIds.has(toKindScopedComposerContextId("image", image.id)),
+          ),
+        );
+        if (composerContext)
+          resolved.context = {
+            version: 1,
+            records: [...composerContext.records, ...(resolved.context?.records ?? [])],
+          };
+        return { markdown, text, resolved, snapshot };
+      },
+      send: async ({ markdown, text, resolved }) => {
+        const sent =
+          action.kind === "implement-new-thread"
+            ? await onImplementPlanInNewThread({ markdown, ...resolved })
+            : await onSubmitPlanFollowUp({
+                text,
+                ...resolved,
+                interactionMode:
+                  action.kind === "feedback" &&
+                  composerRef.current?.getSendContext().interactionModeEnabled
+                    ? "plan"
+                    : "default",
+                implementsPlan: action.kind === "implement",
+              });
+        return sent;
+      },
+      onSuccess: ({ snapshot }) =>
+        usePlanDraftStore
+          .getState()
+          .discardIfUnchanged(
+            planDraftKey(routeThreadKey, action.planId),
+            snapshot,
+            action.kind !== "feedback",
+          ),
+    });
+  }
+  const submitPlanActionStable = useStableCallback(submitPlanAction);
   const onSend = async (
     e?: { preventDefault: () => void },
     dispatchMode: ComposerDispatchMode = "auto",
@@ -4706,6 +5131,7 @@ export default function ChatView(props: ChatViewProps) {
     // What the user pressed send on; uploads below can take a while, and a redirect must not
     // decline approvals for a draft that changed meanwhile.
     const promptAtSend = promptRef.current;
+    if (planSubmissionInFlight.current) return;
     if (
       usageLimitsOffered &&
       usageLimitsKey !== null &&
@@ -4956,9 +5382,36 @@ export default function ChatView(props: ChatViewProps) {
       composerImages.length === 0 &&
       composerFiles.length === 0
     ) {
+      const planDraft =
+        usePlanDraftStore.getState().drafts[planDraftKey(routeThreadKey, activeProposedPlan.id)];
+      if (!promptForSend.trim()) {
+        const sent = await submitPlanActionStable(
+          {
+            kind: "implement",
+            planId: activeProposedPlan.id,
+            markdown: planDraft?.markdown ?? activeProposedPlan.planMarkdown,
+            text: "",
+            images: planDraft?.images ?? [],
+          },
+          buildMessageContext({
+            terminalContexts: sendableComposerTerminalContexts,
+            reviewComments: composerReviewComments,
+            previewAnnotations: composerPreviewAnnotations,
+            threadContexts: composerThreadContexts,
+          }),
+        );
+        if (sent) {
+          promptRef.current = "";
+          clearComposerDraftContent(composerDraftTarget);
+          composerRef.current?.resetCursorState();
+        }
+        return;
+      }
       const followUp = resolvePlanFollowUpSubmission({
         draftText: promptForSend,
-        planMarkdown: activeProposedPlan.planMarkdown,
+        planMarkdown:
+          usePlanDraftStore.getState().drafts[planDraftKey(routeThreadKey, activeProposedPlan.id)]
+            ?.markdown ?? activeProposedPlan.planMarkdown,
         planModeAvailable: sendInteractionModeEnabled,
       });
       const outgoingFollowUpText = formatOutgoingPrompt({
@@ -5891,290 +6344,35 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
-  async function onSubmitPlanFollowUp({
-    text,
-    context,
-    interactionMode: nextInteractionMode,
-    implementsPlan,
-  }: {
-    text: string;
-    context?: ReturnType<typeof buildMessageContext>;
-    interactionMode: "default" | "plan";
-    /** Only Implement completes the plan; refining in build mode leaves it active. */
-    implementsPlan: boolean;
-  }) {
-    if (
-      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
-      !activeThread ||
-      !isServerThread ||
-      isSendBusy ||
-      isConnecting ||
-      sendInFlightRef.current
-    ) {
-      return false;
-    }
-
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return false;
-    }
-
-    const sendCtx = composerRef.current?.getSendContext();
-    // Refining stays in plan mode, so it needs the toggle; implementing does not.
-    if (
-      !sendCtx?.providerAvailable ||
-      (nextInteractionMode === "plan" && !sendCtx.interactionModeEnabled)
-    ) {
-      return false;
-    }
-    const {
-      selectedProvider: ctxSelectedProvider,
-      selectedModel: ctxSelectedModel,
-      selectedProviderModels: ctxSelectedProviderModels,
-      selectedPromptEffort: ctxSelectedPromptEffort,
-      selectedModelSelection: ctxSelectedModelSelection,
-    } = sendCtx;
-
-    const threadIdForSend = activeThread.id;
-    const messageIdForSend = newMessageId();
-    const messageCreatedAt = new Date().toISOString();
-    const outgoingMessageText = formatOutgoingPrompt({
-      provider: ctxSelectedProvider,
-      model: ctxSelectedModel,
-      models: ctxSelectedProviderModels,
-      effort: ctxSelectedPromptEffort,
-      text: trimmed,
+  const onImplementPlanInNewThreadStable = useStableCallback(async () => {
+    if (!activeProposedPlan) return;
+    const draft =
+      usePlanDraftStore.getState().drafts[planDraftKey(routeThreadKey, activeProposedPlan.id)];
+    await submitPlanAction({
+      kind: "implement-new-thread",
+      planId: activeProposedPlan.id,
+      markdown: draft?.markdown ?? activeProposedPlan.planMarkdown,
+      text: "",
+      images: draft?.images ?? [],
     });
+  });
 
-    sendInFlightRef.current = true;
-    beginLocalDispatch({ preparingWorktree: false });
-    setThreadError(threadIdForSend, null);
-
-    anchorNewTurn(
-      scopedThreadKey(scopeThreadRef(activeThread.environmentId, threadIdForSend)),
-      messageIdForSend,
+  const implementTimelinePlanStable = useStableCallback((planId: string, markdown: string) => {
+    const draft = usePlanDraftStore.getState().drafts[planDraftKey(routeThreadKey, planId)];
+    void submitPlanAction({
+      kind: "implement",
+      planId,
+      markdown: draft?.markdown ?? markdown,
+      text: "",
+      images: draft?.images ?? [],
+    }).catch((error: unknown) =>
+      toastManager.add({
+        type: "error",
+        title: "Could not implement plan",
+        description: error instanceof Error ? error.message : "Try again.",
+      }),
     );
-
-    setOptimisticUserMessages((existing) => [
-      ...existing,
-      {
-        id: messageIdForSend,
-        role: "user",
-        text: outgoingMessageText,
-        ...(context ? { context } : {}),
-        runId: null,
-        createdAt: messageCreatedAt,
-        updatedAt: messageCreatedAt,
-        streaming: false,
-      },
-    ]);
-
-    const settingsResult = await persistThreadSettingsForNextTurn({
-      threadId: threadIdForSend,
-      createdAt: messageCreatedAt,
-      ...(localCheckoutBranchMismatch ? { branch: localCheckoutBranchMismatch.currentBranch } : {}),
-      runtimeMode,
-      interactionMode: nextInteractionMode,
-    });
-    let failure: AtomCommandResult<unknown, unknown> | null =
-      settingsResult._tag === "Failure" ? settingsResult : null;
-
-    if (failure === null) {
-      setComposerDraftInteractionMode(
-        scopeThreadRef(activeThread.environmentId, threadIdForSend),
-        nextInteractionMode,
-      );
-
-      const startResult = await startThreadTurn({
-        environmentId,
-        input: {
-          threadId: threadIdForSend,
-          message: {
-            messageId: messageIdForSend,
-            role: "user",
-            text: outgoingMessageText,
-            ...(context ? { context } : {}),
-            attachments: [],
-          },
-          modelSelection: ctxSelectedModelSelection,
-          titleSeed: activeThread.title,
-          runtimeMode,
-          interactionMode: nextInteractionMode,
-          ...(implementsPlan && activeProposedPlan
-            ? {
-                sourceProposedPlan: {
-                  threadId: activeThread.id,
-                  planId: activeProposedPlan.id,
-                },
-              }
-            : {}),
-          createdAt: messageCreatedAt,
-        },
-      });
-      failure = startResult._tag === "Failure" ? startResult : null;
-    }
-
-    if (failure === null) {
-      sendInFlightRef.current = false;
-      resetLocalDispatch();
-      return true;
-    }
-
-    setOptimisticUserMessages((existing) =>
-      existing.filter((message) => message.id !== messageIdForSend),
-    );
-    if (!isAtomCommandInterrupted(failure)) {
-      const error = squashAtomCommandFailure(failure);
-      setThreadError(
-        threadIdForSend,
-        error instanceof Error ? error.message : "Failed to send plan follow-up.",
-      );
-    }
-    sendInFlightRef.current = false;
-    resetLocalDispatch();
-    return false;
-  }
-
-  const onImplementPlanInNewThread = async () => {
-    if (
-      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
-      !activeThread ||
-      !activeProject ||
-      !activeProposedPlan ||
-      !isServerThread ||
-      isSendBusy ||
-      isConnecting ||
-      activeEnvironmentUnavailable ||
-      sendInFlightRef.current
-    ) {
-      return;
-    }
-
-    const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable) {
-      return;
-    }
-    const {
-      selectedProvider: ctxSelectedProvider,
-      selectedModel: ctxSelectedModel,
-      selectedProviderModels: ctxSelectedProviderModels,
-      selectedPromptEffort: ctxSelectedPromptEffort,
-      selectedModelSelection: ctxSelectedModelSelection,
-    } = sendCtx;
-
-    const createdAt = new Date().toISOString();
-    const nextThreadId = newThreadId();
-    const planMarkdown = activeProposedPlan.planMarkdown;
-    const implementationPrompt = buildPlanImplementationPrompt(planMarkdown);
-    const outgoingImplementationPrompt = formatOutgoingPrompt({
-      provider: ctxSelectedProvider,
-      model: ctxSelectedModel,
-      models: ctxSelectedProviderModels,
-      effort: ctxSelectedPromptEffort,
-      text: implementationPrompt,
-    });
-    const nextThreadTitle = truncate(buildPlanImplementationThreadTitle(planMarkdown));
-    const nextThreadModelSelection: ModelSelection = ctxSelectedModelSelection;
-
-    sendInFlightRef.current = true;
-    beginLocalDispatch({ preparingWorktree: false });
-    const finish = () => {
-      sendInFlightRef.current = false;
-      resetLocalDispatch();
-    };
-
-    const createResult = await createThread({
-      environmentId,
-      input: {
-        threadId: nextThreadId,
-        projectId: activeProject.id,
-        title: nextThreadTitle,
-        modelSelection: nextThreadModelSelection,
-        runtimeMode: defaultRuntimeMode,
-        interactionMode: "default",
-        branch: activeThreadBranch,
-        worktreePath: activeThread.worktreePath,
-        createdAt,
-      },
-    });
-    let failure: AtomCommandResult<unknown, unknown> | null =
-      createResult._tag === "Failure" ? createResult : null;
-
-    if (failure === null) {
-      const startResult = await startThreadTurn({
-        environmentId,
-        input: {
-          threadId: nextThreadId,
-          message: {
-            messageId: newMessageId(),
-            role: "user",
-            text: outgoingImplementationPrompt,
-            attachments: [],
-          },
-          modelSelection: ctxSelectedModelSelection,
-          titleSeed: nextThreadTitle,
-          runtimeMode: defaultRuntimeMode,
-          interactionMode: "default",
-          sourceProposedPlan: {
-            threadId: activeThread.id,
-            planId: activeProposedPlan.id,
-          },
-          createdAt,
-        },
-      });
-      failure = startResult._tag === "Failure" ? startResult : null;
-    }
-
-    if (failure === null) {
-      const startedResult = await settlePromise(() =>
-        waitForStartedServerThread(scopeThreadRef(activeThread.environmentId, nextThreadId)),
-      );
-      failure = startedResult._tag === "Failure" ? startedResult : null;
-    }
-
-    if (failure === null) {
-      const navigateResult = await settlePromise(() =>
-        navigate({
-          to: "/$environmentId/$threadId",
-          params: {
-            environmentId: activeThread.environmentId,
-            threadId: nextThreadId,
-          },
-        }),
-      );
-      failure = navigateResult._tag === "Failure" ? navigateResult : null;
-    }
-
-    if (failure !== null) {
-      const cleanupResult = await deleteThread({
-        environmentId,
-        input: {
-          threadId: nextThreadId,
-        },
-      });
-      if (cleanupResult._tag === "Failure" && !isAtomCommandInterrupted(cleanupResult)) {
-        console.warn(
-          "Failed to clean up implementation thread after start failure.",
-          squashAtomCommandFailure(cleanupResult),
-        );
-      }
-      if (!isAtomCommandInterrupted(failure)) {
-        const error = squashAtomCommandFailure(failure);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not start implementation thread",
-            description:
-              error instanceof Error
-                ? error.message
-                : "An error occurred while creating the new thread.",
-          }),
-        );
-      }
-    }
-    finish();
-  };
-  const onImplementPlanInNewThreadStable = useStableCallback(onImplementPlanInNewThread);
+  });
 
   // Keyed on the fields it reads: the thread and runtime objects change with
   // every streamed event, and a new function re-renders the whole model picker.
@@ -6499,6 +6697,13 @@ export default function ChatView(props: ChatViewProps) {
             ? addPullRequestsSurfaceStable
             : undefined,
       }}
+      plan={{
+        projection: serverProjection,
+        workspaceRoot: activeWorkspaceRoot,
+        currentPlanId: currentProposedPlanId,
+        busy: isSendBusy || isConnecting || planSubmitting || !latestRunSettled,
+        onSubmit: submitPlanActionStable,
+      }}
       files={{
         projectName: activeProject?.title ?? null,
         workspaceRoot: activeWorkspaceRoot,
@@ -6694,6 +6899,15 @@ export default function ChatView(props: ChatViewProps) {
             </div>
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
               <MessagesTimeline
+                planBusy={
+                  planSubmitting ||
+                  preparingPlanImages ||
+                  isSendBusy ||
+                  isConnecting ||
+                  !latestRunSettled
+                }
+                onImplementPlan={implementTimelinePlanStable}
+                currentPlanId={currentProposedPlanId}
                 citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
                 citationHistoryLoading={threadDetailLoading}
                 {...(!paintOnlyDisplayedTimeline
@@ -6953,6 +7167,8 @@ export default function ChatView(props: ChatViewProps) {
                               canInterrupt={canInterruptRunningThread}
                               isConnecting={isConnecting}
                               isSendBusy={
+                                planSubmitting ||
+                                preparingPlanImages ||
                                 (isSendBusy && !sendQueuesBehindSetup) ||
                                 (setupQueueSendThreadKey !== null &&
                                   setupQueueSendThreadKey === activeThreadKey) ||
@@ -7000,7 +7216,17 @@ export default function ChatView(props: ChatViewProps) {
                               activePendingQuestionIndex={activePendingQuestionIndex}
                               respondingRequestIds={respondingRequestIds}
                               showPlanFollowUpPrompt={showPlanFollowUpPrompt}
-                              activeProposedPlan={activeProposedPlan}
+                              activeProposedPlan={
+                                activeProposedPlan
+                                  ? {
+                                      ...activeProposedPlan,
+                                      itemId: proposedPlanItemId(
+                                        serverProjection,
+                                        activeProposedPlan.id,
+                                      ),
+                                    }
+                                  : null
+                              }
                               threadSyncPhase={
                                 activeEnvironmentUnavailable ? null : threadSyncPhase
                               }

@@ -1,3 +1,8 @@
+import { proposedPlanItemId } from "../proposedPlan";
+
+import { useThreadProjection } from "../state/entities";
+import { findLatestProposedPlan } from "../session-logic";
+
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
@@ -551,6 +556,8 @@ function OpenCommandPaletteDialog(props: {
       : activeThread
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
+  const planProjection = useThreadProjection(referenceThreadRef)?.projection ?? null;
+  const latestProposedPlan = findLatestProposedPlan(planProjection, activeThread?.latestRun?.runId);
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
   const activeThreadServerConfig = useServerConfigs().get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
@@ -1349,6 +1356,25 @@ function OpenCommandPaletteDialog(props: {
       icon: <MessageSquareDashedIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.newWithoutProject",
       run: () => startScratchThread(scratchTargetEnvironmentId),
+    });
+  }
+
+  if (referenceThreadRef && latestProposedPlan) {
+    actionItems.push({
+      kind: "action",
+      value: "action:open-plan",
+      title: "Open plan",
+      searchTerms: ["plan", "document", "review"],
+      icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore
+          .getState()
+          .openPlan(
+            referenceThreadRef,
+            latestProposedPlan.id,
+            proposedPlanItemId(planProjection, latestProposedPlan.id),
+          );
+      },
     });
   }
 
