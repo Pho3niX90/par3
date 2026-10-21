@@ -1285,6 +1285,15 @@ type WsRpcLayer = Layer.Layer<
   WsRpcServices
 >;
 
+// Annotated so the record is checked in its own statement instead of inferred
+// inside `toLayer`, where it overran TypeScript's instantiation budget.
+type WsRpcHandlers = {
+  readonly [Current in RpcGroup.Rpcs<typeof ServerWsRpcGroup> as Current["_tag"]]: Rpc.ToHandlerFn<
+    Current,
+    WsRpcServices
+  >;
+};
+
 const makeLayerWsRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
@@ -1912,7 +1921,7 @@ const makeLayerWsRpc = (
         return result;
       });
 
-      const handlers = ServerWsRpcGroup.of({
+      const handlers: WsRpcHandlers = ServerWsRpcGroup.of({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
