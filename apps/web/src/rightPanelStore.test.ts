@@ -1206,3 +1206,61 @@ describe("rightPanelStore", () => {
     expect(store.getUserActionRevision(refA)).toBe(revision);
   });
 });
+
+it("preserves identified plan surfaces and removes legacy plans on migration", () => {
+  const result = migratePersistedRightPanelState({
+    byThreadKey: {
+      "env:thread": {
+        isOpen: true,
+        activeSurfaceId: "plan:one",
+        surfaces: [
+          { kind: "plan", id: "plan" },
+          { kind: "plan", id: "plan:one", planId: "one" },
+        ],
+      },
+    },
+  });
+  expect(result.byThreadKey["env:thread"]?.surfaces).toEqual([
+    { kind: "plan", id: "plan:one", planId: "one" },
+  ]);
+  expect(result.byThreadKey["env:thread"]?.activeSurfaceId).toBe("plan:one");
+});
+it("opens and remembers a plan tab for reopening", () => {
+  useRightPanelStore.getState().openPlan(refA, "one", "item");
+  expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+    id: "plan:one",
+    kind: "plan",
+    planId: "one",
+    itemId: "item",
+  });
+  useRightPanelStore.getState().closeSurface(refA, "plan:one");
+  expect(useClosedViewStore.getState().entries[0]).toMatchObject({
+    surface: { kind: "plan", planId: "one" },
+  });
+});
+
+it("replaces the thread's plan tab and patches its turn item id", () => {
+  const store = useRightPanelStore.getState();
+  store.open(refA, "diff");
+  store.openPlan(refA, "old", "old-item");
+  store.openPlan(refA, "new");
+  store.openPlan(refA, "new", "new-item");
+  expect(
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+  ).toEqual([
+    { id: "diff", kind: "diff" },
+    { id: "plan:new", kind: "plan", planId: "new", itemId: "new-item" },
+  ]);
+  store.openProactive(
+    refA,
+    { id: "plan:latest", kind: "plan", planId: "latest", itemId: "latest-item" },
+    store.getUserActionRevision(refA),
+  );
+  const plans = selectThreadRightPanelState(
+    useRightPanelStore.getState().byThreadKey,
+    refA,
+  ).surfaces.filter((surface) => surface.kind === "plan");
+  expect(plans).toEqual([
+    { id: "plan:latest", kind: "plan", planId: "latest", itemId: "latest-item" },
+  ]);
+});

@@ -9,6 +9,7 @@ import {
 } from "../rightPanelStore";
 import type { TurnDiffSummary } from "../types";
 import {
+  shouldOpenProactivePlan,
   observeProactivePanelUserChoice,
   resolveProactiveTurnDiffAction,
   shouldOpenProactivePullRequest,
@@ -34,6 +35,12 @@ export function useProactivePanels(input: {
   readonly runningTurnId: RunId | null;
   readonly latestRun: { readonly runId: RunId; readonly status: string } | null;
   readonly latestRunSettled: boolean;
+  readonly proposedPlan?: {
+    id: string;
+    runId: string | null;
+    status: string;
+    itemId?: string | undefined;
+  } | null;
   readonly turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   readonly isGitRepo: boolean | undefined;
   readonly linkedPullRequest: ThreadLinkedPullRequest | null;
@@ -68,6 +75,10 @@ export function useProactivePanels(input: {
   const proactivePanelObservationRef = useRef<ReturnType<
     typeof observeProactivePanelUserChoice
   > | null>(null);
+  const planId = input.proposedPlan?.id;
+  const planRunId = input.proposedPlan?.runId;
+  const planStatus = input.proposedPlan?.status;
+  const planItemId = input.proposedPlan?.itemId;
   const threadKey = threadRef ? scopedThreadKey(threadRef) : null;
 
   useEffect(() => {
@@ -144,6 +155,33 @@ export function useProactivePanels(input: {
     }
     if (threadDetailLoading) return;
 
+    if (
+      shouldOpenProactivePlan({
+        enabled: proactivePanelsEnabled,
+        previousRunningTurnId,
+        runningTurnId: activeRunningTurnId,
+        plan: planId ? { id: planId, runId: planRunId ?? null, status: planStatus ?? "" } : null,
+        latestRunId: activeLatestRun?.runId ?? null,
+        latestRunSettled,
+      }) &&
+      planId
+    ) {
+      proactivePanelObservationRef.current = {
+        ...proactivePanelObservationRef.current,
+        runningTurnId: null,
+      };
+      panels.openProactive(
+        threadRef,
+        {
+          id: `plan:${planId}`,
+          kind: "plan",
+          planId,
+          ...(planItemId ? { itemId: planItemId } : {}),
+        },
+        userActionRevision,
+      );
+      return;
+    }
     const settledTurnId = latestRunSettled ? (activeLatestRun?.runId ?? null) : null;
     const newlyCompletedTurnId = shouldOpenProactiveTurnDiff({
       previousRunningTurnId,
@@ -207,5 +245,9 @@ export function useProactivePanels(input: {
     threadRef,
     turnDiffSummaries,
     visiblePullRequestCount,
+    planId,
+    planRunId,
+    planStatus,
+    planItemId,
   ]);
 }

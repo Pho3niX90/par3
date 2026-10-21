@@ -1,3 +1,14 @@
+import {
+  normalizePlanMarkdownForExport,
+  planCommentQuote,
+  planSectionsWithDefinitions,
+} from "./proposedPlan";
+import { insertPlanImageReferences } from "./proposedPlan";
+import {
+  buildPlanFeedbackPrompt,
+  collectReferencedPlanImages,
+  pruneMissingImageReferences,
+} from "./proposedPlan";
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolvePlanFollowUpSubmission } from "./proposedPlan";
@@ -46,4 +57,79 @@ describe("resolvePlanFollowUpSubmission", () => {
       implementsPlan: false,
     });
   });
+});
+
+describe("plan feedback", () => {
+  it("includes section context, comments, and only an explicitly edited plan", () => {
+    const comments = [
+      {
+        id: "c",
+        sectionId: "work-1",
+        sectionTitle: "Work",
+        quote: "Use the old approach",
+        text: "Use the new approach",
+        imageIds: [],
+      },
+    ];
+    const prompt = buildPlanFeedbackPrompt({ comments });
+    expect(prompt).toContain("## Work\n> Use the old approach\n\nUse the new approach");
+    expect(prompt).not.toContain("## Edited plan");
+    expect(buildPlanFeedbackPrompt({ comments, editedMarkdown: "# Revised" })).toContain(
+      "## Edited plan\n\n# Revised",
+    );
+  });
+  it("collects image ids once and prunes unavailable images without touching paths or other context", () => {
+    const markdown =
+      "![one](t3-context://v1/image/image_a) ![two](t3-context://v1/image/image_b) ![again](t3-context://v1/image/image_a) ![local](/tmp/screen.png) [file](t3-context://v1/file/file_a)";
+    expect(collectReferencedPlanImages(markdown)).toEqual(["image_a", "image_b"]);
+    const pruned = pruneMissingImageReferences(markdown, new Set(["image_a"]));
+    expect(pruned).not.toContain("image_b");
+    expect(pruned).toContain("![local](/tmp/screen.png)");
+    expect(pruned).toContain("[file](t3-context://v1/file/file_a)");
+  });
+});
+
+it("inserts images at a captured cursor or replaces its selection", () => {
+  expect(insertPlanImageReferences("before after", "![screen](image)", { start: 7, end: 7 })).toBe(
+    "before \n\n![screen](image)\n\nafter",
+  );
+  expect(insertPlanImageReferences("before replace after", "image", { start: 7, end: 14 })).toBe(
+    "before \n\nimage\n\n after",
+  );
+  expect(insertPlanImageReferences("comment", "image")).toBe("comment\n\nimage\n\n");
+});
+
+it("exports internal image references as portable text placeholders", () => {
+  expect(
+    normalizePlanMarkdownForExport(
+      "# Plan\n![screen.png](t3-context://v1/image/image_a)\n![local](/tmp/image.png)\n",
+    ),
+  ).toBe("# Plan\n[image: screen.png]\n![local](/tmp/image.png)\n");
+});
+it("removes image references before shortening comment quotes", () => {
+  const quote =
+    "a".repeat(220) + " ![screenshot](t3-context://v1/image/image_" + "b".repeat(100) + ") end";
+  expect(planCommentQuote(quote)).not.toContain("t3-context");
+  expect(
+    buildPlanFeedbackPrompt({
+      comments: [
+        {
+          id: "c",
+          sectionId: "s",
+          sectionTitle: "Section",
+          text: "Change this",
+          imageIds: [],
+          quote,
+        },
+      ],
+    }),
+  ).not.toContain("![");
+});
+it("keeps each section and its reference definitions together", () => {
+  const sections = planSectionsWithDefinitions(
+    '# Plan\nSee [design][ref].\n## Work\nSee [design][ref].\n\n[ref]: https://example.com "Design"',
+  );
+  expect(sections.map((section) => section.title)).toEqual(["Plan", "Work"]);
+  for (const section of sections)
+    expect(section.markdown).toContain('[ref]: https://example.com "Design"');
 });

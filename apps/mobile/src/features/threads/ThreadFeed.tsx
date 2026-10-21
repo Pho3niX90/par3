@@ -1,4 +1,5 @@
 import { Button } from "../../components/ui/Button";
+import { ThreadPlanCard } from "./ThreadPlanCard";
 import * as Dialog from "../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import { useWorkspaceSettledContentWidth } from "../layout/workspace-content-width";
@@ -195,6 +196,7 @@ import {
   isContextCompactionActivityGroup,
   isContextHandoffActivityGroup,
   isSecretRequestActivityGroup,
+  isProposedPlanActivityGroup,
   type ThreadFeedEntry,
   type ThreadFeedLatestRun,
 } from "../../lib/threadActivity";
@@ -1135,6 +1137,15 @@ function renderFeedEntry(
           ) : null
         }
         onToggle={() => props.onToggleWorkGroup(entry.groupId, entry.id)}
+      />
+    );
+  }
+
+  if (entry.type === "activity-group" && isProposedPlanActivityGroup(entry)) {
+    return (
+      <ThreadPlanCard
+        environmentId={props.environmentId}
+        projectedItem={entry.activities[0]!.projectedItem}
       />
     );
   }
@@ -2560,7 +2571,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         if (entry.activities[0]?.projectedItem.item.type === "subagent") {
           return undefined;
         }
-        if (isContextCompactionActivityGroup(entry) || isContextHandoffActivityGroup(entry)) {
+        if (
+          isProposedPlanActivityGroup(entry) ||
+          isContextCompactionActivityGroup(entry) ||
+          isContextHandoffActivityGroup(entry)
+        ) {
           return undefined;
         }
         if (

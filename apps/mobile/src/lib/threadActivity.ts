@@ -358,6 +358,13 @@ export function isContextHandoffActivityGroup(entry: ThreadFeedActivityGroup): b
   );
 }
 
+export function isProposedPlanActivityGroup(entry: ThreadFeedActivityGroup): boolean {
+  return (
+    entry.activities.length === 1 &&
+    entry.activities[0]?.projectedItem.item.type === "proposed_plan"
+  );
+}
+
 export function isSecretRequestActivityGroup(entry: ThreadFeedActivityGroup): boolean {
   return (
     entry.activities.length === 1 &&
@@ -966,6 +973,7 @@ function groupAdjacentActivities(
 
     const isStandaloneActivity =
       entry.activity.workEntry.questionAnswer !== undefined ||
+      entry.activity.projectedItem.item.type === "proposed_plan" ||
       entry.activity.projectedItem.item.type === "compaction" ||
       entry.activity.projectedItem.item.type === "handoff" ||
       entry.activity.projectedItem.item.type === "notification";
@@ -1169,6 +1177,7 @@ function deriveThreadFeedRunFolds(
                   activity.workEntry.questionAnswer !== undefined ||
                   activity.projectedItem.item.type === "notification" ||
                   activity.projectedItem.item.type === "handoff" ||
+                  activity.projectedItem.item.type === "proposed_plan" ||
                   // A child still working outlives its settled launching run;
                   // its group stays visible while any member is live.
                   isLiveSubagentTurnItem(activity.projectedItem.item),
@@ -1564,6 +1573,7 @@ function isWorkLogFeedRow(row: ThreadFeedEntry | undefined): boolean {
     (row.type === "work-toggle" ||
       row.type === "thinking" ||
       (row.type === "activity-group" &&
+        !isProposedPlanActivityGroup(row) &&
         !isContextCompactionActivityGroup(row) &&
         !isContextHandoffActivityGroup(row) &&
         row.activities.every(
@@ -1597,6 +1607,7 @@ function appendPresentedFeedEntry(
     return;
   }
   if (
+    isProposedPlanActivityGroup(entry) ||
     isContextCompactionActivityGroup(entry) ||
     isContextHandoffActivityGroup(entry) ||
     isUserInputActivityGroup(entry) ||

@@ -27,6 +27,7 @@ import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dn
 import { CSS } from "@dnd-kit/utilities";
 import {
   Smartphone,
+  FileText,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -548,6 +549,8 @@ function surfaceTitle(
   terminalLabelsById: ReadonlyMap<string, string>,
 ): string {
   switch (surface.kind) {
+    case "plan":
+      return "Plan";
     case "diff":
       return "Diff";
     case "files":
@@ -630,6 +633,8 @@ function SurfaceIcon({
   switch (surface.kind) {
     case "preview":
       return <PreviewFavicon capturedUrl={previewCapturedUrl} url={previewUrl} />;
+    case "plan":
+      return <FileText className="size-3 shrink-0" />;
     case "diff":
       return <FileDiff className="size-3 shrink-0" />;
     case "files":

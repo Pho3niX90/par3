@@ -71,6 +71,7 @@ export function useMarkdownPreviewStyles(): MarkdownPreviewStyles {
 
 export function FileMarkdownPreview(props: {
   readonly cwd: string;
+  readonly baseDirectory?: string;
   readonly captured?: boolean;
   readonly environmentId: EnvironmentId;
   readonly markdown: string;
@@ -90,9 +91,9 @@ export function FileMarkdownPreview(props: {
     await settlePromise(async () => props.onRefresh?.());
     setIsPullRefreshing(false);
   };
-  const markdownDirectory = getBrowseDirectoryPath(
-    resolveWorkspaceFilePath(props.cwd, props.relativePath),
-  );
+  const markdownDirectory =
+    props.baseDirectory ??
+    getBrowseDirectoryPath(resolveWorkspaceFilePath(props.cwd, props.relativePath));
   const renderImage: MarkdownImageRenderer = (image) => {
     const media = resolveMobileMarkdownMediaSource(image.href, {
       threadId: props.threadId ?? undefined,

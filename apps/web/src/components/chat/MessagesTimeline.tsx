@@ -225,6 +225,9 @@ interface MessagesTimelineProps {
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
   onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
   onSendAppMessage?: (text: string) => Promise<void>;
+  onImplementPlan?: (planId: string, markdown: string) => void;
+  currentPlanId?: string | null;
+  planBusy?: boolean;
   onRunShellCommand?: (command: string) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -325,6 +328,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
   onRevertToTurnCount,
   onUseArtifactTemplate = NOOP_USE_ARTIFACT_TEMPLATE,
   onSendAppMessage,
+  onImplementPlan,
+  currentPlanId = null,
+  planBusy = false,
   onRunShellCommand,
   isRevertingCheckpoint,
   onImageExpand,
@@ -913,6 +919,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onFileOpen,
     onUseArtifactTemplate,
     onSendAppMessage,
+    onImplementPlan,
+    currentPlanId,
+    planBusy,
     onAppFullscreenChange,
     onFileDownload,
     openPullRequest,

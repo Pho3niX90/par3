@@ -224,11 +224,20 @@ export function ProposedPlanTimelineRow({
   return (
     <div className="min-w-0 px-1 py-0.5">
       <ProposedPlanCard
+        busy={ctx.planBusy}
+        planId={row.proposedPlan.id}
+        itemId={row.id}
+        onImplement={
+          row.proposedPlan.status === "active" &&
+          row.proposedPlan.id === ctx.currentPlanId &&
+          ctx.onImplementPlan
+            ? () => ctx.onImplementPlan?.(row.proposedPlan.id, row.proposedPlan.planMarkdown)
+            : undefined
+        }
         planMarkdown={row.proposedPlan.planMarkdown}
         environmentId={ctx.activeThreadEnvironmentId}
         threadRef={ctx.threadRef ?? undefined}
         cwd={ctx.markdownCwd}
-        workspaceRoot={ctx.workspaceRoot}
         findActive={ctx.findActive}
       />
     </div>

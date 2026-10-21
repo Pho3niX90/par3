@@ -1,3 +1,4 @@
+import { shouldOpenProactivePlan } from "./ChatView.logic";
 import {
   boundAttachmentIds,
   findRecordedWorktreeSetup,
@@ -1189,5 +1190,36 @@ describe("boundAttachmentIds", () => {
     expect(
       boundAttachmentIds([{ id: "upload-1" }, {}], [{ id: "local-1" }, { id: "local-2" }]),
     ).toEqual(["upload-1", "local-2"]);
+  });
+});
+
+describe("proactive plans", () => {
+  const input = {
+    enabled: true,
+    previousRunningTurnId: "run",
+    runningTurnId: null,
+    plan: { id: "plan", runId: "run", status: "active" },
+    latestRunId: "run",
+    latestRunSettled: true,
+  };
+  it("opens only for an observed running-to-settled transition", () => {
+    expect(shouldOpenProactivePlan(input)).toBe(true);
+    for (const previousRunningTurnId of [undefined, null, "other"])
+      expect(shouldOpenProactivePlan({ ...input, previousRunningTurnId })).toBe(false);
+  });
+  it("does not reopen after the transition is consumed, a reload or a thread switch", () => {
+    expect(shouldOpenProactivePlan({ ...input, previousRunningTurnId: null })).toBe(false);
+    expect(shouldOpenProactivePlan({ ...input, previousRunningTurnId: undefined })).toBe(false);
+  });
+  it("does not open disabled, running, inactive, old or unsettled plans", () => {
+    for (const change of [
+      { enabled: false },
+      { runningTurnId: "run" },
+      { plan: { ...input.plan, status: "completed" } },
+      { latestRunId: "other" },
+      { latestRunSettled: false },
+      { plan: null },
+    ])
+      expect(shouldOpenProactivePlan({ ...input, ...change })).toBe(false);
   });
 });

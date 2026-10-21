@@ -1,5 +1,6 @@
 import {
   MessageId,
+  PlanId,
   CheckpointId,
   CheckpointRef,
   CheckpointScopeId,
@@ -23,6 +24,7 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  isProposedPlanActivityGroup,
   buildThreadFeed,
   createThreadFeedCache,
   deriveThreadFeedPresentation,
@@ -1639,5 +1641,65 @@ describe("streamed feed updates", () => {
       );
     expect(showsDelegation(steps[2]!)).toBe(true);
     expect(showsDelegation(steps[3]!)).toBe(false);
+  });
+});
+
+describe("proposed plan cards", () => {
+  const plan: OrchestrationV2TurnItem = {
+    ...base("plan-item", "2026-06-20T00:00:02.500Z", 2),
+    type: "proposed_plan",
+    planId: PlanId.make("plan"),
+    markdown: "# Plan\n\nDo the work",
+    streaming: false,
+  };
+  it("keeps plans standalone between adjacent tool activities", () => {
+    const feed = buildThreadFeed([
+      projected(command(), 0),
+      projected(plan, 1),
+      projected({ ...command(), id: TurnItemId.make("after-plan") }, 2),
+    ]);
+    const groups = feed.filter((entry) => entry.type === "activity-group");
+    expect(groups.map((group) => group.activities.length)).toEqual([1, 1, 1]);
+    expect(groups.map(isProposedPlanActivityGroup)).toEqual([false, true, false]);
+    expect(groups[1]?.activities[0]?.projectedItem.sourceItemId).toBe(plan.id);
+  });
+  it("keeps plans visible after their run folds and a newer run starts", () => {
+    const feed = buildThreadFeed([
+      projected(userMessage(), 0),
+      projected(command(), 1),
+      projected(plan, 2),
+      projected(assistantMessage(), 3),
+    ]);
+    for (const latest of [
+      {
+        runId,
+        status: "completed" as const,
+        startedAt: "2026-06-20T00:00:01.000Z",
+        completedAt: "2026-06-20T00:00:03.000Z",
+      },
+      {
+        runId: RunId.make("newer"),
+        status: "running" as const,
+        startedAt: "2026-06-20T00:01:01.000Z",
+        completedAt: null,
+      },
+    ]) {
+      const visible = deriveThreadFeedPresentation(feed, latest, new Set());
+      expect(
+        visible.some(
+          (entry) => entry.type === "activity-group" && isProposedPlanActivityGroup(entry),
+        ),
+      ).toBe(true);
+    }
+  });
+  it("preserves inherited plan ownership for the detail route", () => {
+    const entry = buildThreadFeed([projected(plan, 0, "inherited")])[0];
+    expect(entry?.type).toBe("activity-group");
+    if (entry?.type !== "activity-group") throw new Error("Expected plan group");
+    expect(isProposedPlanActivityGroup(entry)).toBe(true);
+    expect(entry.activities[0]?.projectedItem).toMatchObject({
+      sourceThreadId,
+      sourceItemId: plan.id,
+    });
   });
 });
