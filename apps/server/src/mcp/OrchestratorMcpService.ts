@@ -295,6 +295,25 @@ function isModelVisible(
   return model.isCustom || !(hiddenModels?.includes(model.slug) ?? false);
 }
 
+/**
+ * Not a constraint: a window can cover only some of the provider's models (Antigravity
+ * reports Gemini and Claude/GPT buckets separately), so the caller decides. Windows whose
+ * reset has passed are stale until the next probe and are skipped.
+ */
+function exhaustedUsageWindows(provider: ServerProvider, now: number) {
+  return (provider.usageLimits?.windows ?? []).flatMap((window) => {
+    if (window.usedPercent < 100) return [];
+    const resetsAt = window.resetsAt === undefined ? undefined : Date.parse(window.resetsAt);
+    if (resetsAt !== undefined && resetsAt <= now) return [];
+    return [
+      {
+        label: window.label,
+        ...(window.resetsAt === undefined ? {} : { resetsAt: window.resetsAt }),
+      },
+    ];
+  });
+}
+
 function providerConstraints(
   provider: ServerProvider | undefined,
   supportsOrchestrationV2: boolean,
@@ -2162,6 +2181,7 @@ const make = Effect.gen(function* () {
       // Mirrors delegateTask, which routes on the stored selection whatever its status.
       const storedSidekick = parent?.thread.sidekickModelSelection ?? null;
       const defaultSelection = storedSidekick ?? parent?.thread.modelSelection;
+      const now = yield* Clock.currentTimeMillis;
       return {
         parentThreadId: parent?.thread.id ?? null,
         inheritedProviderInstanceId: parent?.thread.modelSelection.instanceId ?? null,
@@ -2200,6 +2220,7 @@ const make = Effect.gen(function* () {
             provider,
             orchestrationCapableInstanceIds.has(provider.instanceId),
           );
+          const exhaustedUsageLimits = exhaustedUsageWindows(provider, now);
           return {
             providerInstanceId: provider.instanceId,
             driverKind: provider.driver,
@@ -2223,6 +2244,7 @@ const make = Effect.gen(function* () {
             canRunChildTask: constraints.length === 0,
             canRunCrossProviderChildTask: constraints.length === 0,
             constraints: [...constraints],
+            ...(exhaustedUsageLimits.length === 0 ? {} : { exhaustedUsageLimits }),
           };
         }),
         features: {
