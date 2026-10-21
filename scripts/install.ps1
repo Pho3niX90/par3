@@ -217,6 +217,12 @@ $shim = Join-Path $binDir "par3.cmd"
 [System.IO.File]::WriteAllText($shim, "@echo off`r`n`"$(Join-Path $targetDir 't3.exe')`" %*", (New-Object System.Text.UTF8Encoding $false))
 # p3 calls par3.cmd beside it, so `par3 update` rewriting par3.cmd moves both.
 [System.IO.File]::WriteAllText((Join-Path $binDir "p3.cmd"), "@echo off`r`n`"%~dp0par3.cmd`" %*", (New-Object System.Text.UTF8Encoding $false))
+# Pruning keeps what this shim points at; a background service cannot see $binDir otherwise.
+$launchers = Join-Path $t3Home "runtime\launchers"
+$shimPath = (Resolve-Path $shim).Path
+if (-not ((Test-Path $launchers) -and ((Get-Content $launchers) -contains $shimPath))) {
+  [System.IO.File]::AppendAllText($launchers, "$shimPath`r`n", (New-Object System.Text.UTF8Encoding $false))
+}
 if ($interactive) { [Console]::Error.Write("`r$esc[2K") }
 [Console]::Error.WriteLine("  ${green}Installed Par3 $version$reset`n")
 if (($env:PATH -split ";") -notcontains $binDir) {
