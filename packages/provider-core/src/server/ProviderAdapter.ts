@@ -357,6 +357,8 @@ export class ProviderAdapterEventStreamError extends Schema.TaggedError<Provider
     driver: ProviderDriverKind,
     providerSessionId: ProviderSessionId,
     cause: Schema.optional(Schema.Defect()),
+    /** The stream ended because its thread was detached on purpose, not because the provider failed. */
+    detached: Schema.optional(Schema.Boolean),
   },
 ) {
   override get message(): string {

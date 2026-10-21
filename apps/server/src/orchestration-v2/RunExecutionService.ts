@@ -886,6 +886,21 @@ export const layer: Layer.Layer<
           failure,
           threadDisposition: "reusable",
         });
+        const makeInterruptedTerminalEvent = (): ProviderTerminalEvent => ({
+          type: "turn.terminal",
+          driver: input.providerThread.driver,
+          providerThreadId: input.providerThread.id,
+          providerTurnId:
+            input.attempt.providerTurnId ??
+            idAllocator.derive.providerTurn({
+              driver: input.providerThread.driver,
+              nativeTurnId: `detached:${input.attempt.id}`,
+            }),
+          runOrdinal: input.run.ordinal,
+          status: "interrupted",
+          failure: null,
+          threadDisposition: "reusable",
+        });
         const responseStreamingMode = yield* Effect.gen(function* () {
           const responseStreamingMode = yield* serverSettings.getSettings.pipe(
             Effect.map(
@@ -1441,6 +1456,16 @@ export const layer: Layer.Layer<
                 const providerThread = yield* Ref.get(latestProviderThread);
                 const latestItemOrdinal = yield* Ref.get(latestTurnItemOrdinal);
                 const openSubagents = yield* Ref.get(openRunOwnedSubagents);
+                // A detach (a workspace handoff, say) ends the turn on purpose.
+                // Recording it as a provider failure would hold the queued
+                // continuation that the detach was waiting to run.
+                const squashed = Cause.squash(cause);
+                const streamError = Schema.is(RunExecutionIngestError)(squashed)
+                  ? squashed.cause
+                  : squashed;
+                const detachedStream =
+                  Schema.is(ProviderAdapter.ProviderAdapterEventStreamError)(streamError) &&
+                  streamError.detached === true;
                 let nextRetryWarningAt = completedAt;
                 yield* writeFinalRunEvents({
                   run: input.run,
@@ -1454,10 +1479,12 @@ export const layer: Layer.Layer<
                   },
                   openRunOwnedSubagents: openSubagents,
                   completedAt,
-                  terminal: makeFailedTerminalEvent(
-                    makeProviderFailure({ cause: Cause.squash(cause), class: "unknown" }),
-                    latestItemOrdinal + 1,
-                  ),
+                  terminal: detachedStream
+                    ? makeInterruptedTerminalEvent()
+                    : makeFailedTerminalEvent(
+                        makeProviderFailure({ cause: Cause.squash(cause), class: "unknown" }),
+                        latestItemOrdinal + 1,
+                      ),
                   failureItemPersisted: false,
                   refreshAfterTurn,
                 }).pipe(
