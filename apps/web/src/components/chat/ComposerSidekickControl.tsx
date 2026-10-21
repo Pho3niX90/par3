@@ -155,7 +155,6 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
         models: selectedProvider.models,
         model: selection.model,
         modelOptions: selection.options,
-        prompt: "",
         allowPromptInjectedEffort: false,
         planModeEnabled: false,
       }) ? (
@@ -170,8 +169,6 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
                 models={selectedProvider.models}
                 model={selection.model}
                 modelOptions={selection.options}
-                prompt=""
-                onPromptChange={() => {}}
                 allowPromptInjectedEffort={false}
                 planModeEnabled={false}
                 onModelOptionsChange={(options) =>
