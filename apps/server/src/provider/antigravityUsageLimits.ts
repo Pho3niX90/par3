@@ -196,7 +196,20 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
     | { fingerprint: string; account: string; accessToken: string; expiresAt: number }
     | undefined;
   let generation = 0;
-  let reportedLimitResetsAt: number | undefined;
+  // The quota API never reports this limit, so a restart would otherwise show
+  // full quota until the agent is refused again.
+  const limitPath = path.join(input.profileDirectory, "agent-limit-resets-at");
+  let reportedLimitResetsAt = yield* fs.readFileString(limitPath).pipe(
+    Effect.map((text) => {
+      const resetsAt = Number(text.trim());
+      return Number.isFinite(resetsAt) && resetsAt > 0 ? resetsAt : undefined;
+    }),
+    Effect.orElseSucceed(() => undefined),
+  );
+  const forgetLimit = Effect.suspend(() => {
+    reportedLimitResetsAt = undefined;
+    return fs.remove(limitPath, { force: true }).pipe(Effect.ignore);
+  });
 
   const sha256 = (text: string) =>
     crypto
@@ -329,7 +342,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
     }
     const windows = [...merged.values()];
     if (reportedLimitResetsAt !== undefined && reportedLimitResetsAt <= now) {
-      reportedLimitResetsAt = undefined;
+      yield* forgetLimit;
     }
     if (reportedLimitResetsAt !== undefined) {
       windows.push({
@@ -364,13 +377,14 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
   return {
     probe,
     reportLimitReached: (resetsAt: number) =>
-      Effect.sync(() => {
+      Effect.suspend(() => {
         reportedLimitResetsAt = Math.max(reportedLimitResetsAt ?? 0, resetsAt);
+        return fs.writeFileString(limitPath, String(reportedLimitResetsAt)).pipe(Effect.ignore);
       }),
-    clear: Effect.sync(() => {
+    clear: Effect.suspend(() => {
       cached = undefined;
       generation++;
-      reportedLimitResetsAt = undefined;
+      return forgetLimit;
     }),
   };
 });

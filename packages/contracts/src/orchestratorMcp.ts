@@ -544,6 +544,15 @@ export const OrchestratorMcpProviderCapability = Schema.Struct({
   canRunChildTask: Schema.Boolean,
   canRunCrossProviderChildTask: Schema.Boolean,
   constraints: Schema.Array(Schema.String),
+  /** Windows the provider reports fully used. They may cover only some models, so they are advisory. */
+  exhaustedUsageLimits: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        label: Schema.String,
+        resetsAt: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
 });
 export type OrchestratorMcpProviderCapability = typeof OrchestratorMcpProviderCapability.Type;
 

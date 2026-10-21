@@ -23,6 +23,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as TestClock from "effect/testing/TestClock";
 import * as Schema from "effect/Schema";
 
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
@@ -1154,6 +1155,61 @@ describe("OrchestratorMcpService provider resolution", () => {
           ]);
         }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
       }),
+  );
+
+  it.effect("reports exhausted usage windows that have not reset yet", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-10-21T10:00:00.000Z"));
+      const window = { kind: "other" } as const;
+      const antigravity = {
+        ...providerSnapshot({
+          instanceId: antigravityInstanceId,
+          driver: ProviderDriverKind.make("antigravity"),
+          model: "ant-model",
+        }),
+        usageLimits: {
+          checkedAt: "2026-10-21T09:59:00.000Z",
+          windows: [
+            { ...window, id: "gemini-5h", label: "Gemini · 5-hour", usedPercent: 0 },
+            {
+              ...window,
+              id: "agent-limit",
+              label: "Agent · Limit reached",
+              usedPercent: 100,
+              resetsAt: "2026-10-24T08:00:00.000Z",
+            },
+            {
+              ...window,
+              id: "stale",
+              label: "Stale · Weekly",
+              usedPercent: 100,
+              resetsAt: "2026-10-21T09:00:00.000Z",
+            },
+          ],
+        },
+      };
+      const layerDependencies = Layer.mergeAll(
+        NodeServices.layer,
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          getThreadRecords: () => Effect.succeed(parentProjection([])),
+        }),
+        ServerSettings.layerTest(),
+        providerRegistryLayer([antigravity]),
+        adapterRegistryLayer([antigravityInstanceId]),
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      );
+
+      yield* Effect.gen(function* () {
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        const [entry] = (yield* service.capabilities(scope)).providers;
+        assert.deepEqual(entry?.exhaustedUsageLimits, [
+          { label: "Agent · Limit reached", resetsAt: "2026-10-24T08:00:00.000Z" },
+        ]);
+        assert.isTrue(entry?.canRunChildTask);
+      }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
+    }),
   );
 
   it.effect("delegation refuses hidden models but keeps an unchanged inherited one", () =>

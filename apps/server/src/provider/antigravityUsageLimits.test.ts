@@ -122,11 +122,12 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
       );
     }),
   );
-  const usage = yield* makeAntigravityUsageProbe({
+  const open = makeAntigravityUsageProbe({
     profileDirectory,
     authMethod: options.authMethod ?? "oauth-personal",
   }).pipe(Effect.provideService(HttpClient.HttpClient, http));
-  return { ...usage, requests, writeToken, tokenPath };
+  const usage = yield* open;
+  return { ...usage, reopen: open, requests, writeToken, tokenPath };
 });
 
 describe("Antigravity subscription limits", () => {
@@ -337,7 +338,7 @@ describe("Antigravity subscription limits", () => {
 
   it.effect("shows a limit the agent reported until it resets or the account signs out", () =>
     Effect.gen(function* () {
-      const { probe, reportLimitReached, clear } = yield* fixture({
+      const { probe, reportLimitReached, clear, reopen } = yield* fixture({
         summary: { groups: [] },
       });
       const now = yield* Clock.currentTimeMillis;
@@ -358,8 +359,10 @@ describe("Antigravity subscription limits", () => {
           resetsAt: DateTime.formatIso(DateTime.makeUnsafe(resetsAt!)),
         },
       ]);
+      expect((yield* (yield* reopen).probe).windows).toEqual(limited.windows);
       yield* clear;
       expect((yield* probe).unavailable?.reason).toBe("probeFailed");
+      expect((yield* (yield* reopen).probe).unavailable?.reason).toBe("probeFailed");
       yield* reportLimitReached(now - 1);
       expect((yield* probe).unavailable?.reason).toBe("probeFailed");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
