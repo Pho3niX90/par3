@@ -221,6 +221,10 @@ mkdir -p "$bin_dir"
 ln -sfn "${target_dir}/t3" "${bin_dir}/par3"
 # p3 links to par3, not the executable, so `par3 update` repointing par3 moves both.
 ln -sfn par3 "${bin_dir}/p3"
+# Pruning keeps what this launcher points at; a background service cannot see bin_dir otherwise.
+launcher="$(CDPATH='' cd -P -- "$bin_dir" && pwd)/par3"
+launchers="${t3_home}/runtime/launchers"
+grep -qxF "$launcher" "$launchers" 2>/dev/null || printf '%s\n' "$launcher" >> "$launchers"
 if "$interactive"; then printf '\r\033[2K' >&2; fi
 printf '  %sInstalled Par3 %s%s\n\n' "$green" "$version" "$reset" >&2
 case ":${PATH}:" in

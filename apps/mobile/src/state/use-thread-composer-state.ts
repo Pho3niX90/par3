@@ -58,8 +58,10 @@ import {
   removePersistedComposerAttachmentFile,
 } from "../lib/composerImages";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
+import { deriveLogicalProjectKeyFromSettings } from "@t3tools/client-runtime/state/project-grouping";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { buildThreadFeed, createThreadFeedCache } from "../lib/threadActivity";
+import { useMobileProjectGroupingSettings } from "./project-grouping";
 import { acknowledgedThreadMessagesAtom } from "./acknowledged-thread-messages";
 import { appendPendingThreadMessages } from "../features/threads/pending-thread-feed";
 import { threadAllowsProviderSwitch } from "./thread-provider-switching";
@@ -83,6 +85,7 @@ import {
   removeComposerDraftAttachment,
   scheduleUnusedComposerAttachmentCleanup,
   setComposerDraftText,
+  setLastUsedThreadSelection,
   updateComposerDraftSettings,
   useComposerDraft,
   useComposerDraftSettings,
@@ -185,8 +188,10 @@ export function useThreadComposerState() {
     selectedThread: selectedThreadShell,
     selectedThreadCreation,
     selectedThreadDetailRef,
+    selectedThreadProject,
     selectedEnvironmentRuntime,
   } = useThreadSelection();
+  const projectGroupingSettings = useMobileProjectGroupingSettings();
   const selectedThreadProjection = useSelectedThreadProjection();
   const selectedThreadVisibleTurnItems = useSelectedThreadVisibleTurnItems();
   const acknowledgedMessages = useAtomValue(acknowledgedThreadMessagesAtom);
@@ -675,6 +680,24 @@ export function useThreadComposerState() {
     const metadata = makeQueuedMessageMetadata();
     const messageId = MessageId.make(metadata.messageId);
     clearThreadComposerError(threadKey);
+    const sendRuntimeMode = draft.runtimeMode ?? thread.runtimeMode;
+    const sendInteractionMode = resolveThreadInteractionMode({
+      provider,
+      preferenceLoaded: planModePreferenceLoaded,
+      planModeEnabled,
+      draftInteractionMode: draft.interactionMode,
+      threadInteractionMode: thread.interactionMode,
+    });
+    if (selectedThreadProject) {
+      setLastUsedThreadSelection(
+        deriveLogicalProjectKeyFromSettings(selectedThreadProject, projectGroupingSettings),
+        {
+          modelSelection,
+          runtimeMode: sendRuntimeMode,
+          interactionMode: sendInteractionMode,
+        },
+      );
+    }
     const enqueuePromise = enqueueThreadOutboxMessage({
       environmentId: selectedThreadShell.environmentId,
       threadId: selectedThreadShell.id,
@@ -684,14 +707,8 @@ export function useThreadComposerState() {
       attachments,
       context: draft.context,
       modelSelection,
-      runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
-      interactionMode: resolveThreadInteractionMode({
-        provider,
-        preferenceLoaded: planModePreferenceLoaded,
-        planModeEnabled,
-        draftInteractionMode: draft.interactionMode,
-        threadInteractionMode: thread.interactionMode,
-      }),
+      runtimeMode: sendRuntimeMode,
+      interactionMode: sendInteractionMode,
       ...(followUpDispatchMode === null ? {} : { dispatchMode: followUpDispatchMode }),
       createdAt: metadata.createdAt,
     });
