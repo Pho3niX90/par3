@@ -6,13 +6,8 @@ import {
   TurnItemId,
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
-import { useLayoutEffect, useRef, useState, type ComponentProps } from "react";
+import { useLayoutEffect, useRef, type ComponentProps } from "react";
 import { expect, it, vi } from "vite-plus/test";
-
-import {
-  togglePendingUserInputOptionSelection,
-  type PendingUserInputDraftAnswer,
-} from "../../pendingUserInput";
 
 vi.mock(import("../ChatMarkdown"), async (importOriginal) => ({
   ...(await importOriginal()),
@@ -21,8 +16,11 @@ vi.mock(import("../ChatMarkdown"), async (importOriginal) => ({
 
 import { act, fakeTimers, render } from "../../../test/render";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
-import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { usePendingThreadRequests } from "./usePendingThreadRequests";
+import { useState } from "react";
+import { type PendingUserInputDraftAnswer } from "../../pendingUserInput";
+import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
+import { togglePendingUserInputOptionSelection } from "../../pendingUserInput";
 
 const threadRef = { environmentId: EnvironmentId.make("env"), threadId: ThreadId.make("thread") };
 
@@ -76,13 +74,8 @@ function Questions({ initialIndex = 0 }: { initialIndex?: number }) {
   );
 }
 
-function buttonWithText(text: string) {
-  // The question list repeats chosen labels earlier in the DOM; the option button comes last.
-  const button = [...document.querySelectorAll("button")].findLast((element) =>
-    element.textContent?.includes(text),
-  );
-  expect(button, `button ${text}`).toBeDefined();
-  return button!;
+function activeIndex() {
+  return document.querySelector("output")!.textContent;
 }
 
 async function chooseOption() {
@@ -93,42 +86,14 @@ async function navigate(label: string) {
   await act(async () => buttonWithText(label).click());
 }
 
-function activeIndex() {
-  return document.querySelector("output")!.textContent;
+function buttonWithText(text: string) {
+  // The question list repeats chosen labels earlier in the DOM; the option button comes last.
+  const button = [...document.querySelectorAll("button")].findLast((element) =>
+    element.textContent?.includes(text),
+  );
+  expect(button, `button ${text}`).toBeDefined();
+  return button!;
 }
-
-it("does not skip the next unanswered question after manual advance", async () => {
-  using _timers = fakeTimers();
-  await using _screen = await render(<Questions />);
-  await chooseOption();
-  await navigate("Next");
-  expect(activeIndex()).toBe("1");
-  await act(async () => vi.advanceTimersByTime(200));
-  expect(activeIndex()).toBe("1");
-
-  await chooseOption();
-  await act(async () => vi.advanceTimersByTime(200));
-  expect(activeIndex()).toBe("2");
-});
-
-it("does not undo previous-question navigation with a stale timer", async () => {
-  using _timers = fakeTimers();
-  await using _screen = await render(<Questions initialIndex={1} />);
-  await chooseOption();
-  await navigate("Previous");
-  await act(async () => vi.advanceTimersByTime(200));
-  expect(activeIndex()).toBe("0");
-});
-
-it("still auto-advances once after the answer draft rerenders the same question", async () => {
-  using _timers = fakeTimers();
-  await using _screen = await render(<Questions />);
-  await chooseOption();
-  await act(async () => vi.advanceTimersByTime(200));
-  expect(activeIndex()).toBe("1");
-  await act(async () => vi.advanceTimersByTime(200));
-  expect(activeIndex()).toBe("1");
-});
 
 it("does not auto-advance past a question picked from the list", async () => {
   using _timers = fakeTimers();

@@ -19,12 +19,14 @@
     "scripts": {
       // Knip loads its preprocessor through a CLI option; native verification and
       // worktree setup (from t3.json) run directly. release-desktop.yml bundles the
-      // Windows verify script with esbuild through a path knip does not trace. The Harbor
+      // Windows verify script with esbuild through a path knip does not trace, and
+      // electron-builder loads the macOS signer by path. The Harbor
       // adapter uploads the sidekick eval driver into its container.
       "entry": [
         "knip-schemas.ts",
         "mobile-native-client.ts",
         "setup-worktree.ts",
+        "sign-macos.ts",
         "verify-windows-desktop-artifact.ts",
         "evals/sidekick/harbor-agent/driver.ts",
       ],
