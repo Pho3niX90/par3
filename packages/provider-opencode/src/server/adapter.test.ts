@@ -44,6 +44,7 @@ import {
   openCodeBoundaryAfterProviderTurn,
   openCodeChildPermissionRules,
   openCodePermissionRules,
+  openCodeUserPermissionRules,
   makeOpenCodeProtocolLogger,
   makeOpenCodeAdapterV2,
   OPENCODE_PROVIDER,
@@ -119,6 +120,18 @@ function runtimePolicy(
 function permissionAction(rules: ReturnType<typeof openCodePermissionRules>, permission: string) {
   return rules.findLast((rule) => rule.permission === "*" || rule.permission === permission)
     ?.action;
+}
+
+function permissionActionFor(
+  rules: ReturnType<typeof openCodePermissionRules>,
+  permission: string,
+  pattern: string,
+) {
+  const matches = (glob: string, value: string) =>
+    new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`).test(value);
+  return rules.findLast(
+    (rule) => matches(rule.permission, permission) && matches(rule.pattern, pattern),
+  )?.action;
 }
 
 function providerTurn(input: {
@@ -2259,6 +2272,71 @@ describe("OpenCodeAdapterV2", () => {
       }),
     );
     assert.equal(permissionAction(approvalRequiredWorkspaceWrite, "edit"), "ask");
+  });
+
+  describe("user permission config", () => {
+    const userConfig = {
+      bash: { "*": "ask", "git status*": "allow", "rm *": "deny" },
+      webfetch: "allow",
+      "context7_*": "allow",
+    } as const;
+    const userRules = openCodeUserPermissionRules(userConfig);
+
+    it("flattens the config block into ordered session rules", () => {
+      assert.deepEqual(openCodeUserPermissionRules(undefined), []);
+      assert.deepEqual(openCodeUserPermissionRules("allow"), [
+        { permission: "*", pattern: "*", action: "allow" },
+      ]);
+      assert.deepEqual(userRules, [
+        { permission: "context7_*", pattern: "*", action: "allow" },
+        { permission: "bash", pattern: "*", action: "ask" },
+        { permission: "bash", pattern: "git status*", action: "allow" },
+        { permission: "bash", pattern: "rm *", action: "deny" },
+        { permission: "webfetch", pattern: "*", action: "allow" },
+      ]);
+    });
+
+    it("honors configured patterns in Auto mode and keeps Par3 defaults elsewhere", () => {
+      const rules = openCodePermissionRules(runtimePolicy("auto"), userRules);
+      assert.equal(permissionActionFor(rules, "bash", "git status --short"), "allow");
+      assert.equal(permissionActionFor(rules, "bash", "rm -rf /"), "deny");
+      assert.equal(permissionActionFor(rules, "bash", "npm publish"), "ask");
+      assert.equal(permissionActionFor(rules, "webfetch", "https://example.com"), "allow");
+      assert.equal(permissionActionFor(rules, "context7_resolve", "*"), "allow");
+      assert.equal(permissionActionFor(rules, "other_mcp_tool", "*"), "ask");
+      assert.equal(permissionActionFor(rules, "edit", "src/a.ts"), "ask");
+      assert.equal(permissionActionFor(rules, "websearch", "*"), "ask");
+    });
+
+    it("is unchanged in Auto mode without user config", () => {
+      assert.deepEqual(
+        openCodePermissionRules(runtimePolicy("auto"), openCodeUserPermissionRules(undefined)),
+        openCodePermissionRules(runtimePolicy("auto")),
+      );
+      assert.equal(
+        permissionActionFor(openCodePermissionRules(runtimePolicy("auto")), "bash", "git status"),
+        "ask",
+      );
+    });
+
+    it("ignores user config in supervised and auto-accept-edits modes", () => {
+      for (const mode of ["approval-required", "auto-accept-edits"] as const) {
+        assert.deepEqual(
+          openCodePermissionRules(runtimePolicy(mode), userRules),
+          openCodePermissionRules(runtimePolicy(mode)),
+        );
+      }
+    });
+
+    it("keeps user rules in child sessions", () => {
+      const childRules = openCodeChildPermissionRules(
+        runtimePolicy("auto"),
+        [{ permission: "task", pattern: "*", action: "deny" }],
+        userRules,
+      );
+      assert.equal(permissionActionFor(childRules, "bash", "git status"), "allow");
+      assert.equal(permissionActionFor(childRules, "task", "*"), "deny");
+    });
   });
 
   it("enforces non-interactive sandbox policy through OpenCode permissions", () => {
