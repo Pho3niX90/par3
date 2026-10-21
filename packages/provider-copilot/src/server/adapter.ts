@@ -9,7 +9,6 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as EffectAcpErrors from "effect-acp/errors";
@@ -36,11 +35,7 @@ import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEve
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import {
-  ProviderAdapterDriverCreateError,
-  type ProviderAdapterDriver,
-  type ProviderAdapterDriverCreateInput,
-} from "@t3tools/provider-core/server/adapterDriver";
+import { type ProviderAdapterDriverCreateInput } from "@t3tools/provider-core/server/adapterDriver";
 import {
   AcpProviderCapabilitiesV2,
   makeAcpAdapterV2,
@@ -51,8 +46,6 @@ import { resolveSelfInvocation, type SelfInvocation } from "@t3tools/shared/node
 import { copilotLaunchEnvironment } from "./enterpriseHost.ts";
 
 const COPILOT_PROVIDER = ProviderDriverKind.make("copilot");
-const COPILOT_DRIVER_KIND = COPILOT_PROVIDER;
-const DEFAULT_COPILOT_SETTINGS = Schema.decodeSync(CopilotSettings)({});
 
 // In-session model switching is negotiated per session from the agent's advertised
 // config options, so it is not claimed here.
@@ -207,29 +200,3 @@ export const makeCopilotAdapterV2ForInstance = Effect.fn("makeCopilotAdapterV2Fo
     });
   },
 );
-
-export const CopilotAdapterV2Driver: ProviderAdapterDriver<
-  CopilotSettings,
-  CopilotAdapterV2DriverEnv
-> = {
-  driverKind: COPILOT_DRIVER_KIND,
-  configSchema: CopilotSettings,
-  defaultConfig: (): CopilotSettings => DEFAULT_COPILOT_SETTINGS,
-  create: Effect.fn("CopilotAdapterV2Driver.create")(
-    function* (input: ProviderAdapterDriverCreateInput<CopilotSettings>) {
-      return yield* makeCopilotAdapterV2ForInstance(input);
-    },
-    (effect, input) =>
-      effect.pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderAdapterDriverCreateError({
-              driver: COPILOT_DRIVER_KIND,
-              instanceId: input.instanceId,
-              detail: "Failed to create GitHub Copilot ACP adapter.",
-              cause,
-            }),
-        ),
-      ),
-  ),
-};
