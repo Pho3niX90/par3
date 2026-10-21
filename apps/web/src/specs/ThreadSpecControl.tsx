@@ -48,7 +48,7 @@ import {
 export interface ThreadSpecState {
   /** Spec mode is on for the project, whether or not the thread exists yet. */
   readonly usable: boolean;
-  /** The thread exists on the server, so it can be bound. */
+  /** Spec mode is on and the thread exists on the server, so it can be bound. */
   readonly available: boolean;
   readonly canMutate: boolean;
   readonly specs: ReadonlyArray<SpecSummary>;
@@ -56,7 +56,10 @@ export interface ThreadSpecState {
   readonly boundRole: SpecRole | null;
 }
 
-/** Subscribes to specs only when Spec mode is usable here, so ordinary threads pay nothing. */
+/**
+ * Turning Spec mode off only hides new spec work. A thread already bound to a spec stays
+ * restricted by the server, so its binding is still read and shown.
+ */
 export function useThreadSpecState(
   environmentId: EnvironmentId,
   projectId: ProjectId | null,
@@ -68,14 +71,15 @@ export function useThreadSpecState(
   );
   const usable = capabilitiesSupported && specModeEnabled && projectId !== null;
   const available = usable && threadId !== null;
-  const binding = useThreadSpecBinding(environmentId, projectId, threadId, available);
+  const bindingReadable = capabilitiesSupported && projectId !== null && threadId !== null;
+  const binding = useThreadSpecBinding(environmentId, projectId, threadId, bindingReadable);
   return {
     usable,
     available,
     canMutate,
     specs: binding.specs,
-    boundSpec: available ? binding.boundSpec : null,
-    boundRole: available ? binding.boundRole : null,
+    boundSpec: bindingReadable ? binding.boundSpec : null,
+    boundRole: bindingReadable ? binding.boundRole : null,
   };
 }
 
@@ -186,7 +190,7 @@ export function ThreadSpecModeControl({
     return registerSpecModeToggleHandler(() => setOpen((current) => !current));
   }, [registered, setOpen]);
 
-  if (!state.usable || projectId === null) return null;
+  if ((!state.usable && state.boundSpec === null) || projectId === null) return null;
   if (threadId === null) {
     const label = "Open this project's specs";
     return (

@@ -4,7 +4,7 @@ Spec mode puts a reviewed requirements document between a request and the code. 
 
 ## Start a spec
 
-Spec mode is available in every project. The composer offers **Spec** next to Build and Plan, plus the `/spec` command, and each project has a **Specs** list. A thread follows the spec workflow only after you bind it to a spec, so other threads are unaffected.
+Spec mode is on by default in every project. The composer offers **Spec** next to Build and Plan, plus the `/spec` command, and each project has a **Specs** list. A thread follows the spec workflow only after you bind it to a spec, so other threads are unaffected.
 
 To hide it for a project, open the project's Settings and turn off **Spec mode**. That hides the ways to start new spec work. Existing specs stay readable and reviewable, and threads already bound to a spec keep their restrictions.
 
