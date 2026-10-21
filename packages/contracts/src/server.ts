@@ -110,6 +110,12 @@ export const ServerProviderSkill = Schema.Struct({
   description: Schema.optional(TrimmedNonEmptyString),
   path: TrimmedNonEmptyString,
   scope: Schema.optional(TrimmedNonEmptyString),
+  /**
+   * Where discovery found the skill, so Settings can explain a missing one.
+   * Open-ended on purpose so a newer server's values still decode on older
+   * clients; Claude reports `user`, `project`, `add-dir`, and `plugin`.
+   */
+  source: Schema.optional(TrimmedNonEmptyString),
   enabled: Schema.Boolean,
   displayName: Schema.optional(TrimmedNonEmptyString),
   shortDescription: Schema.optional(TrimmedNonEmptyString),

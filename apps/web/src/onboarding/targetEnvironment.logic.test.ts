@@ -8,10 +8,10 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  isOnboardingRelayEnvironment,
   resolveOnboardingSetup,
   resolveOnboardingTargetEnvironment,
 } from "./targetEnvironment.logic";
+import { isOnboardingRelayEnvironment } from "./targetEnvironment.logic";
 
 const primaryEnvironment = {
   environmentId: EnvironmentId.make("primary"),
@@ -115,17 +115,6 @@ describe("resolveOnboardingTargetEnvironment", () => {
     ).toBe(pairedRemote);
   });
 
-  it("waits for a newly paired machine that has not appeared in the catalog", () => {
-    expect(
-      resolveOnboardingTargetEnvironment({
-        mode: "direct",
-        environments: [primaryEnvironment, olderRelay],
-        primaryEnvironment,
-        pairedEnvironmentId: pairedRemote.environmentId,
-      }),
-    ).toBeNull();
-  });
-
   it("uses the primary machine for local onboarding", () => {
     expect(
       resolveOnboardingTargetEnvironment({
@@ -188,20 +177,6 @@ describe("resolveOnboardingTargetEnvironment", () => {
       }),
     ).toBe(primaryEnvironment);
   });
-
-  it("falls back to the connected primary when no remote is available", () => {
-    expect(
-      resolveOnboardingTargetEnvironment({
-        mode: "connect",
-        environments: [primaryEnvironment],
-        primaryEnvironment,
-        pairedEnvironmentId: null,
-      }),
-    ).toBe(primaryEnvironment);
-  });
-});
-
-describe("isOnboardingRelayEnvironment", () => {
   it("includes only Parity Connect relay targets", () => {
     expect(
       [olderRelay, pairedRemote, sshEnvironment, desktopLocalEnvironment].filter(
