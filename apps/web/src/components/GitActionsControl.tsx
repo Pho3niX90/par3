@@ -1014,8 +1014,6 @@ export default function GitActionsControl({
   const [inlineSuccess, setInlineSuccess] = useState<InlineGitActionSuccess | null>(null);
   const [pendingDefaultBranchAction, setPendingDefaultBranchAction] =
     useState<PendingDefaultBranchAction | null>(null);
-  // Keep the payload until the dialog finishes closing.
-  const [isDefaultBranchDialogOpen, setIsDefaultBranchDialogOpen] = useState(false);
   const sourceControlScope = { environmentId: activeEnvironmentId, cwd: gitCwd };
   const vcsActionState = useAtomValue(vcsActionManager.stateAtom(sourceControlScope));
   const visibleInlineSuccess = inlineSuccess?.scopeKey === successScopeKey ? inlineSuccess : null;
@@ -1258,7 +1256,6 @@ export default function GitActionsControl({
         ...(onConfirmed ? { onConfirmed } : {}),
         ...(filePaths ? { filePaths } : {}),
       });
-      setIsDefaultBranchDialogOpen(true);
       return;
     }
     onConfirmed?.();
@@ -1369,11 +1366,11 @@ export default function GitActionsControl({
   }
 
   const continuePendingDefaultBranchAction = (featureBranch: boolean) => {
-    if (!isDefaultBranchDialogOpen || !pendingDefaultBranchAction || !canWriteSourceControl) return;
+    if (!pendingDefaultBranchAction || !canWriteSourceControl) return;
     if (featureBranch && (!canChangeThreadBranch || featureBranchUnavailableReason !== null))
       return;
     const { action, commitMessage, onConfirmed, filePaths } = pendingDefaultBranchAction;
-    setIsDefaultBranchDialogOpen(false);
+    setPendingDefaultBranchAction(null);
     void runGitActionWithToast({
       action,
       ...(commitMessage ? { commitMessage } : {}),
@@ -2057,9 +2054,8 @@ export default function GitActionsControl({
       />
 
       <Dialog
-        open={isDefaultBranchDialogOpen}
-        onOpenChange={setIsDefaultBranchDialogOpen}
-        onOpenChangeComplete={(open) => {
+        open={pendingDefaultBranchAction !== null}
+        onOpenChange={(open) => {
           if (!open) setPendingDefaultBranchAction(null);
         }}
       >
@@ -2078,7 +2074,7 @@ export default function GitActionsControl({
               className="w-full sm:mr-auto sm:w-auto"
               variant="outline"
               size="sm"
-              onClick={() => setIsDefaultBranchDialogOpen(false)}
+              onClick={() => setPendingDefaultBranchAction(null)}
             >
               Abort
             </Button>

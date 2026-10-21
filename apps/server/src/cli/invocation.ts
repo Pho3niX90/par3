@@ -111,7 +111,7 @@ function suggestedPackageSpec(version: string): string {
   return channel === undefined ? "@paritylabs/par3" : `@paritylabs/par3@${channel}`;
 }
 
-export function formatCliCommand(input: {
+function formatCliCommand(input: {
   readonly subcommand: string;
   readonly entryPath: string;
   readonly version: string;

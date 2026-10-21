@@ -1,5 +1,3 @@
-"use client";
-
 import { Spinner } from "~/components/ui/spinner";
 
 import {
@@ -62,6 +60,7 @@ import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { AcpSessionManagementSection } from "./AcpSessionManagementSection";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
+import { ProviderSkillsSection } from "./ProviderSkillsSection";
 import { readCodexSetupMode } from "./CodexSetupSection.logic";
 import {
   getProviderVersionAdvisoryPresentation,
@@ -197,14 +196,14 @@ function ProviderAuthEmail(props: { readonly email: string | undefined }) {
   );
 }
 
-export function readProviderEnvironmentVariable(
+function readProviderEnvironmentVariable(
   environment: ReadonlyArray<ProviderInstanceEnvironmentVariable> | undefined,
   name: string,
 ): ProviderInstanceEnvironmentVariable | undefined {
   return environment?.find((variable) => variable.name === name);
 }
 
-export function providerEnvironmentWithoutNames(
+function providerEnvironmentWithoutNames(
   environment: ReadonlyArray<ProviderInstanceEnvironmentVariable> | undefined,
   names: ReadonlySet<string>,
 ): ReadonlyArray<ProviderInstanceEnvironmentVariable> {
@@ -1249,6 +1248,10 @@ export function ProviderInstanceCard({
           projects={acpProjects}
           readOnly={readOnly}
         />
+      ) : null}
+
+      {enabled && liveProvider !== undefined ? (
+        <ProviderSkillsSection instanceId={instanceId} provider={liveProvider} />
       ) : null}
 
       {driverOption !== undefined ? (
