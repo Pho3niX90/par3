@@ -611,7 +611,11 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
   const inbox = (thread: EnvironmentThreadShell) =>
-    workingShelfEnabled && isSidebarThreadWorking(thread) ? working : active;
+    // An unreachable environment reads Offline, so its cached running threads
+    // stay in the main list instead of hiding in the collapsed Working shelf.
+    workingShelfEnabled && !thread.environmentUnavailable && isSidebarThreadWorking(thread)
+      ? working
+      : active;
   const snoozed: EnvironmentThreadShell[] = [];
   const settled: EnvironmentThreadShell[] = [];
   const draggable = new Set<string>();
