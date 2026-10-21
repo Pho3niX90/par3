@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./workspace-basename-lookup": {
+      "types": "./src/workspaceBasenameLookup.ts",
+      "default": "./src/workspaceBasenameLookup.ts"
+    },
     "./composerThreadItems": {
       "types": "./src/composerThreadItems.ts",
       "default": "./src/composerThreadItems.ts"
@@ -10,6 +14,10 @@
     "./image-attachment-size": {
       "types": "./src/imageAttachmentSize.ts",
       "default": "./src/imageAttachmentSize.ts"
+    },
+    "./last-used-thread-selection": {
+      "types": "./src/lastUsedThreadSelection.ts",
+      "default": "./src/lastUsedThreadSelection.ts"
     },
     "./handoff": {
       "types": "./src/handoff.ts",
@@ -319,6 +327,10 @@
       "types": "./src/state/threadSubagents.ts",
       "default": "./src/state/threadSubagents.ts"
     },
+    "./state/thread-undo": {
+      "types": "./src/state/threadUndo.ts",
+      "default": "./src/state/threadUndo.ts"
+    },
     "./state/thread-settled": {
       "types": "./src/state/threadSettled.ts",
       "default": "./src/state/threadSettled.ts"
@@ -434,6 +446,10 @@
     "./pull-request-query": {
       "types": "./src/pullRequestQuery.ts",
       "default": "./src/pullRequestQuery.ts"
+    },
+    "./model-traits": {
+      "types": "./src/modelTraits.ts",
+      "default": "./src/modelTraits.ts"
     }
   },
   "scripts": {
