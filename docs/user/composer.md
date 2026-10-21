@@ -119,7 +119,9 @@ Give a thread a sidekick to pair its model with a cheaper one. The thread's own
 model becomes the lead: it plans, writes briefs, reviews the result and commits.
 The sidekick explores, implements and runs tests as delegated work, which you can
 follow under **Agents**. Most of the tokens are then spent by the cheaper model,
-and the lead never reads the sidekick's intermediate output.
+and the lead never reads the sidekick's intermediate output. The idea comes from
+Cognition's [Devin Fusion](https://cognition.com/blog/fusion-in-devin-cli), which
+pairs a frontier lead with a cheaper model in the same way.
 
 Choose a model from **Sidekick** next to the model picker, from the compact
 composer menu, with **Set sidekick…** in the command palette, or from a thread's

@@ -10,6 +10,8 @@ Par3 is a fork of [T3 Code](https://github.com/pingdotgg/t3code), an excellent o
 
 The clearest example is plan mode. T3 Code removed it, while most engineers we work with, especially in enterprise, want to see and approve a plan before an agent touches their code. Par3 keeps plan mode as a first-class setting and makes product decisions around what enterprise teams need: reviewable plans, explicit permissions, and clear visibility into what agents do.
 
+Two features build on that. [Spec mode](docs/user/spec-mode.md) puts a requirements document that a person approves between a request and the code, and the server refuses implementation until it is approved. [Sidekick](docs/user/composer.md#sidekick) pairs a thread's model with a cheaper one: the lead plans and reviews while the sidekick does most of the work. Sidekick follows the approach of Cognition's [Devin Fusion](https://cognition.com/blog/fusion-in-devin-cli).
+
 We still merge T3 Code's improvements regularly and are grateful for the work behind it. T3 Code is MIT licensed, and so is Par3.
 
 ## Installation
