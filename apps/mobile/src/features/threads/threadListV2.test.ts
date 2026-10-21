@@ -99,6 +99,35 @@ describe("resolveThreadListV2Status", () => {
     );
   });
 
+  it("reads live states as offline while the environment is unavailable", () => {
+    const runtime = {
+      status: "running" as const,
+      activeRunId: null,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      providerName: "Codex",
+      lastError: null,
+      updatedAt: NOW,
+    };
+    const running = makeThread({
+      id: ThreadId.make("t"),
+      title: "t",
+      runtime,
+      environmentUnavailable: true,
+    });
+    expect(resolveThreadListV2Status(running)).toBe("offline");
+    expect(resolveThreadListV2Status({ ...running, hasPendingApprovals: true })).toBe("offline");
+    expect(resolveThreadListV2Status({ ...running, blockedOnThreadWait: true })).toBe("offline");
+    // A cached failure is a historical fact, and quiet threads stay quiet.
+    expect(
+      resolveThreadListV2Status({ ...running, runtime: { ...runtime, status: "failed" } }),
+    ).toBe("failed");
+    expect(
+      resolveThreadListV2Status(
+        makeThread({ id: ThreadId.make("t"), title: "t", environmentUnavailable: true }),
+      ),
+    ).toBe("ready");
+  });
+
   it.each([
     { kind: "command", status: "ready" },
     { kind: "monitor", status: "waiting" },

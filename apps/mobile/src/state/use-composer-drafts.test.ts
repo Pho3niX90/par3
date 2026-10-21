@@ -1,4 +1,7 @@
-import { PrimaryConnectionTarget } from "@t3tools/client-runtime/connection";
+import {
+  AVAILABLE_CONNECTION_STATE,
+  PrimaryConnectionTarget,
+} from "@t3tools/client-runtime/connection";
 import { createEnvironmentThreadShellAtoms } from "@t3tools/client-runtime/state/threads";
 import {
   applyShellStreamEvent,
@@ -310,6 +313,7 @@ function modelReconciliationHarness(
   });
   const shells = createEnvironmentThreadShellAtoms({
     catalogValueAtom,
+    connectionStateAtom: () => Atom.make(AsyncResult.success(AVAILABLE_CONNECTION_STATE)),
     snapshotAtom: () => snapshotAtom,
   });
   const selectedShell = shells.threadShellAtom({ environmentId, threadId: selectedThreadId });

@@ -585,7 +585,8 @@ export interface ThreadStatusPill {
     | "Pending Approval"
     | "Awaiting Input"
     | "Waiting"
-    | "Plan Ready";
+    | "Plan Ready"
+    | "Offline";
   colorClass: string;
   dotClass: string;
   pulse: boolean;
@@ -600,6 +601,7 @@ const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   Waiting: 2.5,
   "Plan Ready": 2,
   Completed: 1,
+  Offline: 0,
 };
 
 type ThreadStatusInput = Pick<
@@ -610,6 +612,7 @@ type ThreadStatusInput = Pick<
   | "pendingSubagentRequest"
   | "latestRun"
   | "runtime"
+  | "environmentUnavailable"
 > & {
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
@@ -862,6 +865,7 @@ export type SidebarThreadStatus =
   | "input"
   | "working"
   | "waiting"
+  | "offline"
   | "failed"
   | "limited"
   | "ready";
@@ -875,7 +879,9 @@ export function shouldRecedeSidebarThread(input: {
 }): boolean {
   if (input.isActive || input.isSelected || input.status === "input") return false;
   if (input.status === "working" || input.status === "waiting") return true;
-  if (input.status === "ready" || input.status === "approval") {
+  // Offline rows rest like ready ones: nothing can happen there until the
+  // environment reconnects.
+  if (input.status === "ready" || input.status === "approval" || input.status === "offline") {
     return !input.isUnread && !input.isWoke;
   }
   return false;
@@ -888,9 +894,26 @@ type SidebarThreadStatusInput = Pick<
   | "pendingSubagentRequest"
   | "runtime"
   | "blockedOnThreadWait"
+  | "environmentUnavailable"
 >;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
+  const status = resolveConnectedSidebarThreadStatus(thread);
+  // An unreachable environment cannot run, ask, or be answered, so live states
+  // from its cached snapshot read as offline. Failed and resting states are
+  // historical facts and stay.
+  if (
+    thread.environmentUnavailable &&
+    (status === "approval" || status === "input" || status === "working" || status === "waiting")
+  ) {
+    return "offline";
+  }
+  return status;
+}
+
+function resolveConnectedSidebarThreadStatus(
+  thread: SidebarThreadStatusInput,
+): SidebarThreadStatus {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
     return "approval";
   }
@@ -921,6 +944,7 @@ export type SidebarV2TopStatusKind =
   | "failed"
   | "limited"
   | "input"
+  | "offline"
   | "waiting"
   | "woke"
   | "working";
@@ -935,6 +959,9 @@ export function resolveSidebarV2TopStatus(input: {
   }
   if (input.status === "waiting") {
     return "waiting";
+  }
+  if (input.status === "offline") {
+    return "offline";
   }
   if (input.status === "approval") {
     return "approval";
@@ -1057,11 +1084,32 @@ export function resolveWorkingStartedAt(
   return resolveThreadWorkingStartedAt(thread);
 }
 
+const OFFLINE_STATUS_PILL: ThreadStatusPill = {
+  label: "Offline",
+  colorClass: "text-zinc-500 dark:text-zinc-400",
+  dotClass: "bg-zinc-500 dark:bg-zinc-400",
+  pulse: false,
+};
+
 export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
 }): ThreadStatusPill | null {
-  const { thread } = input;
+  const pill = resolveConnectedThreadStatusPill(input.thread);
+  // Same stale-claim rule as resolveSidebarThreadStatus: live pills read as
+  // offline; Failed, Plan Ready and Completed are historical and stay.
+  if (
+    input.thread.environmentUnavailable &&
+    pill !== null &&
+    pill.label !== "Failed" &&
+    pill.label !== "Plan Ready" &&
+    pill.label !== "Completed"
+  ) {
+    return OFFLINE_STATUS_PILL;
+  }
+  return pill;
+}
 
+function resolveConnectedThreadStatusPill(thread: ThreadStatusInput): ThreadStatusPill | null {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
     return {
       label: "Pending Approval",

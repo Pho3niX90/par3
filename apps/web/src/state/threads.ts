@@ -30,6 +30,7 @@ export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
 );
 export const environmentThreadShells = createEnvironmentThreadShellAtoms({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
+  connectionStateAtom: environmentCatalog.stateAtom,
   snapshotAtom: threadEnvironment.snapshotAtom,
 });
 

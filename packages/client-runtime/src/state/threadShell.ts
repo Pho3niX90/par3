@@ -8,7 +8,11 @@ import type {
 } from "@t3tools/contracts";
 import { isProviderNativeSubagentThread, OrchestrationV2ThreadShell } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Atom } from "effect/reactivity";
+import * as Option from "effect/Option";
+import { AsyncResult, Atom } from "effect/reactivity";
+
+import { AVAILABLE_CONNECTION_STATE, type SupervisorConnectionState } from "../connection/model.ts";
+import { presentConnectionState } from "../connection/presentation.ts";
 
 import type { EnvironmentThreadShell, PendingSubagentRequest } from "./models.ts";
 import { presentThreadShell, threadRuntimeIsActive } from "./models.ts";
@@ -106,6 +110,7 @@ function sameApartFromStreaming(
   if (
     previous.environmentId !== next.environmentId ||
     previous.pendingSubagentRequest !== next.pendingSubagentRequest ||
+    previous.environmentUnavailable !== next.environmentUnavailable ||
     !threadRuntimeIsActive(next.runtime)
   ) {
     return false;
@@ -128,12 +133,31 @@ function sameApartFromStreaming(
   );
 }
 
-export function createEnvironmentThreadShellAtoms(input: {
+export function createEnvironmentThreadShellAtoms<E>(input: {
   readonly catalogValueAtom: Atom.Atom<EnvironmentCatalogState>;
+  readonly connectionStateAtom: (
+    environmentId: EnvironmentId,
+  ) => Atom.Atom<AsyncResult.AsyncResult<SupervisorConnectionState, E>>;
   readonly snapshotAtom: (
     environmentId: EnvironmentId,
   ) => Atom.Atom<OrchestrationV2ShellSnapshot | null>;
 }) {
+  // Unavailable means the connection is failing while this device is online
+  // (reconnecting after a failure, or blocked). First attempts and offline
+  // browsing are not evidence of trouble, so cached rows keep their normal
+  // presentation there.
+  const environmentUnavailableAtom = Atom.family((environmentId: EnvironmentId) =>
+    Atom.make((get) => {
+      const connection = Option.getOrElse(
+        AsyncResult.value(get(input.connectionStateAtom(environmentId))),
+        () => AVAILABLE_CONNECTION_STATE,
+      );
+      if (connection.network !== "online") return false;
+      const phase = presentConnectionState(connection).phase;
+      return phase === "reconnecting" || phase === "error";
+    }).pipe(Atom.withLabel(`environment-unavailable:${environmentId}`)),
+  );
+
   // Point reads and aggregate lists share values without keeping an atom alive
   // for every listed thread. Replaced source objects can be collected.
   const scopedThreads = new WeakMap<
@@ -144,6 +168,7 @@ export function createEnvironmentThreadShellAtoms(input: {
     environmentId: EnvironmentId,
     thread: OrchestrationV2ThreadShell,
     subagentRequests: ReadonlyMap<ThreadId, PendingSubagentRequest>,
+    environmentUnavailable: boolean,
   ) => {
     let byEnvironment = scopedThreads.get(thread);
     if (byEnvironment === undefined) {
@@ -151,10 +176,10 @@ export function createEnvironmentThreadShellAtoms(input: {
       scopedThreads.set(thread, byEnvironment);
     }
     const request = subagentRequests.get(thread.id) ?? null;
-    const key = request === null ? environmentId : `${environmentId}:${request}`;
+    const key = `${environmentId}:${request ?? ""}:${environmentUnavailable ? "unavailable" : ""}`;
     let value = byEnvironment.get(key);
     if (value === undefined) {
-      value = presentThreadShell(environmentId, thread, request);
+      value = presentThreadShell(environmentId, thread, request, environmentUnavailable);
       byEnvironment.set(key, value);
     }
     return value;
@@ -260,6 +285,7 @@ export function createEnvironmentThreadShellAtoms(input: {
             ref.environmentId,
             source,
             get(pendingSubagentRequestsAtom(ref.environmentId)),
+            get(environmentUnavailableAtom(ref.environmentId)),
           );
     }).pipe(Atom.withLabel(`environment-thread-shell:${key}`));
   });
@@ -302,6 +328,7 @@ export function createEnvironmentThreadShellAtoms(input: {
         else children.set(parent, [thread]);
       }
       const subagentRequests = get(pendingSubagentRequestsAtom(ref.environmentId));
+      const unavailable = get(environmentUnavailableAtom(ref.environmentId));
       const seen = new Set<ThreadId>([ref.threadId]);
       const pending = [ref.threadId];
       const next: EnvironmentThreadShell[] = [];
@@ -311,7 +338,7 @@ export function createEnvironmentThreadShellAtoms(input: {
           seen.add(child.id);
           pending.push(child.id);
           if (subagentRequest(child) !== null) {
-            next.push(scopedThread(ref.environmentId, child, subagentRequests));
+            next.push(scopedThread(ref.environmentId, child, subagentRequests, unavailable));
           }
         }
       }
@@ -347,6 +374,7 @@ export function createEnvironmentThreadShellAtoms(input: {
         if (refs.length === 0) continue;
         const threads = get(environmentThreadIndexAtom(projectRef.environmentId));
         const subagentRequests = get(pendingSubagentRequestsAtom(projectRef.environmentId));
+        const unavailable = get(environmentUnavailableAtom(projectRef.environmentId));
         for (const ref of refs) {
           const key = threadKey(ref);
           if (seen.has(key)) {
@@ -355,7 +383,7 @@ export function createEnvironmentThreadShellAtoms(input: {
           seen.add(key);
           const thread = threads.get(ref.threadId);
           if (thread !== undefined) {
-            next.push(scopedThread(ref.environmentId, thread, subagentRequests));
+            next.push(scopedThread(ref.environmentId, thread, subagentRequests, unavailable));
           }
         }
       }
@@ -385,8 +413,9 @@ export function createEnvironmentThreadShellAtoms(input: {
     const next: EnvironmentThreadShell[] = [];
     for (const environmentId of enabledEnvironmentIds(get(input.catalogValueAtom))) {
       const subagentRequests = get(pendingSubagentRequestsAtom(environmentId));
+      const unavailable = get(environmentUnavailableAtom(environmentId));
       for (const thread of get(environmentThreadsAtom(environmentId))) {
-        next.push(scopedThread(environmentId, thread, subagentRequests));
+        next.push(scopedThread(environmentId, thread, subagentRequests, unavailable));
       }
     }
     if (arrayElementsEqual(previousThreadShells, next)) {
@@ -401,10 +430,11 @@ export function createEnvironmentThreadShellAtoms(input: {
     const next: EnvironmentThreadShell[] = [];
     for (const environmentId of enabledEnvironmentIds(get(input.catalogValueAtom))) {
       const subagentRequests = get(pendingSubagentRequestsAtom(environmentId));
+      const unavailable = get(environmentUnavailableAtom(environmentId));
       for (const thread of get(environmentThreadsAtom(environmentId))) {
         if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent")
           continue;
-        next.push(scopedThread(environmentId, thread, subagentRequests));
+        next.push(scopedThread(environmentId, thread, subagentRequests, unavailable));
       }
     }
     if (arrayElementsEqual(previousNavigationShells, next)) return previousNavigationShells;
