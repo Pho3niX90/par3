@@ -285,11 +285,22 @@ export function hasCursorSkillMention(prompt: string): boolean {
   return HAS_SKILL_MENTION_PATTERN.test(prompt);
 }
 
+export type CursorSkillTarget = Pick<ServerProviderSkill, "path" | "userInvocationOnly">;
+
+/**
+ * Cursor's `/name` only reaches skills the model may invoke, so a user-only
+ * skill (`disable-model-invocation: true`) is pointed at its SKILL.md instead,
+ * the same fallback Claude uses for skills its Skill tool refuses.
+ */
 export function rewriteCursorSkillMentions(
   prompt: string,
-  skillNames: ReadonlySet<string>,
+  skills: ReadonlyMap<string, CursorSkillTarget>,
 ): string {
-  return prompt.replace(SKILL_MENTION_PATTERN, (match, prefix: string, name: string) =>
-    skillNames.has(name) ? `${prefix}/${name}` : match,
-  );
+  return prompt.replace(SKILL_MENTION_PATTERN, (match, prefix: string, name: string) => {
+    const skill = skills.get(name);
+    if (!skill) return match;
+    return skill.userInvocationOnly === true
+      ? `${prefix}/${name} [The user invoked this skill. Follow the instructions at: ${skill.path}]`
+      : `${prefix}/${name}`;
+  });
 }

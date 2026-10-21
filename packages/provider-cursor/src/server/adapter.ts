@@ -50,6 +50,7 @@ import { CursorTransportFailure } from "./transportFailure.ts";
 import { cursorContextWindowTokens, cursorSdkModelSelection } from "./sdkModel.ts";
 import {
   discoverCursorSkills,
+  type CursorSkillTarget,
   hasCursorSkillMention,
   rewriteCursorSkillMentions,
 } from "./skills.ts";
@@ -2174,7 +2175,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           return next;
         });
 
-        let cursorSkillNames: ReadonlySet<string> | undefined;
+        let cursorSkills: ReadonlyMap<string, CursorSkillTarget> | undefined;
         const resolveUserMessage = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           mcpServers: Record<string, McpServerConfig> | undefined,
@@ -2184,7 +2185,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           if (rawText.trim() === "/compress" && turnInput.message.attachments.length === 0) {
             return { message: "/compress", compacts: true, instructionState: undefined } as const;
           }
-          if (hasCursorSkillMention(rawText) && cursorSkillNames === undefined) {
+          if (hasCursorSkillMention(rawText) && cursorSkills === undefined) {
             const skills = yield* discoverCursorSkills(
               turnInput.runtimePolicy.cwd ?? undefined,
               adapterOptions.environment,
@@ -2192,17 +2193,17 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               Effect.provideService(FileSystem.FileSystem, fileSystem),
               Effect.provideService(Path.Path, path),
             );
-            cursorSkillNames = new Set(
+            cursorSkills = new Map(
               skills
                 .filter((skill) => skill.enabled && skill.userInvocable !== false)
-                .map((skill) => skill.name),
+                .map((skill) => [skill.name, skill] as const),
             );
           }
           const plainText = providerMessageTextWithAttachmentPaths({
             text:
-              cursorSkillNames === undefined
+              cursorSkills === undefined
                 ? rawText
-                : rewriteCursorSkillMentions(rawText, cursorSkillNames),
+                : rewriteCursorSkillMentions(rawText, cursorSkills),
             attachments: turnInput.message.attachments,
             resolveAttachmentPath: host.resolveAttachmentPath,
           });
