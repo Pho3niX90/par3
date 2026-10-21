@@ -136,10 +136,12 @@ function makeOverheadTracer(): { readonly tracer: Tracer.Tracer; readonly measur
       if (!isCommit && !isCapture) return span;
       if (isCommit) measured.transactions += 1;
       if (isCapture) measured.checkpointCaptures += 1;
+      // oxlint-disable-next-line t3code/no-wall-clock-in-tests -- a benchmark: wall time is what it reports, and it fails only far above budget
       const startedAt = performance.now();
       const end = span.end.bind(span);
       span.end = (endTime, exit) => {
         end(endTime, exit);
+        // oxlint-disable-next-line t3code/no-wall-clock-in-tests -- a benchmark: wall time is what it reports, and it fails only far above budget
         const endedAt = performance.now();
         if (isCommit) {
           measured.commitDurationsMs.push(endedAt - startedAt);
@@ -188,6 +190,7 @@ const runBudget = Effect.fn("ProviderOverhead.runBudget")(function* (budget: Bud
     modelSelection: CLAUDE_MODEL_SELECTION,
   }).pipe(Effect.provide(IdAllocator.layer));
   const { tracer, measured } = makeOverheadTracer();
+  // oxlint-disable-next-line t3code/no-wall-clock-in-tests -- a benchmark: wall time is what it reports, and it fails only far above budget
   const startedAt = performance.now();
   yield* runOrchestratorV2ProviderReplayScenario(
     {
@@ -205,6 +208,7 @@ const runBudget = Effect.fn("ProviderOverhead.runBudget")(function* (budget: Bud
       ),
     },
   ).pipe(Effect.withTracer(tracer));
+  // oxlint-disable-next-line t3code/no-wall-clock-in-tests -- a benchmark: wall time is what it reports, and it fails only far above budget
   const wallMs = performance.now() - startedAt;
   return { inboundEvents, measured, wallMs, turns: budget.turns.length };
 });

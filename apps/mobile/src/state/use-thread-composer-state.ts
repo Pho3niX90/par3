@@ -4,6 +4,7 @@ import { readEnvironmentScope } from "./session";
 import type { ComposerTextPaste } from "../native/T3ComposerEditor.types";
 import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
+import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
 import {
   deriveProviderSubagentStatus,
@@ -58,8 +59,10 @@ import {
   removePersistedComposerAttachmentFile,
 } from "../lib/composerImages";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
+import { deriveLogicalProjectKeyFromSettings } from "@t3tools/client-runtime/state/project-grouping";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { buildThreadFeed, createThreadFeedCache } from "../lib/threadActivity";
+import { useMobileProjectGroupingSettings } from "./project-grouping";
 import { acknowledgedThreadMessagesAtom } from "./acknowledged-thread-messages";
 import { appendPendingThreadMessages } from "../features/threads/pending-thread-feed";
 import { threadAllowsProviderSwitch } from "./thread-provider-switching";
@@ -83,6 +86,7 @@ import {
   removeComposerDraftAttachment,
   scheduleUnusedComposerAttachmentCleanup,
   setComposerDraftText,
+  setLastUsedThreadSelection,
   updateComposerDraftSettings,
   useComposerDraft,
   useComposerDraftSettings,
@@ -121,6 +125,7 @@ import { useAtomCommand } from "./use-atom-command";
 const EMPTY_QUEUE_WORKFLOW_ATOM = Atom.make<null>(null).pipe(
   Atom.withLabel("mobile-thread-queue-workflow:empty"),
 );
+const EMPTY_CHECKPOINT_SUMMARIES_ATOM = Atom.make<ReadonlyArray<ThreadCheckpointSummary>>([]);
 
 export function appendReviewCommentToDraft(input: {
   readonly environmentId: EnvironmentId;
@@ -185,8 +190,10 @@ export function useThreadComposerState() {
     selectedThread: selectedThreadShell,
     selectedThreadCreation,
     selectedThreadDetailRef,
+    selectedThreadProject,
     selectedEnvironmentRuntime,
   } = useThreadSelection();
+  const projectGroupingSettings = useMobileProjectGroupingSettings();
   const selectedThreadProjection = useSelectedThreadProjection();
   const selectedThreadVisibleTurnItems = useSelectedThreadVisibleTurnItems();
   const acknowledgedMessages = useAtomValue(acknowledgedThreadMessagesAtom);
@@ -244,6 +251,11 @@ export function useThreadComposerState() {
   const selectedThreadMessages = selectedThreadProjection?.projection.messages;
   const selectedThreadAttempts = selectedThreadProjection?.projection.attempts;
   const selectedThreadNodes = selectedThreadProjection?.projection.nodes;
+  const checkpointSummaries = useAtomValue(
+    selectedThreadDetailRef === null
+      ? EMPTY_CHECKPOINT_SUMMARIES_ATOM
+      : environmentThreadDetails.checkpointSummariesAtom(selectedThreadDetailRef),
+  );
   // A thread whose creation has not delivered its turn yet: the prompt only
   // exists in the outbox, so it is appended to whatever the server has. The
   // detail is usually present but empty during a worktree checkout, so this
@@ -260,6 +272,7 @@ export function useThreadComposerState() {
       anchoredMessages: pendingCreation,
       attempts: selectedThreadAttempts,
       nodes: selectedThreadNodes,
+      checkpointSummaries,
       cache: feedCache,
     });
     const pendingAcknowledgments = acknowledgedMessages.filter(
@@ -675,6 +688,24 @@ export function useThreadComposerState() {
     const metadata = makeQueuedMessageMetadata();
     const messageId = MessageId.make(metadata.messageId);
     clearThreadComposerError(threadKey);
+    const sendRuntimeMode = draft.runtimeMode ?? thread.runtimeMode;
+    const sendInteractionMode = resolveThreadInteractionMode({
+      provider,
+      preferenceLoaded: planModePreferenceLoaded,
+      planModeEnabled,
+      draftInteractionMode: draft.interactionMode,
+      threadInteractionMode: thread.interactionMode,
+    });
+    if (selectedThreadProject) {
+      setLastUsedThreadSelection(
+        deriveLogicalProjectKeyFromSettings(selectedThreadProject, projectGroupingSettings),
+        {
+          modelSelection,
+          runtimeMode: sendRuntimeMode,
+          interactionMode: sendInteractionMode,
+        },
+      );
+    }
     const enqueuePromise = enqueueThreadOutboxMessage({
       environmentId: selectedThreadShell.environmentId,
       threadId: selectedThreadShell.id,
@@ -684,14 +715,8 @@ export function useThreadComposerState() {
       attachments,
       context: draft.context,
       modelSelection,
-      runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
-      interactionMode: resolveThreadInteractionMode({
-        provider,
-        preferenceLoaded: planModePreferenceLoaded,
-        planModeEnabled,
-        draftInteractionMode: draft.interactionMode,
-        threadInteractionMode: thread.interactionMode,
-      }),
+      runtimeMode: sendRuntimeMode,
+      interactionMode: sendInteractionMode,
       ...(followUpDispatchMode === null ? {} : { dispatchMode: followUpDispatchMode }),
       createdAt: metadata.createdAt,
     });
