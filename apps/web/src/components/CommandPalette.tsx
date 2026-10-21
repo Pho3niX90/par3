@@ -556,7 +556,11 @@ function OpenCommandPaletteDialog(props: {
       : activeThread
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
-  const planProjection = useThreadProjection(referenceThreadRef)?.projection ?? null;
+  const planThreadRef =
+    pathname !== "/pull-requests" && activeThread
+      ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+      : null;
+  const planProjection = useThreadProjection(planThreadRef)?.projection ?? null;
   const latestProposedPlan = findLatestProposedPlan(planProjection, activeThread?.latestRun?.runId);
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
   const activeThreadServerConfig = useServerConfigs().get(
@@ -1359,7 +1363,7 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  if (referenceThreadRef && latestProposedPlan) {
+  if (planThreadRef && latestProposedPlan) {
     actionItems.push({
       kind: "action",
       value: "action:open-plan",
@@ -1370,7 +1374,7 @@ function OpenCommandPaletteDialog(props: {
         useRightPanelStore
           .getState()
           .openPlan(
-            referenceThreadRef,
+            planThreadRef,
             latestProposedPlan.id,
             proposedPlanItemId(planProjection, latestProposedPlan.id),
           );

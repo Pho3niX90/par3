@@ -56,7 +56,7 @@ export function ThreadPlanScreen({ route }: ThreadPlanScreenProps) {
       <NativeStackScreenOptions options={{ title: proposedPlanTitle(item.markdown) ?? "Plan" }} />
       <FileMarkdownPreview
         cwd={baseDirectory ?? ""}
-        {...(baseDirectory === undefined ? {} : { baseDirectory })}
+        baseDirectory={baseDirectory ?? ""}
         relativePath=""
         environmentId={environmentId}
         threadId={threadId}

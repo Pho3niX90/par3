@@ -24,13 +24,15 @@ export const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBann
           <span className="min-w-0 flex-1 truncate text-foreground/85">{planTitle}</span>
         ) : null}
       </ComposerBanner.Content>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => useRightPanelStore.getState().openPlan(threadRef, planId, itemId)}
-      >
-        Open
-      </Button>
+      <ComposerBanner.Actions>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => useRightPanelStore.getState().openPlan(threadRef, planId, itemId)}
+        >
+          Open
+        </Button>
+      </ComposerBanner.Actions>
     </ComposerBanner.Row>
   );
 });
