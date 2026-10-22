@@ -7,6 +7,8 @@ import type { ThreadInspectorMode } from "./thread-inspector-content-stack";
 import { useThreadHeaderOptions } from "./useThreadHeaderOptions";
 import { useWorkspaceBackNavigation } from "../workspace/useAndroidWorkspaceNavigation";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import { selectMergeConflictState } from "@t3tools/client-runtime/state/merge-conflict-state";
+import { useOpenMergeConflicts } from "../conflicts/useOpenMergeConflicts";
 
 export function ThreadHeader(
   props: Parameters<typeof useThreadHeaderOptions>[0] & {
@@ -23,6 +25,13 @@ export function ThreadHeader(
   const { layout, panes, toggleAuxiliaryPane, composerKeyboardActive } =
     useAdaptiveWorkspaceLayout();
   const { onOpenTerminal, onMergeBack } = props.gitControls;
+  const openMergeConflicts = useOpenMergeConflicts({
+    environmentId: String(props.gitControls.environmentId),
+    threadId: String(props.gitControls.threadId),
+  });
+  const needsConflictResolution = selectMergeConflictState(
+    props.gitControls.gitStatus,
+  ).needsResolution;
   const native = useThreadHeaderOptions(props);
   const androidHeaderActions = useMemo<ReadonlyArray<AppBarAction>>(() => {
     const actions: AppBarAction[] = [];
@@ -47,6 +56,13 @@ export function ThreadHeader(
         accessibilityLabel: "Open terminal",
         icon: "terminal",
         onPress: () => onOpenTerminal(null),
+      });
+    }
+    if (needsConflictResolution) {
+      actions.push({
+        accessibilityLabel: "Resolve merge conflicts",
+        icon: "arrow.triangle.branch",
+        onPress: openMergeConflicts,
       });
     }
     actions.push({
@@ -74,6 +90,8 @@ export function ThreadHeader(
     props.hasThreadCwd,
     props.hasWorkspaceRoot,
     props.gitControls.canOpenTerminal,
+    needsConflictResolution,
+    openMergeConflicts,
   ]);
 
   return (

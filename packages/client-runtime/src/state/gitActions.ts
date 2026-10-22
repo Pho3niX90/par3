@@ -4,6 +4,8 @@ import type {
   VcsStatusResult,
 } from "@t3tools/contracts";
 
+import { mergeOperationNoun, selectMergeConflictState } from "./mergeConflictState.ts";
+
 export type GitActionIconName = "commit" | "push" | "pr";
 
 export type GitDialogAction = "commit" | "push" | "create_pr";
@@ -20,7 +22,7 @@ export interface GitActionMenuItem {
 export interface GitQuickAction {
   label: string;
   disabled: boolean;
-  kind: "run_action" | "run_pull" | "open_pr" | "show_hint";
+  kind: "run_action" | "run_pull" | "open_pr" | "show_hint" | "resolve_conflicts";
   action?: GitStackedAction;
   hint?: string;
 }
@@ -49,14 +51,17 @@ export function buildMenuItems(
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
 
+  // Committing or pushing a half-finished merge would publish its conflicted state.
+  const resolving = selectMergeConflictState(gitStatus).needsResolution;
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
   const hasOpenPr = gitStatus.pr?.state === "open";
   const isBehind = gitStatus.behindCount > 0;
   const canPushWithoutUpstream = hasOriginRemote && !gitStatus.hasUpstream;
-  const canCommit = !isBusy && hasChanges;
+  const canCommit = !isBusy && !resolving && hasChanges;
   const canPush =
     !isBusy &&
+    !resolving &&
     hasBranch &&
     !hasChanges &&
     !isBehind &&
@@ -64,6 +69,7 @@ export function buildMenuItems(
     (gitStatus.hasUpstream || canPushWithoutUpstream);
   const canCreatePr =
     !isBusy &&
+    !resolving &&
     hasBranch &&
     !hasOpenPr &&
     (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0 &&
@@ -123,6 +129,17 @@ export function resolveQuickAction(
       disabled: true,
       kind: "show_hint",
       hint: "Git status is unavailable.",
+    };
+  }
+
+  const conflictState = selectMergeConflictState(gitStatus);
+  if (conflictState.needsResolution) {
+    return {
+      label: conflictState.canContinue
+        ? `Continue ${mergeOperationNoun(conflictState.operation)}`
+        : `Resolve conflicts (${conflictState.conflictCount})`,
+      disabled: false,
+      kind: "resolve_conflicts",
     };
   }
 
@@ -252,6 +269,9 @@ export function getGitActionDisabledReason(input: {
   if (!item.disabled) return null;
   if (isBusy) return "Git action in progress.";
   if (!gitStatus) return "Git status is unavailable.";
+  if (selectMergeConflictState(gitStatus).needsResolution) {
+    return "Finish resolving the merge conflicts first.";
+  }
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;

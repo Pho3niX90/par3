@@ -17,6 +17,9 @@ import {
   PersistentThreadTerminalPanel,
   type PersistentThreadTerminalPanelProps,
 } from "../PersistentThreadTerminals";
+import { MergeConflictsPanel } from "../mergeConflicts/MergeConflictsPanel";
+import { fileMergePreviewPath } from "../mergeConflicts/mergeConflicts.logic";
+import { toastManager } from "../ui/toast";
 import { pullRequestPanelContext } from "../pullRequest/pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
@@ -74,6 +77,8 @@ export function RightPanelSurfaceContent(props: {
     image: ComposerImageAttachment | null,
   ) => void;
   readonly onCloseSurface: (surface: RightPanelSurface) => void;
+  /** Queues the prompt as a message on this thread; undefined until the thread has started. */
+  readonly onAskAgentToResolveConflicts: ((prompt: string) => Promise<void>) | undefined;
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
   readonly files: RightPanelFileProps;
@@ -167,6 +172,27 @@ export function RightPanelSurfaceContent(props: {
     }
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
+    case "merge":
+      return (
+        <MergeConflictsPanel
+          threadRef={threadRef}
+          onAskAgent={props.onAskAgentToResolveConflicts}
+          // The seam for the three-pane merge view. Until it exists, Merge… shows the
+          // conflicted file in the file preview.
+          openFileMerge={(cwd, path) => {
+            const previewPath = fileMergePreviewPath(props.files.workspaceRoot, cwd, path);
+            if (previewPath === null) {
+              toastManager.add({
+                type: "info",
+                title: "Can't open this file here",
+                description: "Its repository is outside the thread's workspace.",
+              });
+              return;
+            }
+            props.files.onOpenFile(previewPath);
+          }}
+        />
+      );
     case "device":
       return (
         <Suspense fallback={null}>

@@ -72,6 +72,7 @@ import { DevicePreviewRouteScreen } from "./features/devices/DevicePreviewRouteS
 import { BrowserPreviewRouteScreen } from "./features/browser/BrowserPreviewRouteScreen";
 import { GitBranchesSheet } from "./features/threads/git/GitBranchesSheet";
 import { GitCommitSheet } from "./features/threads/git/GitCommitSheet";
+import { MergeConflictsSheet } from "./features/conflicts/MergeConflictsSheet";
 import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
 import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadPullRequestsSheet } from "./features/threads/ThreadPullRequestsSheet";
@@ -574,6 +575,7 @@ const WORKSPACE_OVERLAY_ROUTES = new Set([
   "GitCommit",
   "GitConfirm",
   "GitOverview",
+  "MergeConflicts",
   "NewTaskSheet",
   "SettingsLegal",
   "SettingsSheet",
@@ -942,6 +944,15 @@ const RootStackConfig = createWorkspaceStackNavigator({
       options: {
         ...FORM_SHEET_PRESENTATION_OPTIONS,
         sheetAllowedDetents: [0.55, 0.92],
+        sheetGrabberVisible: true,
+      },
+    }),
+    MergeConflicts: createNativeStackScreen({
+      screen: MergeConflictsSheet,
+      linking: `${THREAD_LINKING_PREFIX}/conflicts`,
+      options: {
+        ...FORM_SHEET_PRESENTATION_OPTIONS,
+        sheetAllowedDetents: [0.6, 0.92],
         sheetGrabberVisible: true,
       },
     }),

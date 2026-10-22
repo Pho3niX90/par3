@@ -3,6 +3,10 @@ import type {
   GitStackedAction,
   VcsStatusResult,
 } from "@t3tools/contracts";
+import {
+  mergeOperationNoun,
+  selectMergeConflictState,
+} from "@t3tools/client-runtime/state/merge-conflict-state";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import type { ChangeRequestTerminology } from "@t3tools/client-runtime/source-control-clients";
@@ -23,7 +27,7 @@ export interface GitActionMenuItem {
 export interface GitQuickAction {
   label: string;
   disabled: boolean;
-  kind: "run_action" | "run_pull" | "open_publish" | "show_hint";
+  kind: "run_action" | "run_pull" | "open_publish" | "show_hint" | "resolve_conflicts";
   action?: GitStackedAction;
   hint?: string;
 }
@@ -122,6 +126,9 @@ export function buildMenuItems(
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
   const terminology = resolveChangeRequestTerminology(gitStatus);
+  // Committing, pushing or opening a change request on a half-finished merge would publish its
+  // conflicted state, so the resolver has to finish first.
+  const resolving = selectMergeConflictState(gitStatus).needsResolution;
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
@@ -129,15 +136,17 @@ export function buildMenuItems(
   const isBehind = gitStatus.behindCount > 0;
   const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0;
   const canPushWithoutUpstream = hasPrimaryRemote && !gitStatus.hasUpstream;
-  const canCommit = !isBusy && hasChanges;
+  const canCommit = !isBusy && !resolving && hasChanges;
   const canPush =
     !isBusy &&
+    !resolving &&
     hasBranch &&
     !isBehind &&
     gitStatus.aheadCount > 0 &&
     (gitStatus.hasUpstream || canPushWithoutUpstream);
   const canCreatePr =
     !isBusy &&
+    !resolving &&
     hasBranch &&
     !hasOpenPr &&
     hasDefaultBranchDelta &&
@@ -201,6 +210,21 @@ export function resolveQuickAction(
       kind: "show_hint",
       hint: "Git status is unavailable.",
     };
+  }
+
+  const conflictState = selectMergeConflictState(gitStatus);
+  if (conflictState.needsResolution) {
+    return conflictState.canContinue
+      ? {
+          label: `Continue ${mergeOperationNoun(conflictState.operation)}`,
+          disabled: false,
+          kind: "resolve_conflicts",
+        }
+      : {
+          label: `Resolve conflicts (${conflictState.conflictCount})`,
+          disabled: false,
+          kind: "resolve_conflicts",
+        };
   }
 
   const hasBranch = gitStatus.refName !== null;
