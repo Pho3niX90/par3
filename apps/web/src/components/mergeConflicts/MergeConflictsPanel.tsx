@@ -8,6 +8,7 @@ import type {
   EnvironmentId,
   MergeConflictListEntry,
   MergeConflictResolution,
+  ResolvedKeybindingsConfig,
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { SparklesIcon } from "lucide-react";
@@ -52,6 +53,7 @@ import {
   type ConflictSide,
 } from "./mergeConflicts.logic";
 import { repositoryKey, useMergeConflictSessionStore } from "./mergeConflictSessionStore";
+import { MergeFileSession } from "./MergeFileSession";
 import {
   useThreadConflictRepositories,
   type ConflictRepository,
@@ -68,15 +70,35 @@ export interface MergeConflictsPanelProps {
    * Sends a prompt into the thread. Absent when the thread has not started, which hides Ask agent.
    */
   readonly onAskAgent: ((prompt: string) => Promise<void>) | undefined;
-  /**
-   * The seam for the three-pane view: called with a repository `cwd` and a path relative to it.
-   * Today it opens the file in the file preview.
-   */
-  readonly openFileMerge: (cwd: string, path: string) => void;
+  readonly keybindings: ResolvedKeybindingsConfig;
+  /** The three-pane view needs the width, so the right panel is maximized while it is open. */
+  readonly onMaximizedChange: (maximized: boolean) => void;
 }
 
 export function MergeConflictsPanel(props: MergeConflictsPanelProps) {
   const { environmentId, repositories } = useThreadConflictRepositories(props.threadRef);
+  // The one file open in the three-pane view, if any. Opening it is the single seam
+  // `openFileMerge(cwd, path)` between the file list and the view.
+  const [merging, setMerging] = useState<{ cwd: string; path: string } | null>(null);
+  const openFileMerge = (cwd: string, path: string) => setMerging({ cwd, path });
+  const isMerging = merging !== null;
+  const reportMaximized = useEffectEvent(props.onMaximizedChange);
+  useEffect(() => {
+    reportMaximized(isMerging);
+    return () => reportMaximized(false);
+  }, [isMerging]);
+  if (merging !== null && environmentId !== null) {
+    return (
+      <MergeFileSession
+        key={`${merging.cwd}\0${merging.path}`}
+        environmentId={environmentId}
+        cwd={merging.cwd}
+        path={merging.path}
+        keybindings={props.keybindings}
+        onOpen={(path) => setMerging(path === null ? null : { cwd: merging.cwd, path })}
+      />
+    );
+  }
   if (environmentId === null || repositories.length === 0) {
     return (
       <Empty size="compact">
@@ -101,7 +123,7 @@ export function MergeConflictsPanel(props: MergeConflictsPanelProps) {
           repository={repository}
           showHeading={repositories.length > 1}
           onAskAgent={props.onAskAgent}
-          openFileMerge={props.openFileMerge}
+          openFileMerge={openFileMerge}
         />
       ))}
     </div>

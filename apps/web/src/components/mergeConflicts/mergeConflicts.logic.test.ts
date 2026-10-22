@@ -4,7 +4,6 @@ import {
   abortConfirmation,
   conflictRowActions,
   continueOutcomeToast,
-  fileMergePreviewPath,
   EMPTY_RESOLVED_IN_OPERATION,
   forgetResolved,
   mutationBlockedReason,
@@ -118,19 +117,5 @@ describe("resolved-in-operation list", () => {
   it("forgets a reopened path", () => {
     const state = recordResolved(EMPTY_RESOLVED_IN_OPERATION, signature, "a.ts");
     expect(forgetResolved(state, "a.ts").paths).toEqual([]);
-  });
-});
-
-describe("fileMergePreviewPath", () => {
-  it("keeps the path for the workspace root and prefixes a child repository", () => {
-    expect(fileMergePreviewPath("/work/app", "/work/app", "src/a.ts")).toBe("src/a.ts");
-    expect(fileMergePreviewPath("/work/app/", "/work/app/api", "src/a.ts")).toBe("api/src/a.ts");
-    expect(fileMergePreviewPath("C:\\work\\app", "C:/work/app/api", "a.ts")).toBe("api/a.ts");
-  });
-
-  it("gives up when the repository is outside the workspace root", () => {
-    expect(fileMergePreviewPath("/work/app", "/work/other", "a.ts")).toBeNull();
-    expect(fileMergePreviewPath("/work/app", "/work/app-two", "a.ts")).toBeNull();
-    expect(fileMergePreviewPath(undefined, "/work/app", "a.ts")).toBeNull();
   });
 });

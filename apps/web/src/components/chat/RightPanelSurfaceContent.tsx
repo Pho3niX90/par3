@@ -18,8 +18,6 @@ import {
   type PersistentThreadTerminalPanelProps,
 } from "../PersistentThreadTerminals";
 import { MergeConflictsPanel } from "../mergeConflicts/MergeConflictsPanel";
-import { fileMergePreviewPath } from "../mergeConflicts/mergeConflicts.logic";
-import { toastManager } from "../ui/toast";
 import { pullRequestPanelContext } from "../pullRequest/pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
@@ -176,21 +174,11 @@ export function RightPanelSurfaceContent(props: {
       return (
         <MergeConflictsPanel
           threadRef={threadRef}
+          keybindings={props.keybindings}
           onAskAgent={props.onAskAgentToResolveConflicts}
-          // The seam for the three-pane merge view. Until it exists, Merge… shows the
-          // conflicted file in the file preview.
-          openFileMerge={(cwd, path) => {
-            const previewPath = fileMergePreviewPath(props.files.workspaceRoot, cwd, path);
-            if (previewPath === null) {
-              toastManager.add({
-                type: "info",
-                title: "Can't open this file here",
-                description: "Its repository is outside the thread's workspace.",
-              });
-              return;
-            }
-            props.files.onOpenFile(previewPath);
-          }}
+          onMaximizedChange={(maximized) =>
+            useRightPanelStore.getState().setMaximized(threadRef, maximized)
+          }
         />
       );
     case "device":

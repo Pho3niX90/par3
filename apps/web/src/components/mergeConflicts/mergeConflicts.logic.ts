@@ -191,19 +191,3 @@ export function visibleResolved(
   if (signature === "" || state.signature !== signature) return [];
   return state.paths.filter((path) => !conflictedPaths.includes(path));
 }
-
-/**
- * The file's path relative to the thread's workspace root, which is what the file preview takes.
- * Null when the repository sits outside that root, so the preview cannot show it.
- */
-export function fileMergePreviewPath(
-  workspaceRoot: string | undefined,
-  cwd: string,
-  path: string,
-): string | null {
-  if (workspaceRoot === undefined) return null;
-  const root = workspaceRoot.replaceAll("\\", "/").replace(/\/+$/, "");
-  const repository = cwd.replaceAll("\\", "/").replace(/\/+$/, "");
-  if (repository === root) return path;
-  return repository.startsWith(`${root}/`) ? `${repository.slice(root.length + 1)}/${path}` : null;
-}
