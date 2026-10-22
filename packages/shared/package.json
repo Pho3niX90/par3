@@ -315,6 +315,10 @@
       "types": "./src/previewViewport.ts",
       "import": "./src/previewViewport.ts"
     },
+    "./merge3": {
+      "types": "./src/merge3.ts",
+      "import": "./src/merge3.ts"
+    },
     "./filePreview": {
       "types": "./src/filePreview.ts",
       "import": "./src/filePreview.ts"
@@ -524,6 +528,7 @@
     "@noble/curves": "catalog:",
     "@noble/hashes": "catalog:",
     "@t3tools/contracts": "workspace:*",
+    "diff": "8.0.3",
     "effect": "catalog:",
     "jose": "catalog:",
     "mdast-util-directive": "catalog:",

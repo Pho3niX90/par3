@@ -1,4 +1,6 @@
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
+import { PullRequestGlyph } from "./pullRequest/pullRequestIcons";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { useAtomValue } from "@effect/atom-react";
 import {
   AuthOrchestrationOperateScope,
@@ -313,6 +315,8 @@ function GitQuickActionIcon({
   className?: string;
   SourceControlIcon: ReturnType<typeof getSourceControlPresentation>["Icon"];
 }) {
+  if (quickAction.kind === "resolve_conflicts")
+    return <PullRequestGlyph.merged className={className} />;
   if (quickAction.kind === "open_publish") return <CloudUploadIcon className={className} />;
   if (quickAction.kind === "run_pull") return <CloudDownloadIcon className={className} />;
   if (quickAction.kind === "run_action") {
@@ -1400,6 +1404,11 @@ export default function GitActionsControl({
   };
 
   const runQuickAction = () => {
+    if (quickAction.kind === "resolve_conflicts") {
+      // Resolving, continuing and aborting live in one panel, which owns their confirmations.
+      if (activeThreadRef) useRightPanelStore.getState().open(activeThreadRef, "merge");
+      return;
+    }
     if (quickAction.kind === "open_publish") {
       setIsPublishDialogOpen(true);
       return;

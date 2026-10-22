@@ -1,5 +1,5 @@
 import { useAtomCommand } from "~/state/use-atom-command";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -11,6 +11,7 @@ import type {
   PullRequestDetail,
   PullRequestMergeMethod,
   PullRequestRef,
+  ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useRef, useState } from "react";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -225,6 +226,15 @@ export interface PullRequestThreadTask {
   reviewComments?: ReadonlyArray<ReviewCommentContext>;
 }
 
+/** What a hand-off left behind: the checkout and the thread opened on it. */
+export interface PreparedPullRequestCheckout {
+  readonly threadRef: ScopedThreadRef;
+  /** The checkout's folder; the project root when the branch was checked out in place. */
+  readonly cwd: string | null;
+  readonly branch: string;
+  readonly isOnPullRequestHead: boolean;
+}
+
 export type PullRequestHandoffDetail = Pick<
   PullRequestDetail,
   "projectId" | "workspaceRoot" | "url"
@@ -313,8 +323,12 @@ export function usePullRequestHandoffs({
     kind: string,
     task: PullRequestThreadTask | null,
     mode: "worktree" | "local" = "worktree",
-  ) => {
-    if (!detail || handoff !== null) return;
+    options?: {
+      /** The caller reports the outcome itself, so a successful checkout shows no toast. */
+      readonly quiet?: boolean;
+    },
+  ): Promise<PreparedPullRequestCheckout | null> => {
+    if (!detail || handoff !== null) return null;
     setHandoff(kind);
     // It carries no timeout of its own: a loading toast never expires, and an explicit one
     // would survive the update and pin the result on screen.
@@ -337,7 +351,7 @@ export function usePullRequestHandoffs({
         title: "Could not open a thread for the checkout",
         description: "Try again from the project, or open a thread first.",
       });
-      return;
+      return null;
     }
     const prepared = await prepareThread.run({
       reference: detail.url,
@@ -353,27 +367,37 @@ export function usePullRequestHandoffs({
           isAtomCommandInterrupted(prepared) ? undefined : squashAtomCommandFailure(prepared),
         ),
       });
-      return;
+      return null;
     }
     const pointed = await newThread(projectRef, {
       branch: prepared.value.branch,
       worktreePath: prepared.value.worktreePath,
       envMode: prepared.value.worktreePath === null ? "local" : "worktree",
     }).then(
-      (session) => session !== null,
-      () => false,
+      (session) => session,
+      () => null,
     );
-    if (!pointed) {
+    if (pointed === null) {
       setHandoff(null);
       toastManager.update(toastId, {
         type: "error",
         title: "Checked out, but the thread stayed where it was",
         description: `The checkout is ready on \`${prepared.value.branch}\`. Point a thread at it from the branch picker, then ask again.`,
       });
-      return;
+      return null;
     }
     setHandoff(null);
+    const checkout: PreparedPullRequestCheckout = {
+      threadRef: scopeThreadRef(environmentId, pointed.threadId),
+      cwd: prepared.value.worktreePath ?? detail.workspaceRoot,
+      branch: prepared.value.branch,
+      isOnPullRequestHead: prepared.value.isOnPullRequestHead,
+    };
     if (task === null) {
+      if (options?.quiet === true) {
+        toastManager.close(toastId);
+        return checkout;
+      }
       toastManager.update(
         toastId,
         prepared.value.isOnPullRequestHead
@@ -387,7 +411,7 @@ export function usePullRequestHandoffs({
             }
           : OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST,
       );
-      return;
+      return checkout;
     }
     await openThreadWithTask(projectRef, task, opened);
     toastManager.update(
@@ -400,6 +424,7 @@ export function usePullRequestHandoffs({
           }
         : OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST,
     );
+    return checkout;
   };
 
   return { handoff, startAsk, startHandoff };

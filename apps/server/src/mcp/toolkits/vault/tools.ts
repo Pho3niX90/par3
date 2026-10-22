@@ -23,7 +23,6 @@ const failure = Schema.Union([VaultError, OrchestratorMcpFailure, McpCapabilityU
 const VaultListTool = Tool.make("vault_list", {
   description:
     "List the secrets in the user's Par3 vault: names, descriptions, and whether agents may read them. Never returns values. Prefer using a secret by reference: settings fields such as provider environment variables and shared MCP server headers accept `vault:NAME`, which Par3 fills in on the server.",
-  parameters: Schema.Struct({}),
   success: Schema.Struct({ entries: Schema.Array(VaultEntry) }),
   failure,
   failureMode: "return",

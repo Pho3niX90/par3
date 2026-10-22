@@ -15,6 +15,7 @@ import {
   type StaticScreenProps,
 } from "@react-navigation/native";
 import { SymbolView } from "../../../components/ui/AppSymbol";
+import { selectMergeConflictState } from "@t3tools/client-runtime/state/merge-conflict-state";
 import { useEffect, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 
@@ -220,6 +221,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   };
 
   const behindCount = gitStatus.data?.behindCount ?? 0;
+  const conflictState = selectMergeConflictState(gitStatus.data);
 
   // Tying RefreshControl to the query's isPending flag left the spinner stuck
   // (the status query reports pending during quiet background refreshes too).
@@ -250,6 +252,25 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
       }
     >
       <ListSection>
+        {conflictState.needsResolution ? (
+          <ListRow
+            icon="arrow.triangle.branch"
+            label={
+              conflictState.canContinue
+                ? `Continue ${conflictState.operation}`
+                : `Resolve conflicts (${conflictState.conflictCount})`
+            }
+            description="Accept a side, resolve simple conflicts, or ask the agent"
+            onPress={() => {
+              const params = { environmentId: String(environmentId), threadId: String(threadId) };
+              navigation.dispatch(
+                presentation === "sheet"
+                  ? StackActions.replace("MergeConflicts", params)
+                  : CommonActions.navigate("MergeConflicts", params),
+              );
+            }}
+          />
+        ) : null}
         {sheetMenuItems.map(({ item, disabledReason }) => (
           <ListRow
             key={`${item.id}-${item.label}`}

@@ -1,12 +1,9 @@
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 
 import {
-  VcsRepositoryDetectionError,
   VcsUnsupportedOperationError,
   type ReviewDiffFileContentsInput,
   type ReviewDiffFileContentsResult,
@@ -15,10 +12,9 @@ import {
   type ReviewDiffPreviewResult,
 } from "@t3tools/contracts";
 
-import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
-import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
+import * as WorkspaceBoundCwd from "../workspace/WorkspaceBoundCwd.ts";
 
 export class ReviewService extends Context.Service<
   ReviewService,
@@ -34,61 +30,19 @@ export class ReviewService extends Context.Service<
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const config = yield* ServerConfig.ServerConfig;
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
-  const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
 
-  const canonicalizePath = (value: string) => {
-    const resolvedPath = path.resolve(value);
-    return fileSystem.realPath(resolvedPath).pipe(
-      Effect.catchTags({
-        PlatformError: (cause) =>
-          cause.reason._tag === "NotFound"
-            ? Effect.succeed(resolvedPath)
-            : Effect.fail(
-                new VcsRepositoryDetectionError({
-                  operation: "ReviewService.assertWorkspaceBoundCwd.canonicalizePath",
-                  cwd: resolvedPath,
-                  detail: "Failed to resolve a path while validating the review workspace.",
-                  cause,
-                }),
-              ),
-      }),
-    );
-  };
-
-  const assertWorkspaceBoundCwd = Effect.fn("ReviewService.assertWorkspaceBoundCwd")(function* (
-    operation: "ReviewService.getDiffPreview" | "ReviewService.getDiffFileContents",
-    cwd: string,
-  ) {
-    const [candidate, workspaceRoot] = yield* Effect.all([
-      canonicalizePath(cwd),
-      canonicalizePath(config.cwd),
-    ]);
-    if (
-      KnownWorkspaces.isWithinRoot(path, candidate, workspaceRoot) ||
-      (yield* knownWorkspaces.contains(candidate))
-    ) {
-      return;
-    }
-
-    return yield* new VcsRepositoryDetectionError({
-      operation,
-      cwd,
-      detail:
-        operation === "ReviewService.getDiffPreview"
-          ? "Review diff preview cwd must stay within the configured workspace root."
-          : "Review diff file contents cwd must stay within the configured workspace root.",
-    });
-  });
+  const assertWorkspaceBoundCwd = yield* WorkspaceBoundCwd.makeWorkspaceBoundCwdAssertion;
 
   const getDiffPreview: ReviewService["Service"]["getDiffPreview"] = Effect.fn(
     "ReviewService.getDiffPreview",
   )(function* (input) {
-    yield* assertWorkspaceBoundCwd("ReviewService.getDiffPreview", input.cwd);
+    yield* assertWorkspaceBoundCwd({
+      operation: "ReviewService.getDiffPreview",
+      cwd: input.cwd,
+      detail: "Review diff preview cwd must stay within the configured workspace root.",
+    });
 
     const handle = yield* vcsRegistry.detect({ cwd: input.cwd, requestedKind: "auto" });
     if (!handle) {
@@ -117,7 +71,11 @@ export const make = Effect.gen(function* () {
   const getDiffFileContents: ReviewService["Service"]["getDiffFileContents"] = Effect.fn(
     "ReviewService.getDiffFileContents",
   )(function* (input) {
-    yield* assertWorkspaceBoundCwd("ReviewService.getDiffFileContents", input.cwd);
+    yield* assertWorkspaceBoundCwd({
+      operation: "ReviewService.getDiffFileContents",
+      cwd: input.cwd,
+      detail: "Review diff file contents cwd must stay within the configured workspace root.",
+    });
 
     const handle = yield* vcsRegistry.detect({ cwd: input.cwd, requestedKind: "auto" });
     if (handle?.kind !== "git") {

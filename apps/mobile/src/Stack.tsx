@@ -63,6 +63,7 @@ import { DevicePreviewRouteScreen } from "./features/devices/DevicePreviewRouteS
 import { BrowserPreviewRouteScreen } from "./features/browser/BrowserPreviewRouteScreen";
 import { GitBranchesSheet } from "./features/threads/git/GitBranchesSheet";
 import { GitCommitSheet } from "./features/threads/git/GitCommitSheet";
+import { MergeConflictsSheet } from "./features/conflicts/MergeConflictsSheet";
 import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
 import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadPullRequestsSheet } from "./features/threads/ThreadPullRequestsSheet";
@@ -479,6 +480,7 @@ const WORKSPACE_OVERLAY_ROUTES = new Set([
   "GitCommit",
   "GitConfirm",
   "GitOverview",
+  "MergeConflicts",
   "NewTaskProject",
   "NewTaskFiles",
   "NewTaskFile",
@@ -948,6 +950,15 @@ const RootStackConfig = createWorkspaceStackNavigator({
         ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
         ...HORIZONTAL_FORM_SHEET_OPTIONS,
         sheetAllowedDetents: formSheetDetents(0.55),
+        sheetGrabberVisible: true,
+      },
+    }),
+    MergeConflicts: createNativeStackScreen({
+      screen: MergeConflictsSheet,
+      linking: `${THREAD_LINKING_PREFIX}/conflicts`,
+      options: {
+        ...HORIZONTAL_FORM_SHEET_OPTIONS,
+        sheetAllowedDetents: formSheetDetents(0.6, 0.92),
         sheetGrabberVisible: true,
       },
     }),

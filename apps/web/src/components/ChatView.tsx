@@ -1864,9 +1864,10 @@ export default function ChatView(props: ChatViewProps) {
     scheduleComposerFocus();
   };
   const insertArtifactTemplateStable = useStableCallback(insertArtifactTemplate);
-  const sendAppMessage = async (text: string) => {
+  // Queues a user message on the active thread, behind any turn already running.
+  const queueUserMessage = async (text: string, failure: { unstarted: string; send: string }) => {
     if (!isServerThread || activeThreadId === null) {
-      throw new Error("Messages from apps need a started thread.");
+      throw new Error(failure.unstarted);
     }
     const result = await startThreadTurn({
       environmentId,
@@ -1880,10 +1881,21 @@ export default function ChatView(props: ChatViewProps) {
     });
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
-      throw error instanceof Error ? error : new Error("Could not send the app's message.");
+      throw error instanceof Error ? error : new Error(failure.send);
     }
   };
+  const sendAppMessage = (text: string) =>
+    queueUserMessage(text, {
+      unstarted: "Messages from apps need a started thread.",
+      send: "Could not send the app's message.",
+    });
   const sendAppMessageStable = useStableCallback(sendAppMessage);
+  const askAgentToResolveConflicts = (prompt: string) =>
+    queueUserMessage(prompt, {
+      unstarted: "Start the thread before asking the agent to resolve conflicts.",
+      send: "Could not send the request to the agent.",
+    });
+  const askAgentToResolveConflictsStable = useStableCallback(askAgentToResolveConflicts);
   const queuedRunsControlRef = useRef<QueuedRunsControlHandle>(null);
 
   const {
@@ -2773,6 +2785,10 @@ export default function ChatView(props: ChatViewProps) {
         if (!isServerThread || serverConfig?.threadFind !== true) return false;
         openThreadFind();
       },
+      "merge.open": ({ event }) => {
+        if (!activeThreadRef) return false;
+        if (!event.repeat) useRightPanelStore.getState().open(activeThreadRef, "merge");
+      },
       "composer.cycleHost": ({ event }) => {
         if (!canChangeEnvironment) return false;
         if (event.repeat) return;
@@ -3171,6 +3187,7 @@ export default function ChatView(props: ChatViewProps) {
       getShortcutContext={getShortcutContextStable}
       onSendAnnotation={sendPreviewAnnotationStable}
       onCloseSurface={closeRightPanelSurface}
+      onAskAgentToResolveConflicts={isServerThread ? askAgentToResolveConflictsStable : undefined}
       terminal={{
         launchContext: activeTerminalLaunchContext ?? null,
         focusRequestId: terminalFocusRequestId,

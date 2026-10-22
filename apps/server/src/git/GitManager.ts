@@ -1142,6 +1142,10 @@ export const make = Effect.gen(function* () {
       hasWorkingTreeChanges: details.hasWorkingTreeChanges,
       workingTree: details.workingTree,
       ...(details.branchChanges ? { branchChanges: details.branchChanges } : {}),
+      ...(details.operation ? { operation: details.operation } : {}),
+      ...(details.conflicts
+        ? { conflicts: details.conflicts, conflictCount: details.conflictCount ?? 0 }
+        : {}),
     } satisfies VcsStatusLocalResult;
   });
   const localStatusResultCache = yield* Cache.makeWith(readLocalStatus, {

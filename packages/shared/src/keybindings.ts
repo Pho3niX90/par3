@@ -159,6 +159,9 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+w", command: "rightPanel.close", when: "!terminalFocus" },
   { key: "mod+shift+t", command: "view.reopenClosed" },
   { key: "mod+d", command: "diff.toggle", when: "!terminalFocus" },
+  // The merge view resolves these itself with `mergeViewFocus` set, so they never fire elsewhere.
+  { key: "f7", command: "merge.nextConflict", when: "mergeViewFocus" },
+  { key: "shift+f7", command: "merge.prevConflict", when: "mergeViewFocus" },
   { key: "mod+shift+j", command: "preview.toggle" },
   { key: "mod+r", command: "preview.refresh", when: "previewFocus" },
   { key: "mod+l", command: "preview.focusUrl", when: "previewFocus" },

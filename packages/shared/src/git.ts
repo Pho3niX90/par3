@@ -366,6 +366,9 @@ function toLocalStatusPart(status: VcsStatusResult): VcsStatusLocalResult {
     hasWorkingTreeChanges: status.hasWorkingTreeChanges,
     workingTree: status.workingTree,
     ...(status.branchChanges ? { branchChanges: status.branchChanges } : {}),
+    ...(status.operation ? { operation: status.operation } : {}),
+    ...(status.conflicts ? { conflicts: status.conflicts } : {}),
+    ...(status.conflictCount === undefined ? {} : { conflictCount: status.conflictCount }),
   };
 }
 

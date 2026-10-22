@@ -256,6 +256,45 @@ server, but the host's own site will not show them, and the count reads **viewed
 On mobile, open a changed file and mark it viewed from its header. Viewed files collapse,
 and their marks follow the same rules as on web and desktop.
 
+## Resolving merge conflicts
+
+When a merge, rebase, cherry-pick, or revert stops on conflicts, Par3 notices it whoever started it,
+whether you, an agent, or a terminal. The thread header shows the number of conflicts, and the Git
+action becomes **Resolve conflicts**. It opens the **Conflicts** panel, which lists each conflicted
+file for the thread's repository (one section per repository when a thread works in several).
+
+On web and desktop, **Update from base** on a conflicting pull request merges the base branch into the pull request's
+branch on your machine. It uses the thread's own checkout when that is already on the branch, and
+checks the pull request out first otherwise. A clean merge is left ready to push; conflicts open the
+panel. It needs a clean working tree, and **Resolve conflicts** still hands the work to an agent
+instead.
+
+For each file you can accept **ours** or **theirs**, or choose **Merge…** to open the three-pane view:
+ours on the left, theirs on the right, and the result you are building in the middle. The result
+starts with every change only one side made already applied; real conflicts show the original text.
+Use the arrows between the panes to take a side, ignore it, or take both in either order, and edit the
+result freely. Undo reverses a choice together with its text. Press **F7** and **Shift+F7** to move
+between conflicts. **Apply** saves the file and moves to the next one, and asks first if conflicts remain.
+If the file changed on disk or in the repository while it was open, Par3 asks you to reload it.
+
+**Resolve simple conflicts** merges each conflict again word by word and settles the ones where the two
+sides changed different words. Run it first; it leaves real conflicts alone. **Ask agent** sends the list
+of conflicted files to the thread's agent, which resolves and stages them but does not continue or
+abort. Agents can also check and resolve simple conflicts themselves.
+
+During a rebase git swaps the sides: **ours** is the branch you are rebasing onto and **theirs** is
+your commit being replayed. The labels above each pane name the branch or commit, so read those
+rather than the words. Binary files, very large files, and files stored through Git LFS or another
+filter can only be resolved by taking one side.
+
+**Continue** finishes the operation once nothing is left to resolve; a rebase may stop again with
+conflicts from its next commit. **Abort** returns the repository to how it was before the operation.
+If it was started outside Par3, uncommitted edits that existed beforehand can be discarded, so check
+before confirming. Resolving is unavailable while an agent is working in the same repository.
+
+On mobile you can accept a side for each file, resolve simple conflicts, ask the agent, and continue or
+abort, but not merge a file by hand. Files are never downloaded to the phone.
+
 ## Troubleshooting
 
 - **Not authenticated:** run the provider's login command on the server, then rescan. For Bitbucket,

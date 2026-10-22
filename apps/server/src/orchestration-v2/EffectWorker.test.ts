@@ -33,6 +33,7 @@ import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { GIT_OPERATION_IN_PROGRESS_DETAIL } from "../vcs/VcsProcess.ts";
 
 const threadId = ThreadId.make("thread:effect-worker-restart");
 const oldSessionId = ProviderSessionId.make("provider-session:effect-worker-restart:old");
@@ -229,6 +230,11 @@ it.effect.each([
     name: "a held Git index lock",
     failure: restoreFailure(lockedIndexMessage),
     message: lockedIndexMessage,
+  },
+  {
+    name: "a merge in progress",
+    failure: restoreFailure(GIT_OPERATION_IN_PROGRESS_DETAIL),
+    message: GIT_OPERATION_IN_PROGRESS_DETAIL,
   },
   {
     name: "raw Git output",

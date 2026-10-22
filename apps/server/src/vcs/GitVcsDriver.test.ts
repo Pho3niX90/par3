@@ -977,6 +977,60 @@ it.effect("restores empty checkpoints without changing paths outside the workspa
   }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
 );
 
+it.effect("refuses to restore a checkpoint while a merge is in progress", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const driver = yield* GitVcsDriver.makeVcsDriverShape();
+    const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-rollback-merge-" });
+    yield* runGit(cwd, ["init"]);
+    for (const [key, value] of [
+      ["user.email", "test@test.com"],
+      ["user.name", "Test"],
+      ["commit.gpgsign", "false"],
+    ]) {
+      yield* runGit(cwd, ["config", key!, value!]);
+    }
+    const file = path.join(cwd, "file.txt");
+    yield* fileSystem.writeFileString(file, "base\n");
+    yield* runGit(cwd, ["add", "."]);
+    yield* runGit(cwd, ["commit", "-m", "base"]);
+    const base = (yield* driver.execute({
+      operation: "test",
+      cwd,
+      args: ["branch", "--show-current"],
+    })).stdout.trim();
+    const checkpointRef = CheckpointRef.make("refs/t3/checkpoints/before-merge");
+    yield* driver.checkpoints.captureCheckpoint({ cwd, checkpointRef });
+    yield* runGit(cwd, ["checkout", "-b", "theirs"]);
+    yield* fileSystem.writeFileString(file, "theirs\n");
+    yield* runGit(cwd, ["commit", "-am", "theirs"]);
+    yield* runGit(cwd, ["checkout", base]);
+    yield* fileSystem.writeFileString(file, "ours\n");
+    yield* runGit(cwd, ["commit", "-am", "ours"]);
+    yield* driver.execute({
+      operation: "test",
+      cwd,
+      args: ["merge", "theirs"],
+      allowNonZeroExit: true,
+    });
+    assert.isTrue(yield* fileSystem.exists(path.join(cwd, ".git", "MERGE_HEAD")));
+
+    const error = yield* driver.checkpoints
+      .restoreCheckpoint({ cwd, checkpointRef, fallbackToHead: false })
+      .pipe(Effect.flip);
+    assert.strictEqual(error._tag, "VcsProcessExitError");
+    assert.strictEqual(
+      error._tag === "VcsProcessExitError" ? error.detail : "",
+      VcsProcess.GIT_OPERATION_IN_PROGRESS_DETAIL,
+    );
+    assert.include(VcsProcess.GIT_OPERATION_IN_PROGRESS_DETAIL, "Finish or abort the merge first");
+    // The conflicted state is untouched.
+    assert.isTrue(yield* fileSystem.exists(path.join(cwd, ".git", "MERGE_HEAD")));
+    assert.include(yield* fileSystem.readFileString(file), "<<<<<<<");
+  }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
+);
+
 // The real VCS process, spawning `command` wherever the driver runs git.
 const vcsProcessSpawning = (command: string) =>
   Layer.effect(

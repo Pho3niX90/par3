@@ -120,6 +120,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           projectWorktreeCleanup: true,
           worktreesDirectory: true,
           threadAutoSettlementScope: true,
+          mergeConflicts: true,
         });
       }
     }),

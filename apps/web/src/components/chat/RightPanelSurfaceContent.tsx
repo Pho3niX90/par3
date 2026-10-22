@@ -17,6 +17,7 @@ import {
   PersistentThreadTerminalPanel,
   type PersistentThreadTerminalPanelProps,
 } from "../PersistentThreadTerminals";
+import { MergeConflictsPanel } from "../mergeConflicts/MergeConflictsPanel";
 import { pullRequestPanelContext } from "../pullRequest/pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
@@ -77,6 +78,8 @@ export function RightPanelSurfaceContent(props: {
     image: ComposerImageAttachment | null,
   ) => void;
   readonly onCloseSurface: (surface: RightPanelSurface) => void;
+  /** Queues the prompt as a message on this thread; undefined until the thread has started. */
+  readonly onAskAgentToResolveConflicts: ((prompt: string) => Promise<void>) | undefined;
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
   readonly files: RightPanelFileProps;
@@ -182,6 +185,17 @@ export function RightPanelSurfaceContent(props: {
     }
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
+    case "merge":
+      return (
+        <MergeConflictsPanel
+          threadRef={threadRef}
+          keybindings={props.keybindings}
+          onAskAgent={props.onAskAgentToResolveConflicts}
+          onMaximizedChange={(maximized) =>
+            useRightPanelStore.getState().setMaximized(threadRef, maximized)
+          }
+        />
+      );
     case "device":
       return (
         <Suspense fallback={null}>

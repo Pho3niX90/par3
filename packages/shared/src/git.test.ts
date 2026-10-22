@@ -230,6 +230,9 @@ describe("applyGitStatusStreamEvent", () => {
       hasPrimaryRemote: true,
       isDefaultRef: false,
       refName: "feature/demo",
+      operation: { kind: "merge" },
+      conflicts: [{ path: "src/demo.ts", kind: "both-modified" }],
+      conflictCount: 1,
       hasWorkingTreeChanges: true,
       workingTree: {
         files: [{ path: "src/demo.ts", insertions: 1, deletions: 0 }],

@@ -186,3 +186,58 @@ describe("resolveAutoFeatureBranchName", () => {
     assert.equal(ref, "feature/ticket-1-2");
   });
 });
+
+describe("when: a merge, rebase, cherry-pick or revert is in progress", () => {
+  const conflicted = status({
+    hasWorkingTreeChanges: true,
+    aheadCount: 2,
+    operation: { kind: "merge" },
+    conflicts: [{ path: "a.ts", kind: "both-modified" }],
+    conflictCount: 3,
+  });
+
+  it("makes the primary action resolve the conflicts, counting past the capped list", () => {
+    assert.deepInclude(resolveQuickAction(conflicted, false), {
+      kind: "resolve_conflicts",
+      label: "Resolve conflicts (3)",
+      disabled: false,
+    });
+  });
+
+  it("offers to continue once every conflict is resolved", () => {
+    const resolved = status({ operation: { kind: "rebase" }, hasWorkingTreeChanges: true });
+    assert.deepInclude(resolveQuickAction(resolved, false), {
+      kind: "resolve_conflicts",
+      label: "Continue rebase",
+      disabled: false,
+    });
+  });
+
+  it("treats unmerged paths without an operation as conflicts to resolve", () => {
+    const stashPop = status({
+      conflicts: [{ path: "a.ts", kind: "both-added" }],
+      conflictCount: 1,
+    });
+    assert.deepInclude(resolveQuickAction(stashPop, false), {
+      kind: "resolve_conflicts",
+      label: "Resolve conflicts (1)",
+    });
+  });
+
+  it("disables commit, push and change request actions", () => {
+    const items = buildMenuItems(conflicted, false, true);
+    assert.deepStrictEqual(
+      items.map((item) => [item.id, item.disabled]),
+      [
+        ["commit", true],
+        ["push", true],
+        ["pr", true],
+      ],
+    );
+  });
+
+  it("keeps the usual actions for a server that reports no operation", () => {
+    const quick = resolveQuickAction(status({ aheadCount: 1 }), false);
+    assert.notStrictEqual(quick.kind, "resolve_conflicts");
+  });
+});

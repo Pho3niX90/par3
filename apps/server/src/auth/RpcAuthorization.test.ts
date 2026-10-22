@@ -64,6 +64,21 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("lets file-read tokens inspect merge conflicts but needs source control write to change them", () => {
+    for (const method of [WS_METHODS.vcsConflictsList, WS_METHODS.vcsConflictsRead]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemReadScope);
+    }
+    for (const method of [
+      WS_METHODS.vcsConflictsResolve,
+      WS_METHODS.vcsConflictsAutoResolve,
+      WS_METHODS.vcsConflictsReopen,
+      WS_METHODS.vcsOperationRun,
+      WS_METHODS.vcsMergeBase,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthSourceControlWriteScope);
+    }
+  });
+
   it("rejects unknown RPC method names", () => {
     for (const method of ["server.notRegistered", "toString", "constructor"]) {
       expect(() => requiredScopeForRpcMethod(method)).toThrow(

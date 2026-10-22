@@ -17,6 +17,7 @@ import {
   resolveQuickAction,
 } from "@t3tools/client-runtime/state/vcs";
 import { useNavigation } from "@react-navigation/native";
+import { useOpenMergeConflicts } from "../conflicts/useOpenMergeConflicts";
 
 import { useEnvironmentScope } from "../../state/session";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
@@ -80,7 +81,8 @@ type QuickActionIcon =
   | "arrow.down.circle"
   | "arrow.up.right.circle"
   | "checkmark.circle"
-  | "arrow.up.circle";
+  | "arrow.up.circle"
+  | "arrow.triangle.branch";
 
 export type ThreadGitMenuProps = {
   readonly environmentId: EnvironmentId | string;
@@ -116,6 +118,10 @@ type ThreadGitControlsProps = ThreadGitMenuProps & {
 function useThreadGitControlModel(props: ThreadGitMenuProps) {
   const navigation = useNavigation();
   const openPullRequest = useOpenPullRequest();
+  const openMergeConflicts = useOpenMergeConflicts({
+    environmentId: String(props.environmentId),
+    threadId: String(props.threadId),
+  });
   const environmentId = props.environmentId;
   const canWriteSourceControl = useEnvironmentScope(
     environmentId ? EnvironmentId.make(String(environmentId)) : null,
@@ -154,6 +160,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
     : null;
 
   const quickActionIcon: QuickActionIcon = (() => {
+    if (quickAction.kind === "resolve_conflicts") return "arrow.triangle.branch";
     if (quickAction.kind === "run_pull") return "arrow.down.circle";
     if (quickAction.kind === "open_pr") return "arrow.up.right.circle";
     if (quickAction.kind === "run_action") {
@@ -213,6 +220,10 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
 
   const runQuickAction = async () => {
     if (quickAction.disabled) return;
+    if (quickAction.kind === "resolve_conflicts") {
+      openMergeConflicts();
+      return;
+    }
     if (quickAction.kind === "open_pr") {
       await openExistingPr();
       return;

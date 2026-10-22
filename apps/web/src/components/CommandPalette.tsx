@@ -567,7 +567,8 @@ function OpenCommandPaletteDialog(props: {
   const planProjection = useThreadProjection(planThreadRef)?.projection ?? null;
   const latestProposedPlan = findLatestProposedPlan(planProjection, activeThread?.latestRun?.runId);
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
-  const activeThreadServerConfig = useServerConfigs().get(
+  const serverConfigs = useServerConfigs();
+  const activeThreadServerConfig = serverConfigs.get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
   const activeThreadReferenceCopyTarget =
@@ -1555,6 +1556,34 @@ function OpenCommandPaletteDialog(props: {
         icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
         run: async () => {
           useRightPanelStore.getState().open(threadRef, "pull-requests");
+        },
+      });
+    }
+  }
+
+  // Older servers have no resolver, and the panel would only fail to load.
+  const conflictThread = activeThread ?? activeDraftThread;
+  if (
+    conflictThread &&
+    serverConfigs.get(conflictThread.environmentId)?.environment.capabilities.mergeConflicts ===
+      true
+  ) {
+    const threadRef = activeThread
+      ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+      : activeDraftThread
+        ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
+        : null;
+    if (threadRef !== null) {
+      actionItems.push({
+        kind: "action",
+        value: "action:open-merge-conflicts",
+        searchTerms: ["merge", "conflicts", "resolve", "rebase", "cherry-pick", "revert", "git"],
+        title: "Resolve merge conflicts",
+        description: "Merge, rebase, cherry-pick or revert in progress",
+        icon: <PullRequestGlyph.merged className={ITEM_ICON_CLASS} />,
+        shortcutCommand: "merge.open",
+        run: async () => {
+          useRightPanelStore.getState().open(threadRef, "merge");
         },
       });
     }

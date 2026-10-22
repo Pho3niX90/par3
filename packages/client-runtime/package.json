@@ -343,6 +343,18 @@
       "types": "./src/state/turnItemPresentation.ts",
       "default": "./src/state/turnItemPresentation.ts"
     },
+    "./state/merge-conflict-state": {
+      "types": "./src/state/mergeConflictState.ts",
+      "default": "./src/state/mergeConflictState.ts"
+    },
+    "./state/merge-conflict-prompt": {
+      "types": "./src/state/mergeConflictPrompt.ts",
+      "default": "./src/state/mergeConflictPrompt.ts"
+    },
+    "./state/merge-conflicts": {
+      "types": "./src/state/mergeConflicts.ts",
+      "default": "./src/state/mergeConflicts.ts"
+    },
     "./state/vcs": {
       "types": "./src/state/vcs.ts",
       "default": "./src/state/vcs.ts"
