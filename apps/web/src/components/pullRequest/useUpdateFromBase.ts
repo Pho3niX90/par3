@@ -66,12 +66,10 @@ export function useUpdateFromBase(input: {
     if (detail === null || pendingRef.current) return;
     pendingRef.current = true;
     setPending(true);
-    try {
-      return await updateFromBase(detail);
-    } finally {
+    return updateFromBase(detail).finally(() => {
       pendingRef.current = false;
       setPending(false);
-    }
+    });
   };
 
   const updateFromBase = async (pr: UpdateFromBaseDetail) => {
