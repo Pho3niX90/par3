@@ -58,8 +58,29 @@ const query = Effect.fn("SpecsMcp.query")(function* (input: SpecQueryInput) {
   return yield* service.query(input).pipe(Effect.mapError(toFailure));
 });
 
+const validate = Effect.fn("SpecsMcp.validate")(function* () {
+  const scope = yield* McpInvocationContext.McpInvocationContext;
+  const own = yield* McpInvocationContext.requireThreadScope(scope, "Spec validation");
+  const service = yield* SpecService.SpecService;
+  const binding = yield* service.binding(own.thread.threadId).pipe(Effect.mapError(toFailure));
+  if (!binding) {
+    return yield* new OrchestratorMcpFailure({
+      code: "capability_denied",
+      message: "This thread is not bound to a spec. A human binds threads to specs in the client.",
+    });
+  }
+  return yield* service
+    .validate({
+      projectId: binding.projectId,
+      threadId: own.thread.threadId,
+      slug: binding.slug,
+    })
+    .pipe(Effect.mapError(toFailure));
+});
+
 export const layer = McpToolAccess.toLayer(SpecsToolkit, {
   spec_status: McpToolAccess.reads(query),
+  spec_validate: McpToolAccess.readsAsCaller(validate),
   spec_update: McpToolAccess.writesSpec(mutate("update")),
   spec_request_approval: McpToolAccess.writesSpec(mutate("request-review")),
   spec_set_status: McpToolAccess.writesSpec(mutate("transition")),

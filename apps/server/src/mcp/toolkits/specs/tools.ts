@@ -8,6 +8,7 @@ import {
   SpecQueryResult,
   SpecStatus,
   SpecTask,
+  SpecValidateResult,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -59,6 +60,13 @@ export const SpecsToolkit = Toolkit.make(
       "Read project specs or one spec, including readiness findings, approval hashes, current revision, tasks and evidence. Set threadId to your own thread to select its checkout and bound spec.",
     parameters: SpecQueryInput,
     success: SpecQueryResult,
+  }).annotate(Tool.Readonly, true),
+  Tool.make("spec_validate", {
+    ...shared,
+    description:
+      "Run the project's own BASE validators on your bound spec and report their errors (they need Python). In other projects it returns the readiness findings. Call it after editing spec files and fix every error before spec_request_approval.",
+    parameters: Schema.Struct({}),
+    success: SpecValidateResult,
   }).annotate(Tool.Readonly, true),
   mutation(
     "spec_update",

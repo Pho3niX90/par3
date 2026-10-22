@@ -33,6 +33,8 @@ describe("specInstructions", () => {
       expect(text).toContain("specs/_template.md");
       expect(text).toContain("prd.md, tech-analysis.md and status.json");
       expect(text).toContain("spec_write_artifact");
+      expect(text).toContain("spec_validate");
     }
+    expect(specInstructions(document("par3"), "requirements")).not.toContain("spec_validate");
   });
 });

@@ -1518,6 +1518,7 @@ export function claudeMcpQueryOverrides(input: {
               "mcp__t3-code__spec_update",
               "mcp__t3-code__spec_request_approval",
               "mcp__t3-code__spec_status",
+              "mcp__t3-code__spec_validate",
             ]
           : []),
       ]),

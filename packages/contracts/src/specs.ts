@@ -121,6 +121,8 @@ export const SpecApproval = Schema.Struct({
   revision: NonNegativeInt,
   specHash: Schema.String,
   constitutionHash: Schema.NullOr(Schema.String),
+  /** Set when the approval was recorded outside Par3 and adopted from the project's approval.json. */
+  external: Schema.optionalKey(Schema.Boolean),
 });
 export type SpecApproval = typeof SpecApproval.Type;
 
@@ -130,6 +132,17 @@ export const SpecFinding = Schema.Struct({
   criterion: Schema.optionalKey(Schema.String),
 });
 export type SpecFinding = typeof SpecFinding.Type;
+
+export const SpecValidateResult = Schema.Struct({
+  layout: SpecLayout,
+  /** False when no external validator ran: always in a Par3 layout, or when none could be started. */
+  ran: Schema.Boolean,
+  ok: Schema.Boolean,
+  findings: Schema.Array(SpecFinding),
+  /** Problems that do not block review or approval, such as Python being unavailable. */
+  warnings: Schema.Array(Schema.String),
+});
+export type SpecValidateResult = typeof SpecValidateResult.Type;
 
 export const SpecSummary = Schema.Struct({
   slug: SpecSlug,
