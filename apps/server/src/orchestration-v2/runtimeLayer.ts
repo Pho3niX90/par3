@@ -15,6 +15,7 @@ import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as AgentSessionImporter from "../project/AgentSessionImporter.ts";
 import * as AgentSessionScanner from "../project/AgentSessionScanner.ts";
+import * as ProcessRunner from "../processRunner.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
@@ -61,7 +62,14 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as SpecService from "../specs/SpecService.ts";
 
 const layerSpecService = SpecService.layer.pipe(
-  Layer.provide(Layer.merge(ProjectStore.layer, ProjectionStore.layer)),
+  Layer.provide(
+    Layer.mergeAll(
+      ProjectStore.layer,
+      ProjectionStore.layer,
+      GitVcsDriver.layer,
+      ProcessRunner.layer,
+    ),
+  ),
 );
 
 export const layerEventInfrastructure = Layer.mergeAll(

@@ -13,6 +13,8 @@ import {
   type ProjectId,
   type RunId,
   type SpecLayout,
+  type SpecRef,
+  type SpecValidateResult,
   specRoleSupported,
   specSlugAllowed,
 } from "@t3tools/contracts";
@@ -37,7 +39,11 @@ import * as Hex from "effect/encoding/Hex";
 
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProcessRunner from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import { currentApproval, isoSeconds } from "./baseFiles.ts";
+import { makeBaseValidators, makeBaseWorkflow, validatorBlock } from "./baseWorkflow.ts";
 import {
   readFrontmatterLifecycleStatus,
   setFrontmatterStatus,
@@ -155,6 +161,8 @@ export class SpecService extends Context.Service<
       title: string;
       content: string;
     }) => Effect.Effect<SpecDocument, SpecError>;
+    /** Runs the project's own validators (BASE) or reports Par3's readiness findings. */
+    readonly validate: (input: SpecRef) => Effect.Effect<SpecValidateResult, SpecError>;
     readonly invalidations: Stream.Stream<readonly ThreadId[]>;
   }
 >()("t3/specs/SpecService") {}
@@ -167,6 +175,8 @@ const make = Effect.gen(function* () {
   const projects = yield* ProjectStore.ProjectStoreV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const git = yield* GitVcsDriver.GitVcsDriver;
+  const runner = yield* ProcessRunner.ProcessRunner;
   const scope = yield* Scope.Scope;
   const changes = yield* PubSub.unbounded<void>();
   const invalidated = yield* PubSub.unbounded<readonly ThreadId[]>();
@@ -184,11 +194,12 @@ const make = Effect.gen(function* () {
   });
   const locked = <A, E, R>(key: string, effect: Effect.Effect<A, E, R>) =>
     lockFor(key).pipe(Effect.flatMap((lock) => lock.withPermits(1)(effect)));
-  const hash = (value: string) =>
-    crypto.digest("SHA-256", new TextEncoder().encode(value)).pipe(
+  const sha256 = (bytes: Uint8Array) =>
+    crypto.digest("SHA-256", bytes).pipe(
       Effect.map(Hex.encode),
       Effect.mapError(() => failure("io", "Could not hash the spec.")),
     );
+  const hash = (value: string) => sha256(new TextEncoder().encode(value));
   const parse = (value: string) =>
     decodeDocument(value).pipe(
       Effect.mapError(() => failure("inconsistent", "Stored spec data is invalid.")),
@@ -263,6 +274,37 @@ const make = Effect.gen(function* () {
       }
     }
     return absolute;
+  });
+  const workflow = makeBaseWorkflow({ fs, safePath, sha256 });
+  const validators = makeBaseValidators({ fs, safePath }, runner);
+  // A refused review or approval names what the project's validators found. Without Python they cannot run,
+  // and that alone never blocks.
+  const validatorGate = Effect.fn("SpecService.validatorGate")(function* (
+    workspace: string,
+    slug: string,
+  ) {
+    const blocked = validatorBlock((yield* validators.run(workspace, slug)).errors);
+    if (blocked) return yield* failure("invalid", blocked);
+  });
+  // The BASE approval log names its approver like a commit author; the Par3 label is the fallback.
+  const approver = Effect.fn("SpecService.approver")(function* (workspace: string, label: string) {
+    const read = (key: string) =>
+      git.readConfigValue(workspace, key).pipe(Effect.orElseSucceed(() => null));
+    const name = yield* read("user.name");
+    const email = yield* read("user.email");
+    return name && email ? `${name} <${email}>` : (name ?? email ?? label);
+  });
+  // A table row that cannot be updated is bookkeeping, not a reason to fail the status change itself.
+  const syncStatusTable = (workspace: string, slug: string, status: SpecDocument["status"]) =>
+    workflow.syncStatusTable(workspace, slug, status).pipe(Effect.ignore);
+  // A person's approval in the BASE extension counts while it covers exactly this spec.md.
+  const externalApproval = Effect.fn("SpecService.externalApproval")(function* (
+    workspace: string,
+    slug: string,
+  ) {
+    const spec = yield* workflow.readBytes(yield* safePath(workspace, `specs/${slug}/spec.md`));
+    const log = yield* readOptional(yield* safePath(workspace, `specs/${slug}/approval.json`));
+    return spec === null || log === null ? undefined : currentApproval(log, yield* sha256(spec));
   });
   // A new spec follows BASE when the checkout opted in with a `.base` file; the choice is then recorded.
   const detectLayout = Effect.fn("SpecService.detectLayout")(function* (workspace: string) {
@@ -343,8 +385,8 @@ const make = Effect.gen(function* () {
   });
   const filesFor = (document: SpecDocument) => {
     const prefix = `specs/${document.slug}/`;
-    // BASE keeps its own status, task and approval records, so Par3 owns spec.md only. Phase 2 adds
-    // BASE's approval file here.
+    // BASE keeps its own status, task and approval records, so Par3 owns spec.md only. Approving is the
+    // one time it writes them, in one guarded step beside the decision (see mutate).
     if (layoutOf(document) === "base") return { [`${prefix}spec.md`]: document.content };
     return {
       [`${prefix}spec.md`]: document.content,
@@ -429,6 +471,7 @@ const make = Effect.gen(function* () {
         };
       const affected = yield* hydrateBindings(document);
       yield* save(projectId, document);
+      if (layout === "base") yield* syncStatusTable(workspace, slug, document.status);
       yield* PubSub.publish(
         invalidated,
         affected.bindings.map((item) => item.threadId),
@@ -437,7 +480,32 @@ const make = Effect.gen(function* () {
       // The requirements are unchanged, so only the frontmatter status may differ on disk.
       document = { ...document, findings: yield* readiness(workspace, layout, current.content) };
       const onDisk = readFrontmatterLifecycleStatus(current.content);
-      if (!document.error && onDisk !== undefined && statusAdoptable(document, onDisk)) {
+      // The spec says approved but Par3 holds no approval: only a record covering these exact bytes counts.
+      const claimsApproval =
+        !document.error && onDisk === "approved" && !(document.approvalValid && document.approval);
+      const external = claimsApproval ? yield* externalApproval(workspace, slug) : undefined;
+      if (external) {
+        const revision = document.revision + 1;
+        document = {
+          ...document,
+          content: current.content,
+          status: "approved",
+          revision,
+          updatedAt: DateTime.formatIso(yield* DateTime.now),
+          approvalValid: true,
+          approval: {
+            subject: external.confirmedBy,
+            label: external.confirmedBy,
+            approvedAt: external.confirmedAt,
+            revision,
+            specHash: document.specHash,
+            constitutionHash: null,
+            external: true,
+          },
+        };
+        yield* save(projectId, document);
+        yield* syncStatusTable(workspace, slug, document.status);
+      } else if (!document.error && onDisk !== undefined && statusAdoptable(document, onDisk)) {
         document = {
           ...document,
           content: current.content,
@@ -450,10 +518,17 @@ const make = Effect.gen(function* () {
             : {}),
         };
         yield* save(projectId, document);
+        yield* syncStatusTable(workspace, slug, document.status);
       } else if (current.content !== document.content) {
         document = { ...document, content: current.content };
         yield* save(projectId, document);
       }
+      if (claimsApproval && !external)
+        document = {
+          ...document,
+          error:
+            "approval.json does not match the current spec.md. Reopen the spec and approve it again.",
+        };
     }
     // A BASE spec has no owned metadata files beyond spec.md, so there is nothing else to compare.
     for (const [relative, expected] of Object.entries(filesFor(document)).filter(
@@ -702,6 +777,7 @@ const make = Effect.gen(function* () {
         const existing = (yield* readRow(workspace, input.slug))[0];
         let document: SpecDocument;
         let statusBefore: SpecDocument["status"] | undefined;
+        let baseApprovalWritten = false;
         if (input.action === "create") {
           document = yield* prepareNewSpec({
             projectId: input.projectId,
@@ -784,6 +860,7 @@ const make = Effect.gen(function* () {
                   "invalid",
                   "Resolve readiness findings before requesting review.",
                 );
+              if (layoutOf(document) === "base") yield* validatorGate(workspace, input.slug);
               document = { ...document, status: "review" };
               break;
             case "approve": {
@@ -796,6 +873,20 @@ const make = Effect.gen(function* () {
                   "forbidden",
                   "Only a human can approve a ready spec under review.",
                 );
+              const approvedAt = DateTime.formatIso(yield* DateTime.now);
+              if (layoutOf(document) === "base") {
+                // BASE records the approval in its own files, which must all land or none.
+                yield* validatorGate(workspace, input.slug);
+                const plan = yield* workflow.planApproval({
+                  workspace,
+                  slug: input.slug,
+                  confirmedAt: isoSeconds(approvedAt),
+                  confirmedBy: yield* approver(workspace, caller.label),
+                });
+                yield* workflow.applyApproval(plan);
+                document = { ...document, content: plan.specContent };
+                baseApprovalWritten = true;
+              }
               document = {
                 ...document,
                 status: "approved",
@@ -803,7 +894,7 @@ const make = Effect.gen(function* () {
                 approval: {
                   subject: caller.subject,
                   label: caller.label,
-                  approvedAt: DateTime.formatIso(yield* DateTime.now),
+                  approvedAt,
                   revision: document.revision,
                   specHash: document.specHash,
                   constitutionHash: document.constitutionHash,
@@ -1014,25 +1105,32 @@ const make = Effect.gen(function* () {
           }
         }
         // BASE readers see the lifecycle in the spec's frontmatter. An update always restores it, so
-        // requirements text cannot smuggle in a status.
-        if (
+        // requirements text cannot smuggle in a status; a review request restores it after a stale
+        // status someone left behind.
+        const syncsStatus =
           layoutOf(document) === "base" &&
           (statusBefore === undefined ||
             document.status !== statusBefore ||
-            input.action === "update")
-        )
+            input.action === "update" ||
+            input.action === "request-review");
+        if (syncsStatus)
           document = {
             ...document,
             content: setFrontmatterStatus(document.content, document.status),
           };
         document = yield* hydrateBindings(document);
-        const files = {
-          ...filesFor(document),
-          ...(input.action === "artifact"
-            ? { [`specs/${input.slug}/${input.path}`]: input.content }
-            : {}),
-        };
+        // An approval has already written every BASE file it owns.
+        const files = baseApprovalWritten
+          ? {}
+          : {
+              ...filesFor(document),
+              ...(input.action === "artifact"
+                ? { [`specs/${input.slug}/${input.path}`]: input.content }
+                : {}),
+            };
         yield* save(input.projectId, document, files, { id: input.commandId, hash: requestHash });
+        if (syncsStatus && !baseApprovalWritten)
+          yield* syncStatusTable(workspace, input.slug, document.status);
         return document;
       }),
     );
@@ -1189,9 +1287,39 @@ const make = Effect.gen(function* () {
           ]),
         );
         yield* Deferred.succeed(firstBinding, undefined);
+        // Like every other BASE status write, an existing tracker row follows the new spec's status.
+        if (document.layout === "base")
+          yield* syncStatusTable(workspace, document.slug, document.status);
         return document;
       }),
     );
+  });
+  const validate = Effect.fn("SpecService.validate")(function* (input: SpecRef) {
+    const workspace = yield* resolve(input);
+    // The validators can take a while and only read the checkout, so they run outside the spec lock.
+    const document = yield* locked(
+      workspace,
+      discover(input.projectId, workspace).pipe(
+        Effect.andThen(refresh(input.projectId, workspace, input.slug)),
+      ),
+    );
+    const layout = layoutOf(document);
+    if (layout === "par3")
+      return {
+        layout,
+        ran: false,
+        ok: document.findings.length === 0,
+        findings: document.findings,
+        warnings: [],
+      } satisfies SpecValidateResult;
+    const report = yield* validators.run(workspace, input.slug);
+    return {
+      layout,
+      ran: report.ran,
+      ok: report.errors.length === 0,
+      findings: report.errors,
+      warnings: report.warnings,
+    } satisfies SpecValidateResult;
   });
   const beforeRun = Effect.fn("SpecService.beforeRun")(function* (input: {
     threadId: ThreadId;
@@ -1308,6 +1436,7 @@ const make = Effect.gen(function* () {
     setIntake,
     markIntake,
     createFromIntake,
+    validate,
     invalidations: Stream.fromPubSub(invalidated),
     subscribe: (input) =>
       Stream.unwrap(
@@ -1341,6 +1470,7 @@ export const layerDisabled = Layer.succeed(
     setIntake: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
     markIntake: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
     createFromIntake: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    validate: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
     invalidations: Stream.empty,
   }),
 );

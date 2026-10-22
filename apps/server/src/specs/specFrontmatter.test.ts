@@ -1,9 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import {
+  countFrontmatterKey,
   readFrontmatterLifecycleStatus,
   readFrontmatterStatus,
   setFrontmatterStatus,
+  setFrontmatterUpdated,
   withoutFrontmatter,
   withoutVolatileFrontmatter,
 } from "./specFrontmatter.ts";
@@ -118,5 +120,36 @@ describe("frontmatter status", () => {
   it("returns the body after the frontmatter", () => {
     expect(withoutFrontmatter(commented).startsWith("# Example\n")).toBe(true);
     expect(withoutFrontmatter("# Example\n")).toBe("# Example\n");
+  });
+});
+
+describe("frontmatter updated", () => {
+  it("replaces only the value of a single top-level updated key", () => {
+    expect(setFrontmatterUpdated(commented, "2026-10-01T12:00:00Z")).toBe(
+      commented.replace("2026-10-20T00:00:00Z", "2026-10-01T12:00:00Z"),
+    );
+    const quoted = '---\nupdated: "2026-10-20"   # touched by tooling\nstatus: review\n---\n';
+    expect(setFrontmatterUpdated(quoted, "2026-10-01T12:00:00Z")).toBe(
+      '---\nupdated: "2026-10-01T12:00:00Z"   # touched by tooling\nstatus: review\n---\n',
+    );
+    const crlf = "---\r\nupdated: 2026-10-20\r\nstatus: review\r\n---\r\nBody\r\n";
+    expect(setFrontmatterUpdated(crlf, "x")).toBe(crlf.replace("2026-10-20", "x"));
+  });
+
+  it("leaves content alone when there is not exactly one updated key", () => {
+    const none = "---\nstatus: review\n---\nBody\n";
+    expect(setFrontmatterUpdated(none, "x")).toBe(none);
+    const nested = "---\nepic:\n  updated: 2026-10-20\n---\nBody\n";
+    expect(setFrontmatterUpdated(nested, "x")).toBe(nested);
+    const twice = "---\nupdated: a\nupdated: b\n---\nBody\n";
+    expect(setFrontmatterUpdated(twice, "x")).toBe(twice);
+    expect(setFrontmatterUpdated("updated: a\nBody\n", "x")).toBe("updated: a\nBody\n");
+  });
+
+  it("counts only top-level keys inside the frontmatter", () => {
+    expect(countFrontmatterKey(commented, "status")).toBe(1);
+    expect(countFrontmatterKey("---\nstatus: a\nstatus: b\n---\n", "status")).toBe(2);
+    expect(countFrontmatterKey("status: a\n", "status")).toBe(0);
+    expect(countFrontmatterKey(commented, "updated")).toBe(1);
   });
 });

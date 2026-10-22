@@ -33,7 +33,9 @@ describe("specInstructions", () => {
       expect(text).toContain("specs/_template.md");
       expect(text).toContain("prd.md, tech-analysis.md and status.json");
       expect(text).toContain("spec_write_artifact");
+      expect(text).toContain("spec_validate");
     }
+    expect(specInstructions(document("par3"), "requirements")).not.toContain("spec_validate");
   });
 
   it("tells a new-spec turn to choose a KEY-123_short-kebab folder in BASE and ask when there is no key", () => {
@@ -48,6 +50,7 @@ describe("specInstructions", () => {
     expect(text).toContain("specs/_template.md");
     expect(text).toContain("spec_create");
     expect(text).toContain("You cannot approve");
+    expect(text).toContain("spec_validate");
     expect(text).not.toMatch(/constitution/i);
   });
 
@@ -59,6 +62,7 @@ describe("specInstructions", () => {
     });
     expect(text).toContain("dark-mode-toggle");
     expect(text).toContain("specs/constitution.md");
+    expect(text).not.toContain("spec_validate");
     expect(text).toContain("Acceptance criteria");
     expect(text).not.toContain("KEY-123");
     expect(text).not.toContain("_template.md");

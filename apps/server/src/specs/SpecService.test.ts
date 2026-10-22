@@ -4,22 +4,28 @@ import {
   CommandId,
   EventId,
   ProjectId,
+  SpecError,
   ThreadId,
   type SpecMutationInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Crypto from "effect/Crypto";
+import * as Hex from "effect/encoding/Hex";
+import type * as PlatformError from "effect/PlatformError";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Context from "effect/Context";
 
+import * as ProcessRunner from "../processRunner.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SpecService from "./SpecService.ts";
+import { ApprovalHooks, PYTHON_MISSING } from "./baseWorkflow.ts";
 
 const now = "2026-10-20T00:00:00.000Z";
 const human = { kind: "human" as const, subject: "reviewer-1", label: "Reviewer" };
@@ -64,10 +70,10 @@ status: draft            ${STATUS_COMMENT}
 ## Assumptions
 `;
 const baseSlug = "PROJ-123_short-kebab";
-const baseSpec = (status = "draft", extra = "") => `---
+const baseSpec = (status = "draft", extra = "", updated = "2026-10-20") => `---
 id: ${baseSlug}
 status: ${status}            ${STATUS_COMMENT}
-updated: 2026-10-20
+updated: ${updated}
 epic:
   status: done
 ---
@@ -112,7 +118,49 @@ const layerProjectionStore = Layer.succeed(ProjectionStore.ProjectionStoreV2, {
   },
 } as never);
 
+// Tests set these per case; the defaults are a developer with a git identity and no Python.
+const git = { name: "Jane Doe" as string | null, email: "jane@example.com" as string | null };
+const processCalls: Array<{ command: string; args: ReadonlyArray<string>; cwd?: string }> = [];
+let processHandler: (
+  input: ProcessRunner.ProcessRunInput,
+) => ProcessRunner.ProcessRunOutput | null = () => null;
+const processOutput = (stdout: string, code = 0, stderr = ""): ProcessRunner.ProcessRunOutput => ({
+  stdout,
+  stderr,
+  code: code as never,
+  timedOut: false,
+  stdoutTruncated: false,
+  stderrTruncated: false,
+  stdoutInvalidUtf8: false,
+  stderrInvalidUtf8: false,
+});
+const layerGit = Layer.succeed(GitVcsDriver.GitVcsDriver, {
+  readConfigValue: (_cwd: string, key: string) =>
+    Effect.succeed(key === "user.name" ? git.name : git.email),
+} as never);
+const layerProcessRunner = Layer.succeed(ProcessRunner.ProcessRunner, {
+  run: (input) => {
+    processCalls.push({
+      command: input.command,
+      args: input.args,
+      ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+    });
+    const output = processHandler(input);
+    return output
+      ? Effect.succeed(output)
+      : Effect.fail(
+          new ProcessRunner.ProcessSpawnError({
+            command: input.command,
+            argumentCount: input.args.length,
+            cause: "not installed",
+          }),
+        );
+  },
+});
+
 const layerTest = SpecService.layer.pipe(
+  Layer.provideMerge(layerGit),
+  Layer.provideMerge(layerProcessRunner),
   Layer.provideMerge(ProjectStore.layer),
   Layer.provideMerge(layerProjectionStore),
   Layer.provideMerge(ServerSettings.layerTest({ specModeEnabled: true })),
@@ -217,6 +265,8 @@ const queryAfterServiceRestart = (input: { projectId: ProjectId; slug: string })
       Layer.succeed(ProjectStore.ProjectStoreV2, projects),
       Layer.succeed(ProjectionStore.ProjectionStoreV2, projections),
       Layer.succeed(ServerSettings.ServerSettingsService, settings),
+      layerGit,
+      layerProcessRunner,
     );
     return yield* Effect.scoped(
       Effect.gen(function* () {
@@ -245,6 +295,131 @@ const baseWorkspace = Effect.gen(function* () {
 });
 
 const ownedFiles = ["status.json", "tasks.json", "approval.json"];
+
+// The files BASE keeps beside a spec: its tracker table and per-spec status. Approving in Par3 updates both.
+const APPROVED_AT = "1970-01-01T00:00:00Z";
+const sha256 = Effect.fn("SpecServiceTest.sha256")(function* (value: string | Uint8Array) {
+  const crypto = yield* Crypto.Crypto;
+  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
+  return Hex.encode(yield* crypto.digest("SHA-256", bytes).pipe(Effect.orDie));
+});
+const baseTable = (status = "draft") => `# Spec status
+
+| Spec | Status | Owner |
+| --- | --- | --- |
+| [PROJ-100_other-thing](./PROJ-100_other-thing/spec.md) | in-progress | Sam |
+| [${baseSlug}](./${baseSlug}/spec.md) | ${status} | Jane |
+| PROJ-101_third | review | Sam |
+`;
+const baseStatusJson = JSON.stringify(
+  {
+    version: 1,
+    phase: "requirements",
+    updated: "2026-10-20",
+    requirements: { awaiting: "approval", owner: "Jane" },
+  },
+  null,
+  4,
+);
+const baseApprovalWorkspace = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const workspaceRoot = yield* baseWorkspace;
+  yield* fs.writeFileString(
+    `${workspaceRoot}/specs/${baseSlug}/status.json`,
+    `${baseStatusJson}\n`,
+  );
+  yield* fs.writeFileString(`${workspaceRoot}/specs/_status.md`, baseTable());
+  return workspaceRoot;
+});
+
+const withGit = <A, E, R>(
+  identity: { name: string | null; email: string | null },
+  effect: Effect.Effect<A, E, R>,
+) => {
+  const before = { ...git };
+  return Effect.suspend(() => {
+    Object.assign(git, identity);
+    return effect;
+  }).pipe(Effect.ensuring(Effect.sync(() => Object.assign(git, before))));
+};
+
+const withProcess = <A, E, R>(handler: typeof processHandler, effect: Effect.Effect<A, E, R>) =>
+  Effect.suspend(() => {
+    processHandler = handler;
+    processCalls.length = 0;
+    return effect;
+  }).pipe(
+    Effect.ensuring(
+      Effect.sync(() => {
+        processHandler = () => null;
+      }),
+    ),
+  );
+
+// A BASE spec under review with the files an approval needs, plus the handles tests poke at.
+const reviewedBaseSpec = Effect.fn("SpecServiceTest.reviewedBaseSpec")(function* (suffix: string) {
+  const service = yield* SpecService.SpecService;
+  const fs = yield* FileSystem.FileSystem;
+  const root = yield* baseApprovalWorkspace;
+  const projectId = ProjectId.make(`project:${suffix}`);
+  yield* createProject(projectId, root);
+  const discovered = (yield* service.query({ projectId, slug: baseSlug })).detail!;
+  const review = yield* service.mutate(
+    mutation(
+      "request-review",
+      projectId,
+      baseSlug,
+      `command:${suffix}:review`,
+      discovered.revision,
+    ),
+    human,
+  );
+  const folder = `${root}/specs/${baseSlug}`;
+  // Approves at whatever revision the spec has now, since a test may touch the files first.
+  let approvals = 0;
+  const approve = Effect.suspend(() =>
+    service
+      .query({ projectId, slug: baseSlug })
+      .pipe(
+        Effect.flatMap((result) =>
+          service.mutate(
+            mutation(
+              "approve",
+              projectId,
+              baseSlug,
+              `command:${suffix}:approve:${(approvals += 1)}`,
+              result.detail!.revision,
+            ),
+            human,
+          ),
+        ),
+      ),
+  );
+  const files = Effect.gen(function* () {
+    const names = ["spec.md", "status.json", "approval.json", "test-plan.json"].map(
+      (name) => `${folder}/${name}`,
+    );
+    const seen: Record<string, string | null> = {};
+    for (const name of [...names, `${root}/specs/_status.md`])
+      seen[name.slice(root.length + 1)] = (yield* fs.exists(name))
+        ? yield* fs.readFileString(name)
+        : null;
+    return seen;
+  });
+  return { service, fs, root, projectId, review, folder, approve, files };
+});
+
+const olderApproval = {
+  confirmedBy: "Sam Roe <sam@example.com>",
+  confirmedAt: "2026-09-01T10:00:00Z",
+  source: "button",
+  artifacts: { "spec.md": "0".repeat(64) },
+};
+const testPlan = {
+  spec: baseSlug,
+  status: "draft",
+  cases: [{ id: "TC-1", ac: "AC-1", steps: ["Save the setting"] }],
+};
 
 it.layer(layerTest)("SpecService", (it) => {
   it.effect("creates, reviews, and approves a spec with a human decision", () =>
@@ -742,7 +917,7 @@ it.layer(layerTest)("SpecService", (it) => {
     Effect.gen(function* () {
       const service = yield* SpecService.SpecService;
       const fs = yield* FileSystem.FileSystem;
-      const workspaceRoot = yield* baseWorkspace;
+      const workspaceRoot = yield* baseApprovalWorkspace;
       const projectId = ProjectId.make("project:base-sync");
       const threadId = ThreadId.make("thread:base-sync");
       yield* createProject(projectId, workspaceRoot);
@@ -771,7 +946,7 @@ it.layer(layerTest)("SpecService", (it) => {
       );
       assert.equal(approved.status, "approved");
       assert.equal(approved.specHash, discovered.specHash);
-      assert.equal(yield* fs.readFileString(specFile), baseSpec("approved"));
+      assert.equal(yield* fs.readFileString(specFile), baseSpec("approved", "", APPROVED_AT));
       const reread = (yield* query()).detail!;
       assert.isTrue(reread.approvalValid);
       assert.isUndefined(reread.error);
@@ -813,7 +988,7 @@ it.layer(layerTest)("SpecService", (it) => {
       );
       assert.equal(started.status, "in-progress");
       assert.isTrue(started.approvalValid);
-      assert.equal(yield* fs.readFileString(specFile), baseSpec("in-progress"));
+      assert.equal(yield* fs.readFileString(specFile), baseSpec("in-progress", "", APPROVED_AT));
 
       const rewritten = yield* service.mutate(
         mutation("update", projectId, baseSlug, "command:base-sync:rewrite", started.revision, {
@@ -825,9 +1000,13 @@ it.layer(layerTest)("SpecService", (it) => {
       assert.equal(rewritten.status, "in-progress");
       assert.isTrue(rewritten.approvalValid);
       assert.equal(yield* fs.readFileString(specFile), baseSpec("in-progress"));
-      for (const name of ownedFiles) {
+      for (const name of ["tasks.json"]) {
         assert.isFalse(yield* fs.exists(`${workspaceRoot}/specs/${baseSlug}/${name}`));
       }
+      assert.include(
+        yield* fs.readFileString(`${workspaceRoot}/specs/_status.md`),
+        "| in-progress |",
+      );
     }),
   );
 
@@ -835,7 +1014,7 @@ it.layer(layerTest)("SpecService", (it) => {
     Effect.gen(function* () {
       const service = yield* SpecService.SpecService;
       const fs = yield* FileSystem.FileSystem;
-      const workspaceRoot = yield* baseWorkspace;
+      const workspaceRoot = yield* baseApprovalWorkspace;
       const projectId = ProjectId.make("project:base-adopt");
       yield* createProject(projectId, workspaceRoot);
       const specFile = `${workspaceRoot}/specs/${baseSlug}/spec.md`;
@@ -860,9 +1039,17 @@ it.layer(layerTest)("SpecService", (it) => {
       assert.equal(review.revision, discovered.revision + 1);
       assert.equal(review.specHash, discovered.specHash);
       assert.isUndefined(review.error);
+      // Adopting the edited status carries it into the tracker row too.
+      assert.equal(
+        yield* fs.readFileString(`${workspaceRoot}/specs/_status.md`),
+        baseTable("review"),
+      );
 
       yield* fs.writeFileString(specFile, baseSpec("approved"));
-      assert.equal((yield* query()).status, "review");
+      const unrecorded = yield* query();
+      assert.equal(unrecorded.status, "review");
+      assert.include(unrecorded.error, "approval.json does not match");
+      yield* fs.writeFileString(specFile, baseSpec("review"));
 
       const approved = yield* service.mutate(
         mutation("approve", projectId, baseSlug, "command:base-adopt:approve", review.revision),
@@ -893,14 +1080,14 @@ it.layer(layerTest)("SpecService", (it) => {
     Effect.gen(function* () {
       const service = yield* SpecService.SpecService;
       const fs = yield* FileSystem.FileSystem;
-      const workspaceRoot = yield* baseWorkspace;
+      const workspaceRoot = yield* baseApprovalWorkspace;
       const projectId = ProjectId.make("project:base-volatile");
       yield* createProject(projectId, workspaceRoot);
       const specFile = `${workspaceRoot}/specs/${baseSlug}/spec.md`;
       const query = () =>
         service.query({ projectId, slug: baseSlug }).pipe(Effect.map((result) => result.detail!));
       const touchUpdated = (spec: string) =>
-        spec.replace("updated: 2026-10-20", "updated: 2026-10-22T16:00:00+02:00");
+        spec.replace(/^updated: .*$/m, "updated: 2026-10-22T16:00:00+02:00");
 
       const discovered = yield* query();
       const review = yield* service.mutate(
@@ -946,13 +1133,14 @@ it.layer(layerTest)("SpecService", (it) => {
     Effect.gen(function* () {
       const service = yield* SpecService.SpecService;
       const fs = yield* FileSystem.FileSystem;
-      const workspaceRoot = yield* baseWorkspace;
+      const workspaceRoot = yield* baseApprovalWorkspace;
       const projectId = ProjectId.make("project:base-artifacts");
       const threadId = ThreadId.make("thread:base-artifacts");
       yield* createProject(projectId, workspaceRoot);
       threads.set(threadId, { projectId, workspacePath: workspaceRoot, activeRunId: null });
       const folder = `${workspaceRoot}/specs/${baseSlug}`;
       const agent = { kind: "agent" as const, threadId };
+      const statusJson = '{"phase":"requirements"}\n';
       const write = (path: string, revision: number, suffix: string, body = `${path} body`) =>
         service.mutate(
           mutation("artifact", projectId, baseSlug, `command:base-artifacts:${suffix}`, revision, {
@@ -974,8 +1162,9 @@ it.layer(layerTest)("SpecService", (it) => {
         "base-artifacts",
       )).revision;
       for (const path of ["prd.md", "tech-analysis.md", "status.json"]) {
-        revision = (yield* write(path, revision, path)).revision;
-        assert.equal(yield* fs.readFileString(`${folder}/${path}`), `${path} body`);
+        const body = path === "status.json" ? statusJson : `${path} body`;
+        revision = (yield* write(path, revision, path, body)).revision;
+        assert.equal(yield* fs.readFileString(`${folder}/${path}`), body);
       }
       const unapproved = yield* Effect.flip(write("test-plan.md", revision, "plan-early"));
       assert.equal(unapproved.reason, "forbidden");
@@ -1002,9 +1191,12 @@ it.layer(layerTest)("SpecService", (it) => {
       for (const path of ["approval.json", "tasks.json", "notes.md", "../escape.md"]) {
         const refused = yield* Effect.flip(write(path, revision, `refuse:${path}`));
         assert.equal(refused.reason, "invalid");
-        assert.isFalse(yield* fs.exists(`${folder}/${path}`));
+        // Approving wrote the approval log itself; no agent write may change it.
+        if (path !== "approval.json") assert.isFalse(yield* fs.exists(`${folder}/${path}`));
       }
+      const log = yield* fs.readFileString(`${folder}/approval.json`);
       revision = (yield* write("decisions.md", revision, "decisions")).revision;
+      assert.equal(yield* fs.readFileString(`${folder}/approval.json`), log);
       assert.isTrue(yield* fs.exists(`${folder}/decisions.md`));
       assert.isTrue((yield* service.query({ projectId, slug: baseSlug })).detail!.approvalValid);
     }),
@@ -1279,6 +1471,10 @@ it.layer(layerTest)("SpecService", (it) => {
         (yield* service.beforeRun({ threadId: baseThread, driver: "claudeAgent" }))?.intake?.layout,
         "base",
       );
+      yield* fs.writeFileString(
+        `${baseRoot}/specs/_status.md`,
+        "| Spec | Status |\n| --- | --- |\n| PROJ-124_new-thing | todo |\n| PROJ-1_other | review |\n",
+      );
       const created = yield* service.createFromIntake(
         intakeCreate(
           baseThread,
@@ -1293,6 +1489,11 @@ it.layer(layerTest)("SpecService", (it) => {
       assert.include(written, "status: draft");
       assert.notInclude(written, "status: approved");
       assert.equal(created.status, "draft");
+      // Like any BASE status write, an existing tracker row follows the new draft.
+      assert.equal(
+        yield* fs.readFileString(`${baseRoot}/specs/_status.md`),
+        "| Spec | Status |\n| --- | --- |\n| PROJ-124_new-thing | draft |\n| PROJ-1_other | review |\n",
+      );
       for (const file of ownedFiles)
         assert.isFalse(yield* fs.exists(`${baseRoot}/specs/PROJ-124_new-thing/${file}`));
     }),
@@ -1380,6 +1581,562 @@ it.layer(layerTest)("SpecService", (it) => {
         (yield* service.beforeRun({ threadId, driver: "codex" }))?.document?.slug,
         spec.slug,
       );
+    }),
+  );
+
+  it.effect("approves a BASE spec in BASE's own files, byte for byte like its extension", () =>
+    Effect.gen(function* () {
+      const ctx = yield* reviewedBaseSpec("base-approve");
+      const { fs, root, folder } = ctx;
+      const table = `${root}/specs/_status.md`;
+      assert.equal(yield* fs.readFileString(table), baseTable("review"));
+
+      const logBefore = JSON.stringify({ approvals: [olderApproval] }, null, 4) + "\n";
+      const planBefore = JSON.stringify(testPlan, null, 2) + "\n";
+      yield* fs.writeFileString(`${folder}/approval.json`, logBefore);
+      yield* fs.writeFileString(`${folder}/test-plan.json`, planBefore);
+
+      const approved = yield* ctx.approve;
+      assert.equal(approved.status, "approved");
+      assert.isTrue(approved.approvalValid);
+      assert.isUndefined(approved.approval?.external);
+
+      const spec = baseSpec("approved", "", APPROVED_AT);
+      assert.equal(yield* fs.readFileString(`${folder}/spec.md`), spec);
+      const planAfter = JSON.stringify({ ...testPlan, status: "approved" }, null, 2) + "\n";
+      assert.equal(yield* fs.readFileString(`${folder}/test-plan.json`), planAfter);
+      assert.equal(
+        yield* fs.readFileString(`${folder}/approval.json`),
+        JSON.stringify(
+          {
+            approvals: [
+              olderApproval,
+              {
+                confirmedBy: "Jane Doe <jane@example.com>",
+                confirmedAt: APPROVED_AT,
+                source: "button",
+                artifacts: {
+                  "spec.md": yield* sha256(spec),
+                  "test-plan.json": yield* sha256(planAfter),
+                },
+              },
+            ],
+          },
+          null,
+          4,
+        ) + "\n",
+      );
+      assert.equal(
+        yield* fs.readFileString(`${folder}/status.json`),
+        JSON.stringify(
+          {
+            version: 1,
+            phase: "requirements",
+            updated: APPROVED_AT,
+            requirements: { awaiting: "nothing", owner: "Jane" },
+          },
+          null,
+          4,
+        ) + "\n",
+      );
+      assert.equal(yield* fs.readFileString(table), baseTable("approved"));
+      assert.isFalse(yield* fs.exists(`${folder}/${baseSlug}.par3-tmp`));
+    }),
+  );
+
+  it.effect("keeps the BASE status table in step with every status Par3 writes", () =>
+    Effect.gen(function* () {
+      const ctx = yield* reviewedBaseSpec("base-table");
+      const { service, fs, root, projectId } = ctx;
+      const table = `${root}/specs/_status.md`;
+      const changes = yield* service.mutate(
+        mutation(
+          "request-changes",
+          projectId,
+          baseSlug,
+          "command:base-table:changes",
+          ctx.review.revision,
+        ),
+        human,
+      );
+      assert.equal(changes.status, "draft");
+      assert.equal(yield* fs.readFileString(table), baseTable("draft"));
+      yield* service.mutate(
+        mutation(
+          "request-review",
+          projectId,
+          baseSlug,
+          "command:base-table:again",
+          changes.revision,
+        ),
+        human,
+      );
+      assert.equal(yield* fs.readFileString(table), baseTable("review"));
+
+      assert.equal((yield* ctx.approve).status, "approved");
+      assert.equal(yield* fs.readFileString(table), baseTable("approved"));
+      // Editing the requirements sends an approved spec back to review.
+      yield* fs.writeFileString(
+        `${root}/specs/${baseSlug}/spec.md`,
+        baseSpec("approved").replace("The setting is saved.", "The setting is saved twice."),
+      );
+      assert.equal((yield* service.query({ projectId, slug: baseSlug })).detail!.status, "review");
+      assert.equal(yield* fs.readFileString(table), baseTable("review"));
+    }),
+  );
+
+  it.effect("hashes spec.md exactly as written and names the approver from git", () =>
+    Effect.gen(function* () {
+      const ctx = yield* reviewedBaseSpec("base-bytes");
+      const { fs, folder } = ctx;
+      // A spec saved by another editor: CRLF endings, then a byte order mark Par3 does not rewrite.
+      const crlf = baseSpec("review").replaceAll("\n", "\r\n");
+      yield* fs.writeFileString(`${folder}/spec.md`, crlf);
+      yield* ctx.service.query({ projectId: ctx.projectId, slug: baseSlug });
+      yield* fs.writeFileString(`${folder}/spec.md`, "\uFEFF" + crlf);
+
+      const approved = yield* withGit({ name: null, email: "jane@example.com" }, ctx.approve);
+      assert.equal(approved.status, "approved");
+      const written = yield* fs.readFile(`${folder}/spec.md`);
+      assert.deepEqual(Array.from(written.subarray(0, 3)), [0xef, 0xbb, 0xbf]);
+      const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(written);
+      assert.equal(text, "\uFEFF" + baseSpec("approved", "", APPROVED_AT).replaceAll("\n", "\r\n"));
+      const log = JSON.parse(yield* fs.readFileString(`${folder}/approval.json`));
+      assert.deepEqual(log.approvals, [
+        {
+          confirmedBy: "jane@example.com",
+          confirmedAt: APPROVED_AT,
+          source: "button",
+          artifacts: { "spec.md": yield* sha256(written) },
+        },
+      ]);
+      assert.isTrue(
+        (yield* fs.readFileString(`${folder}/approval.json`)).startsWith('{\n  "approvals"'),
+      );
+    }),
+  );
+
+  it.effect("falls back to the Par3 approver when git knows nobody", () =>
+    Effect.gen(function* () {
+      const ctx = yield* reviewedBaseSpec("base-approver");
+      yield* withGit({ name: null, email: null }, ctx.approve);
+      const log = JSON.parse(yield* ctx.fs.readFileString(`${ctx.folder}/approval.json`));
+      assert.equal(log.approvals[0].confirmedBy, human.label);
+    }),
+  );
+
+  it.effect("refuses to approve unless BASE's own files are in the state the extension needs", () =>
+    Effect.gen(function* () {
+      const cases: ReadonlyArray<{
+        name: string;
+        prepare: (ctx: {
+          fs: FileSystem.FileSystem;
+          root: string;
+          folder: string;
+        }) => Effect.Effect<void, PlatformError.PlatformError>;
+      }> = [
+        {
+          name: "a second status key",
+          prepare: (ctx) =>
+            ctx.fs.writeFileString(
+              `${ctx.folder}/spec.md`,
+              baseSpec("review").replace("id: ", "status: review\nid: "),
+            ),
+        },
+        {
+          name: "a status that is not review",
+          prepare: (ctx) => ctx.fs.writeFileString(`${ctx.folder}/spec.md`, baseSpec("bogus")),
+        },
+        {
+          name: "a status.json that is missing",
+          prepare: (ctx) => ctx.fs.remove(`${ctx.folder}/status.json`),
+        },
+        {
+          name: "a status.json that is not an object",
+          prepare: (ctx) => ctx.fs.writeFileString(`${ctx.folder}/status.json`, "[]\n"),
+        },
+        {
+          name: "a missing _status.md",
+          prepare: (ctx) => ctx.fs.remove(`${ctx.root}/specs/_status.md`),
+        },
+        {
+          name: "a _status.md without the row",
+          prepare: (ctx) =>
+            ctx.fs.writeFileString(
+              `${ctx.root}/specs/_status.md`,
+              "| Spec | Status |\n| - | - |\n",
+            ),
+        },
+        {
+          name: "a row that is not review",
+          prepare: (ctx) =>
+            ctx.fs.writeFileString(`${ctx.root}/specs/_status.md`, baseTable("draft")),
+        },
+        {
+          name: "a test plan for another spec",
+          prepare: (ctx) =>
+            ctx.fs.writeFileString(
+              `${ctx.folder}/test-plan.json`,
+              JSON.stringify({ ...testPlan, spec: "PROJ-999_other" }),
+            ),
+        },
+        {
+          name: "an approval log that is not a log",
+          prepare: (ctx) => ctx.fs.writeFileString(`${ctx.folder}/approval.json`, "{}\n"),
+        },
+      ];
+      for (const [index, item] of cases.entries()) {
+        const ctx = yield* reviewedBaseSpec(`base-refuse-${index}`);
+        yield* item.prepare(ctx);
+        const before = yield* ctx.files;
+        const refused = yield* Effect.flip(ctx.approve);
+        assert.equal(refused.reason, "invalid", item.name);
+        assert.deepEqual(yield* ctx.files, before, item.name);
+      }
+    }),
+  );
+
+  it.effect("aborts an approval when a file changes between the snapshot and the writes", () =>
+    Effect.gen(function* () {
+      const ctx = yield* reviewedBaseSpec("base-race");
+      const { fs, folder } = ctx;
+      const before = yield* ctx.files;
+      const refused = yield* Effect.flip(
+        ctx.approve.pipe(
+          Effect.provideService(ApprovalHooks, {
+            afterSnapshot: fs
+              .writeFileString(`${folder}/status.json`, '{"edited":true}\n')
+              .pipe(Effect.orDie),
+            beforeWrite: () => Effect.void,
+          }),
+        ),
+      );
+      assert.equal(refused.reason, "conflict");
+      assert.include(refused.message, "changed after the approval was requested");
+      assert.deepEqual(yield* ctx.files, {
+        ...before,
+        [`specs/${baseSlug}/status.json`]: '{"edited":true}\n',
+      });
+      assert.equal(
+        (yield* ctx.service.query({ projectId: ctx.projectId, slug: baseSlug })).detail!.status,
+        "review",
+      );
+    }),
+  );
+
+  it.effect("rolls back every file already written when one write fails", () =>
+    Effect.gen(function* () {
+      const ctx = yield* reviewedBaseSpec("base-rollback");
+      const { fs, folder } = ctx;
+      yield* fs.writeFileString(
+        `${folder}/approval.json`,
+        JSON.stringify({ approvals: [olderApproval] }, null, 2) + "\n",
+      );
+      yield* fs.writeFileString(
+        `${folder}/test-plan.json`,
+        JSON.stringify(testPlan, null, 2) + "\n",
+      );
+      const before = yield* ctx.files;
+      const written: string[] = [];
+      const refused = yield* Effect.flip(
+        ctx.approve.pipe(
+          Effect.provideService(ApprovalHooks, {
+            afterSnapshot: Effect.void,
+            beforeWrite: (relative) =>
+              relative === "specs/_status.md"
+                ? Effect.fail(new SpecError({ reason: "io", message: "injected" }))
+                : Effect.sync(() => void written.push(relative)),
+          }),
+        ),
+      );
+      assert.equal(refused.reason, "io");
+      assert.include(refused.message, "rolled back");
+      assert.lengthOf(written, 3);
+      assert.deepEqual(yield* ctx.files, before);
+      assert.equal(
+        (yield* ctx.service.query({ projectId: ctx.projectId, slug: baseSlug })).detail!.status,
+        "review",
+      );
+    }),
+  );
+
+  it.effect("adopts an approval made in the BASE extension only while spec.md is unchanged", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:base-external");
+      yield* createProject(projectId, root);
+      yield* fs.writeFileString(`${root}/specs/_status.md`, baseTable());
+      const folder = `${root}/specs/${baseSlug}`;
+      const query = () =>
+        service.query({ projectId, slug: baseSlug }).pipe(Effect.map((result) => result.detail!));
+      const discovered = yield* query();
+
+      const approvedSpec = baseSpec("approved", "", "2026-10-21T09:30:00Z");
+      const entry = Effect.fn("SpecServiceTest.entry")(function* (text: string) {
+        return {
+          confirmedBy: "Sam Roe <sam@example.com>",
+          confirmedAt: "2026-10-21T09:30:00Z",
+          source: "button",
+          artifacts: { "spec.md": yield* sha256(text) },
+        };
+      });
+      const writeLog = (...approvals: unknown[]) =>
+        fs.writeFileString(
+          `${folder}/approval.json`,
+          JSON.stringify({ approvals }, null, 2) + "\n",
+        );
+
+      // No record, an older matching record, or a stale last record: not an approval.
+      yield* fs.writeFileString(`${folder}/spec.md`, approvedSpec);
+      const matching = yield* entry(approvedSpec);
+      const mismatched = yield* entry("other text");
+      for (const log of [[], [matching, mismatched]]) {
+        yield* writeLog(...log);
+        const stale = yield* query();
+        assert.equal(stale.status, "draft");
+        assert.isFalse(stale.approvalValid);
+        assert.include(stale.error, "approval.json does not match");
+        assert.equal(yield* fs.readFileString(`${root}/specs/_status.md`), baseTable());
+      }
+
+      yield* writeLog(mismatched, matching);
+      const adopted = yield* query();
+      assert.equal(adopted.status, "approved");
+      assert.isTrue(adopted.approvalValid);
+      assert.isUndefined(adopted.error);
+      assert.equal(adopted.revision, discovered.revision + 1);
+      assert.deepEqual(adopted.approval, {
+        subject: "Sam Roe <sam@example.com>",
+        label: "Sam Roe <sam@example.com>",
+        approvedAt: "2026-10-21T09:30:00Z",
+        revision: adopted.revision,
+        specHash: discovered.specHash,
+        constitutionHash: null,
+        external: true,
+      });
+      assert.equal(yield* fs.readFileString(`${folder}/spec.md`), approvedSpec);
+      assert.equal(yield* fs.readFileString(`${root}/specs/_status.md`), baseTable("approved"));
+
+      // The requirements change after the approval: it no longer holds.
+      yield* fs.writeFileString(
+        `${folder}/spec.md`,
+        approvedSpec.replace("The setting is saved.", "The setting is saved twice."),
+      );
+      const changed = yield* query();
+      assert.equal(changed.status, "review");
+      assert.isFalse(changed.approvalValid);
+    }),
+  );
+
+  it.effect("runs the project's BASE validators before review and approval", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseApprovalWorkspace;
+      const projectId = ProjectId.make("project:base-validate");
+      yield* createProject(projectId, root);
+      yield* fs.writeFileString(`${root}/specs/validate_spec.py`, "");
+      yield* fs.makeDirectory(`${root}/.github/skills/spec-status`, { recursive: true });
+      yield* fs.writeFileString(`${root}/.github/skills/spec-status/validate_status.py`, "");
+      const ref = { projectId, slug: baseSlug };
+      const discovered = (yield* service.query({ projectId, slug: baseSlug })).detail!;
+      const review = (revision: number, suffix: string) =>
+        service.mutate(
+          mutation(
+            "request-review",
+            projectId,
+            baseSlug,
+            `command:base-validate:${suffix}`,
+            revision,
+          ),
+          human,
+        );
+      const validators =
+        (specOut: string, statusOut: { stdout: string; code: number }) =>
+        (input: ProcessRunner.ProcessRunInput) =>
+          input.command !== "python3"
+            ? null
+            : input.args[0] === "specs/validate_spec.py"
+              ? processOutput(specOut)
+              : processOutput(statusOut.stdout, statusOut.code);
+
+      // validate_spec.py reports an error; its warnings never count.
+      const failing = JSON.stringify({
+        errors: [{ message: "Missing the Rollout section" }],
+        warnings: [{ message: "Consider a longer summary" }],
+      });
+      yield* withProcess(
+        validators(failing, { stdout: "", code: 0 }),
+        Effect.gen(function* () {
+          const report = yield* service.validate(ref);
+          assert.deepEqual(report, {
+            layout: "base",
+            ran: true,
+            ok: false,
+            findings: [{ code: "validator", message: "Missing the Rollout section" }],
+            warnings: [],
+          });
+          assert.deepEqual(processCalls[0], {
+            command: "python3",
+            args: ["specs/validate_spec.py", `specs/${baseSlug}`, "--json"],
+            cwd: root,
+          });
+          const refused = yield* Effect.flip(review(discovered.revision, "blocked"));
+          assert.equal(refused.reason, "invalid");
+          assert.include(refused.message, "Missing the Rollout section");
+        }),
+      );
+
+      // Clean validators let review through; a failing status validator then blocks approval.
+      const reviewed = yield* withProcess(
+        validators('{"errors":[]}', { stdout: "", code: 0 }),
+        Effect.gen(function* () {
+          assert.isTrue((yield* service.validate(ref)).ok);
+          return yield* review(discovered.revision, "review");
+        }),
+      );
+      assert.equal(reviewed.status, "review");
+      yield* withProcess(
+        validators('{"errors":[]}', { stdout: "status.json: phase is unknown", code: 1 }),
+        Effect.gen(function* () {
+          const refused = yield* Effect.flip(
+            service.mutate(
+              mutation(
+                "approve",
+                projectId,
+                baseSlug,
+                "command:base-validate:approve",
+                reviewed.revision,
+              ),
+              human,
+            ),
+          );
+          assert.equal(refused.reason, "invalid");
+          assert.include(refused.message, "phase is unknown");
+          assert.isFalse(yield* fs.exists(`${root}/specs/${baseSlug}/approval.json`));
+        }),
+      );
+
+      // The next interpreter is used when python3 is not installed, and again for the second script.
+      yield* withProcess(
+        (input) => (input.command === "python" ? processOutput('{"errors":[]}') : null),
+        Effect.gen(function* () {
+          assert.isTrue((yield* service.validate(ref)).ran);
+          assert.deepEqual(
+            processCalls.map((call) => call.command),
+            ["python3", "python", "python"],
+          );
+        }),
+      );
+
+      // The Windows Store alias starts but never runs the script: it counts as missing, by exit code
+      // or by message, and the next interpreter is tried.
+      for (const stub of [
+        processOutput("", 9009),
+        processOutput(
+          "",
+          49,
+          "Python was not found; run without arguments to install from the Microsoft Store.",
+        ),
+      ]) {
+        yield* withProcess(
+          (input) =>
+            input.command === "python3"
+              ? stub
+              : input.command === "python"
+                ? processOutput('{"errors":[]}')
+                : null,
+          Effect.gen(function* () {
+            const report = yield* service.validate(ref);
+            assert.isTrue(report.ran);
+            assert.deepEqual(
+              processCalls.map((call) => call.command),
+              ["python3", "python", "python"],
+            );
+          }),
+        );
+      }
+
+      // Every interpreter being the stub is the same as having none.
+      yield* withProcess(
+        () => processOutput("", 9009),
+        Effect.gen(function* () {
+          const report = yield* service.validate(ref);
+          assert.deepEqual(report.warnings, [PYTHON_MISSING]);
+          assert.isFalse(report.ran);
+          assert.isTrue(report.ok);
+          assert.deepEqual(
+            processCalls.map((call) => call.command),
+            ["python3", "python", "uv"],
+          );
+        }),
+      );
+
+      // A script that ran and failed is a validator error, never a missing interpreter.
+      yield* withProcess(
+        (input) =>
+          input.command === "python3"
+            ? processOutput("", 1, "Traceback (most recent call last):\nValueError: bad spec")
+            : processOutput('{"errors":[]}'),
+        Effect.gen(function* () {
+          const report = yield* service.validate(ref);
+          assert.isTrue(report.ran);
+          assert.isFalse(report.ok);
+          assert.include(report.findings[0]?.message, "ValueError: bad spec");
+          assert.deepEqual(
+            processCalls.map((call) => call.command),
+            ["python3", "python3"],
+          );
+        }),
+      );
+
+      // Without Python nothing runs, and that alone blocks nothing.
+      yield* withProcess(
+        () => null,
+        Effect.gen(function* () {
+          const report = yield* service.validate(ref);
+          assert.deepEqual(report, {
+            layout: "base",
+            ran: false,
+            ok: true,
+            findings: [],
+            warnings: [PYTHON_MISSING],
+          });
+          const approved = yield* service.mutate(
+            mutation(
+              "approve",
+              projectId,
+              baseSlug,
+              "command:base-validate:approve2",
+              reviewed.revision,
+            ),
+            human,
+          );
+          assert.equal(approved.status, "approved");
+        }),
+      );
+    }),
+  );
+
+  it.effect("reports Par3's own readiness findings for specs outside BASE", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const root = yield* scopedWorkspace;
+      const projectId = ProjectId.make("project:par3-validate");
+      processCalls.length = 0;
+      yield* createProject(projectId, root);
+      yield* service.mutate(
+        createSpec(projectId, "par3-validate", "command:par3-validate:create", "# Thin\n"),
+        human,
+      );
+      const report = yield* service.validate({ projectId, slug: "par3-validate" });
+      assert.equal(report.layout, "par3");
+      assert.isFalse(report.ran);
+      assert.isFalse(report.ok);
+      assert.isAbove(report.findings.length, 0);
+      assert.lengthOf(processCalls, 0);
     }),
   );
 });
