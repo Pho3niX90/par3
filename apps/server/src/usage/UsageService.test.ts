@@ -146,6 +146,7 @@ const layerService = (input: {
     ),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(Layer.succeed(HostProcess.Platform, input.platform ?? "linux")),
+    Layer.provideMerge(Layer.succeed(HostProcess.HomeDirectory, input.home)),
     Layer.provideMerge(ServerSettings.layerTest(input.settings)),
     Layer.provideMerge(
       Layer.succeed(
@@ -1381,6 +1382,72 @@ describe("UsageService", () => {
           outputTokens,
         );
       }
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("reads Copilot accounts sharing a custom home once and deduplicates usage", () =>
+    Effect.gen(function* () {
+      const { settings, home } = yield* setup;
+      const sessionDir = NodePath.join(home, "copilot-account", "session-state", "session-1");
+      const event = {
+        type: "session.usage_record",
+        id: "usage-1",
+        timestamp: "2026-08-01T10:00:00Z",
+        data: {
+          usage: {
+            model: "claude-opus-5.5",
+            inputTokens: 100,
+            cacheReadTokens: 60,
+            cacheWriteTokens: 10,
+            outputTokens: 7,
+            accounting: { sourceSessionId: "session-1", usageId: "call-1" },
+          },
+        },
+      };
+      yield* Effect.promise(async () => {
+        await NodeFSP.mkdir(sessionDir, { recursive: true });
+        await NodeFSP.writeFile(
+          NodePath.join(sessionDir, "events.jsonl"),
+          [event, { ...event, id: "usage-copy" }].map((entry) => JSON.stringify(entry)).join("\n") +
+            "\n",
+        );
+      });
+      const account = {
+        driver: ProviderDriverKind.make("copilot"),
+        environment: [{ name: "COPILOT_HOME", value: "~/copilot-account", sensitive: false }],
+      };
+      const service = yield* UsageService.make.pipe(
+        Effect.provide(
+          layerService({
+            prefix: "usage-service-copilot-accounts-test",
+            home,
+            settings: {
+              ...settings,
+              providerInstances: {
+                ...settings.providerInstances,
+                [ProviderInstanceId.make("copilot-first")]: account,
+                [ProviderInstanceId.make("copilot-disabled")]: { ...account, enabled: false },
+              },
+            },
+          }),
+        ),
+      );
+      const summary = yield* service.readSummary(WINDOW);
+      const buckets = summary.buckets.filter((bucket) => bucket.provider === "copilot");
+      assert.strictEqual(buckets.length, 1);
+      assert.strictEqual(buckets[0]?.records, 1);
+      assert.deepStrictEqual(buckets[0]?.totals, {
+        uncachedInputTokens: 30,
+        cachedInputTokens: 60,
+        cacheCreationTokens: 10,
+        outputTokens: 7,
+        reasoningTokens: 0,
+      });
+      const sources = summary.sources.filter(
+        (source) => source.fingerprint.provider === "copilot" && source.status === "ok",
+      );
+      assert.strictEqual(sources.length, 1);
+      assert.strictEqual(sources[0]?.scannedFiles, 1);
     }).pipe(Effect.scoped),
   );
 

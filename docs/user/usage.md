@@ -6,7 +6,7 @@ desktop when the terminal is not focused. Customize `usage.open` in
 
 ## Understand your usage
 
-**Usage** combines Codex, Claude Code, Grok Build, OpenCode, Antigravity, Pi, and Cursor history
+**Usage** combines Codex, Claude Code, GitHub Copilot, Grok Build, OpenCode, Antigravity, Pi, and Cursor history
 from your connected environments. It shows token use, cache savings, model breakdowns, and estimated API-equivalent
 cost, split by token type and by speed. These estimates are not your subscription bill.
 **Premium** is what Fast and Ultrafast requests cost above standard rates. Cost that cannot be
@@ -19,6 +19,10 @@ record are missing from the totals.
 OpenCode reads its SQLite database and older JSON history. Antigravity reads local conversation
 databases, including T3-managed profiles. Set `OPENCODE_DATA_DIR` or `ANTIGRAVITY_DATA_DIR` on the
 server to read a different data directory; comma-separated paths read multiple directories.
+
+GitHub Copilot reads local CLI session history from `~/.copilot/session-state`, or the
+`session-state` directory under `COPILOT_HOME`. BYOK calls are included. Copilot credit charges
+are not dollar amounts; Usage estimates API-equivalent cost from token counts.
 
 Cursor reads account usage from Cursor's dashboard API using the CLI login saved on the server.
 This includes headless T3 sessions and desktop usage across machines; the same account counts

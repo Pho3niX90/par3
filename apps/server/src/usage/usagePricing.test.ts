@@ -35,6 +35,20 @@ describe("usage pricing", () => {
     speed,
   });
 
+  it("preserves exact Copilot rates before trying dashed Claude versions", () => {
+    const table = parseRateTable({
+      "github_copilot/claude-opus-5.5": rate(2e-6),
+      "claude-opus-5-5": rate(4e-6),
+      "claude-sonnet-4-5": rate(3e-6),
+      "gpt-5-4": rate(1e-6),
+    });
+
+    expect(lookupRate(table, "claude-opus-5.5")?.inputCostPerToken).toBe(2e-6);
+    expect(lookupRate(table, "claude-sonnet-4.5")?.inputCostPerToken).toBe(3e-6);
+    expect(lookupRate(table, "other/claude-sonnet-4.5")).toBeNull();
+    expect(lookupRate(table, "gpt-5.4")).toBeNull();
+  });
+
   it("uses custom token rates ahead of public and provider-reported costs", () => {
     const table = parseRateTable({ "example-model": rate(1) });
     const overrides = createOverrideRateTable({
