@@ -40,6 +40,9 @@ const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url
 export const mcpServerSecretName = (serverId: string, kind: "env" | "header", name: string) =>
   `mcp-server-${encode(serverId)}-${kind}-${encode(name)}`;
 
+export const providerEnvironmentSecretName = (instanceId: string, name: string) =>
+  `provider-env-${encode(instanceId)}-${encode(name)}`;
+
 export interface SettingsSecret {
   readonly secretName: string;
   readonly kind: "field" | "environment";
@@ -103,7 +106,7 @@ export function mapSettingsSecrets(
             ? {
                 environment: instance.environment.map((variable) => {
                   const result = map({
-                    secretName: `provider-env-${encode(instanceId)}-${encode(variable.name)}`,
+                    secretName: providerEnvironmentSecretName(instanceId, variable.name),
                     kind: "environment",
                     value: variable.value,
                     redacted: variable.valueRedacted === true,

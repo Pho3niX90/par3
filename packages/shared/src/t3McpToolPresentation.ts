@@ -66,7 +66,9 @@ export type T3McpToolSummaryAction =
   | "html-preview"
   | "html-render"
   | "mcp-servers"
-  | "mcp-call";
+  | "mcp-call"
+  | "vault-list"
+  | "vault-read";
 
 export interface T3McpToolDefinition {
   readonly displayName: string;
@@ -339,6 +341,8 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   mcp_servers: tool(["List", "Listing", "Listed", "shared MCP servers"], "mcp-servers"),
   // Rows show `<server> · <tool>` from the arguments in place of the detail.
   mcp_call: tool(["Call", "Calling", "Called", "a shared MCP tool"], "mcp-call"),
+  vault_list: tool(["List", "Listing", "Listed", "vault secrets"], "vault-list"),
+  secret_get: tool(["Read", "Reading", "Read", "a vault secret"], "vault-read"),
 };
 
 export const T3_MCP_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(T3_MCP_TOOLS));

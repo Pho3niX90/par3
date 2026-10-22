@@ -317,6 +317,59 @@ it.layer(layerTest)("orchestration V2 foundation persistence", (it) => {
     ),
   );
 
+  it.effect("stores a vault secret read by an agent without its value", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const sink = yield* EventSink.EventSinkV2;
+        const store = yield* EventStore.EventStoreV2;
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const now = yield* DateTime.now;
+        const thread = makeThread(ThreadId.make("thread:secret-get"), now);
+        const tool: OrchestrationV2TurnItem = {
+          id: TurnItemId.make("tool:secret-get"),
+          type: "dynamic_tool",
+          threadId: thread.id,
+          runId: null,
+          nodeId: null,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 1,
+          status: "completed",
+          title: null,
+          toolName: "mcp__t3-code__secret_get",
+          input: { name: "API_TOKEN" },
+          output: {
+            content: [{ type: "text", text: '{"name":"API_TOKEN","value":"s3cret-value"}' }],
+          },
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+        };
+        yield* sink.write({
+          events: [
+            threadCreatedEvent({ id: "event:secret-get:created", thread, now }),
+            {
+              id: EventId.make("event:secret-get:item"),
+              type: "turn-item.updated",
+              threadId: thread.id,
+              occurredAt: now,
+              payload: tool,
+            },
+          ],
+        });
+        const persisted = yield* store.read({ threadId: thread.id }).pipe(Stream.runCollect);
+        assert.notInclude(yield* encodeJson(Array.from(persisted)), "s3cret-value");
+        const projected = (yield* projections.getThreadProjection(thread.id)).turnItems.find(
+          (item) => item.id === tool.id,
+        )!;
+        assert.notInclude(yield* encodeJson(projected), "s3cret-value");
+        assert.deepEqual(projected.type === "dynamic_tool" ? projected.input : null, tool.input);
+      }),
+    ),
+  );
+
   it.effect.each(["high-water", "replay"] as const)(
     "bounds live events while the V2 %s query is blocked",
     (phase) =>

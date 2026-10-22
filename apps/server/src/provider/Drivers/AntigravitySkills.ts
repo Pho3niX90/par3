@@ -28,6 +28,9 @@ export function resolveAntigravityUserHome(
   return environment.HOME || home;
 }
 
+/** Relative to `~/.gemini`, `/`-separated; config sync reads the same two directories. */
+export const ANTIGRAVITY_USER_SKILL_SUBPATHS = ["config/skills", "antigravity-cli/skills"] as const;
+
 /**
  * The agent resolves both under `GEMINI_HOME`, which T3 points at a private
  * profile, so the profile links these back to the user's `~/.gemini`.
@@ -39,8 +42,8 @@ export function antigravityUserSkillDirectories(
   geminiHome: string,
 ): readonly [configSkills: string, cliSkills: string] {
   return [
-    path.join(geminiHome, "config", "skills"),
-    path.join(geminiHome, "antigravity-cli", "skills"),
+    path.join(geminiHome, ...ANTIGRAVITY_USER_SKILL_SUBPATHS[0].split("/")),
+    path.join(geminiHome, ...ANTIGRAVITY_USER_SKILL_SUBPATHS[1].split("/")),
   ];
 }
 

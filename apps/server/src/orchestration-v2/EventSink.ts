@@ -34,6 +34,7 @@ import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventStore from "./EventStore.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
+import { redactSecretToolOutput } from "./secretToolOutput.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 
 export class EventSinkWriteError extends Schema.TaggedError<EventSinkWriteError>()(
@@ -355,7 +356,7 @@ const layerBase: Layer.Layer<
           event.type === "turn-item.updated"
             ? turnItemPositions
                 .normalize(
-                  event.payload,
+                  redactSecretToolOutput(event.payload),
                   event.payload.runId === null ? undefined : runOrdinals.get(event.payload.runId),
                 )
                 .pipe(Effect.map((payload) => ({ ...event, payload })))

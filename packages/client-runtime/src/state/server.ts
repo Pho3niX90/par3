@@ -1381,6 +1381,40 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:mcp-gateway-test",
       tag: WS_METHODS.mcpGatewayTest,
     }),
+    syncLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:sync-live",
+      tag: WS_METHODS.syncSubscribe,
+      idleTtlMs: 0,
+    }),
+    syncRead: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:sync-read",
+      tag: WS_METHODS.syncRead,
+    }),
+    syncApply: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:sync-apply",
+      tag: WS_METHODS.syncApply,
+    }),
+    syncSetParticipation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:sync-set-participation",
+      tag: WS_METHODS.syncSetParticipation,
+    }),
+    vaultList: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:vault-list",
+      tag: WS_METHODS.vaultList,
+      staleTimeMs: 0,
+    }),
+    vaultMutate: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:vault-mutate",
+      tag: WS_METHODS.vaultMutate,
+    }),
+    vaultWrapKeyFor: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:vault-wrap-key",
+      tag: WS_METHODS.vaultWrapKeyFor,
+    }),
+    vaultImportCandidates: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:vault-import-candidates",
+      tag: WS_METHODS.vaultImportCandidates,
+    }),
     retryResourceTelemetry: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:retry-resource-telemetry",
       tag: WS_METHODS.serverRetryResourceTelemetry,

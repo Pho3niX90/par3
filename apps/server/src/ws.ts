@@ -15,6 +15,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import { rpcInitialItems } from "./rpcInitialItems.ts";
@@ -264,6 +265,8 @@ import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as JiraIssues from "./jira/JiraIssues.ts";
 import * as McpGateway from "./mcpGateway/McpGateway.ts";
 import * as SpecService from "./specs/SpecService.ts";
+import * as SyncStore from "./sync/SyncStore.ts";
+import * as VaultService from "./vault/VaultService.ts";
 import * as ThreadRepositories from "./vcs/ThreadRepositories.ts";
 
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -1220,6 +1223,9 @@ type WsRpcServices =
   | ManagedProjectFolders.ManagedProjectFolders
   | McpAppRequests.McpAppRequests
   | McpGateway.McpGateway
+  | ServerSettings.ServerSettingsClientView
+  | SyncStore.SyncStore
+  | VaultService.VaultService
   | ModelManifest.ModelManifest
   | OrchestrationEventStore.OrchestrationEventStore
   | Orchestrator.OrchestratorV2
@@ -1295,14 +1301,21 @@ type WsRpcHandlers = {
   >;
 };
 
-const makeLayerWsRpc = (
+// Checking the handler effect against this type, instead of inferring it inside `toLayer`,
+// keeps ws.ts within TypeScript's instantiation budget. It also checks that the handlers need
+// only the services in WsRpcServices and cannot fail to build.
+const typedWsRpcHandlers = (
+  build: Effect.Effect<WsRpcHandlers, never, WsRpcServices | Scope.Scope>,
+) => build;
+
+const makeWsRpcHandlers = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
 ) =>
-  ServerWsRpcGroup.toLayer(
+  typedWsRpcHandlers(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
@@ -1365,6 +1378,8 @@ const makeLayerWsRpc = (
       const jiraIssues = yield* JiraIssues.JiraIssues;
       const mcpGateway = yield* McpGateway.McpGateway;
       const specs = yield* SpecService.SpecService;
+      const syncStore = yield* SyncStore.SyncStore;
+      const vault = yield* VaultService.VaultService;
       const threadRepositories = yield* ThreadRepositories.ThreadRepositories;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
@@ -1403,6 +1418,7 @@ const makeLayerWsRpc = (
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
       const databaseStorage = yield* DatabaseStorage.DatabaseStorage;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
+      const clientSettings = yield* ServerSettings.ServerSettingsClientView;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
@@ -1794,9 +1810,7 @@ const makeLayerWsRpc = (
         const providers = options.usageLimitsCommand
           ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
           : currentProviders;
-        const settings = ServerSettings.redactServerSettingsForClient(
-          yield* serverSettings.getSettings,
-        );
+        const settings = yield* clientSettings.getSettings;
         const environment = yield* serverEnvironment.getDescriptor;
         const auth = yield* serverAuth.getDescriptor();
         const scratchWorkspaceRoot = yield* managedFolders.scratchRoot;
@@ -2509,8 +2523,7 @@ const makeLayerWsRpc = (
         [WS_METHODS.serverRunStorageCleanup]: () => storageCleanup.runNow,
         [WS_METHODS.serverGetStorageCleanupReport]: () => storageCleanup.reports,
         [WS_METHODS.serverGetDatabaseStorage]: () => databaseStorage.status,
-        [WS_METHODS.serverGetSettings]: (_input) =>
-          serverSettings.getSettings.pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
+        [WS_METHODS.serverGetSettings]: (_input) => clientSettings.getSettings,
         [WS_METHODS.serverUpdateSettings]:
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(function* ({ patch, providerInstanceMutation }) {
@@ -2520,10 +2533,10 @@ const makeLayerWsRpc = (
                 )
               : undefined;
             const nextPatch = { ...patch, ...(deviceHosts ? { deviceHosts } : {}) };
-            const settings = yield* providerInstanceMutation === undefined
+            yield* providerInstanceMutation === undefined
               ? serverSettings.updateSettings(nextPatch)
               : serverSettings.updateProviderInstance(providerInstanceMutation, nextPatch);
-            return ServerSettings.redactServerSettingsForClient(settings);
+            return yield* clientSettings.getSettings;
           }),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) => sourceControlDiscovery.discover,
         [WS_METHODS.serverGetTraceDiagnostics]: (_input) =>
@@ -2621,6 +2634,14 @@ const makeLayerWsRpc = (
             subject: currentSession.subject,
             label: `Client ${currentSession.sessionId}`,
           }),
+        [WS_METHODS.syncSubscribe]: () => syncStore.subscribe,
+        [WS_METHODS.syncRead]: (input) => syncStore.read(input.key),
+        [WS_METHODS.syncApply]: (input) => syncStore.apply(input),
+        [WS_METHODS.syncSetParticipation]: (input) => syncStore.setParticipation(input),
+        [WS_METHODS.vaultList]: () => vault.list,
+        [WS_METHODS.vaultMutate]: (input) => vault.mutate(input),
+        [WS_METHODS.vaultWrapKeyFor]: (input) => vault.wrapKeyFor(input.recipient),
+        [WS_METHODS.vaultImportCandidates]: () => vault.importCandidates,
         [WS_METHODS.pullRequestsPreview]: (input) =>
           withPullRequestViewer(input, pullRequests.preview(input)),
         [WS_METHODS.pullRequestsChecks]: (input) =>
@@ -3110,7 +3131,7 @@ const makeLayerWsRpc = (
               const usageLimitsCommand = input.usageLimitsCommand === true;
               // Buffer changes through discovery and the initial snapshot's RPC ACK wait.
               const keybindingsChanges = yield* keybindings.subscribeChanges;
-              const settingsChanges = yield* serverSettings.subscribeChanges;
+              const settingsChanges = yield* clientSettings.subscribeChanges;
               const config = yield* loadServerConfig({ usageLimitsCommand });
               const keybindingsUpdates = keybindingsChanges.pipe(
                 Stream.map((event) => ({
@@ -3179,7 +3200,6 @@ const makeLayerWsRpc = (
                     )
                   : Stream.empty;
               const settingsUpdates = settingsChanges.pipe(
-                Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
                 Stream.map((settings) => ({
                   version: 1 as const,
                   type: "settingsUpdated" as const,
@@ -3273,20 +3293,13 @@ const makeLayerWsRpc = (
     }),
   );
 
-type IsTrue<T extends true> = T;
-// Inferred inside this module, where it fits the depth limit: the handlers may
-// need only the services listed in WsRpcServices and must not fail to build.
-type _WsRpcServicesCovered = IsTrue<
-  [Layer.Services<ReturnType<typeof makeLayerWsRpc>>] extends [WsRpcServices]
-    ? [Layer.Error<ReturnType<typeof makeLayerWsRpc>>] extends [never]
-      ? true
-      : false
-    : false
->;
-
-export const layerWsRpc = makeLayerWsRpc as unknown as (
-  ...args: Parameters<typeof makeLayerWsRpc>
+// Typed by hand: instantiating `toLayer` for the whole group also overruns the budget.
+const toWsRpcLayer = ServerWsRpcGroup.toLayer.bind(ServerWsRpcGroup) as unknown as (
+  build: Effect.Effect<WsRpcHandlers, never, WsRpcServices | Scope.Scope>,
 ) => WsRpcLayer;
+
+export const layerWsRpc = (...args: Parameters<typeof makeWsRpcHandlers>): WsRpcLayer =>
+  toWsRpcLayer(makeWsRpcHandlers(...args));
 
 // RpcServer's default sends a socket-level Defect frame instead, and the client
 // ends every pending request on the socket with it.

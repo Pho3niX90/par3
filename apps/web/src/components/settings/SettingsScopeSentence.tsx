@@ -46,6 +46,8 @@ export const SETTINGS_DEVICE_ONLY_PATHS: ReadonlySet<string> = new Set([
   "/settings/appearance",
   "/settings/snap-shot",
   "/settings/connections",
+  // Lists every connected machine itself, since the vault and sync span them.
+  "/settings/sync",
 ]);
 
 interface SettingsScopeMenuProps {
