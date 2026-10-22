@@ -2080,6 +2080,7 @@ const makeLayerWsRpc = (
                     runtimeMode: input.runtimeMode,
                     interactionMode: input.interactionMode,
                     workspaceStrategy: input.workspaceStrategy,
+                    ...(input.specIntake === true ? { specIntake: true } : {}),
                     ...(input.initialMessage === undefined
                       ? {}
                       : {
@@ -2134,7 +2135,11 @@ const makeLayerWsRpc = (
                       new OrchestrationV2ThreadLaunchError({
                         commandId: input.commandId,
                         projectId: input.projectId,
-                        message: "Failed to launch thread",
+                        // The reason is for the person who asked for Spec mode, not an internal fault.
+                        message:
+                          cause.operation === "spec-intake" && cause.cause instanceof Error
+                            ? cause.cause.message
+                            : "Failed to launch thread",
                         cause,
                       }),
                     ServerRuntimeStartupError: (cause) =>
@@ -2617,6 +2622,12 @@ const makeLayerWsRpc = (
         [WS_METHODS.specsSubscribe]: (input) => specs.subscribe(input),
         [WS_METHODS.specsMutate]: (input) =>
           specs.mutate(input, {
+            kind: "human",
+            subject: currentSession.subject,
+            label: `Client ${currentSession.sessionId}`,
+          }),
+        [WS_METHODS.specsIntake]: (input) =>
+          specs.setIntake(input, {
             kind: "human",
             subject: currentSession.subject,
             label: `Client ${currentSession.sessionId}`,

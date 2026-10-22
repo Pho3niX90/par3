@@ -163,6 +163,12 @@ interface StartThreadBootstrap {
     readonly startFromOrigin?: boolean;
   };
   readonly runSetupScript?: boolean;
+  /**
+   * The first message starts a spec: the thread waits for its agent to create it. Used with
+   * `createThread` or `prepareWorktree`; a thread that already has messages uses the
+   * `specs.intake` RPC instead.
+   */
+  readonly specIntake?: true;
 }
 
 export interface StartThreadTurnInput extends ThreadCommandInput {
@@ -696,6 +702,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       runtimeMode: input.runtimeMode,
       interactionMode: input.interactionMode,
       workspaceStrategy,
+      ...(input.bootstrap?.specIntake === true ? { specIntake: true as const } : {}),
       initialMessage: {
         messageId: input.message.messageId,
         text: input.message.text,

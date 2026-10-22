@@ -218,6 +218,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.subscribeBackgroundPolicy]: "server",
   [WS_METHODS.specsQuery]: "specs",
   [WS_METHODS.specsMutate]: "specs",
+  [WS_METHODS.specsIntake]: "specs",
   [WS_METHODS.specsSubscribe]: "specs",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 

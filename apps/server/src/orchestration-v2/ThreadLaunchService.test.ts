@@ -50,6 +50,8 @@ import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMoc
 import * as ServerSettings from "../serverSettings.ts";
 import * as ScheduledTasks from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import { SpecError } from "@t3tools/contracts";
+import * as SpecService from "../specs/SpecService.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { ClaudeProviderCapabilitiesV2 } from "./Adapters/ClaudeAdapterV2.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
@@ -127,6 +129,7 @@ interface HarnessOptions {
   readonly serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   readonly providers?: ReadonlyArray<ServerProvider>;
   readonly git?: Partial<GitWorkflow.GitWorkflowService["Service"]>;
+  readonly assertIntakeAllowed?: SpecService.SpecService["Service"]["assertIntakeAllowed"];
 }
 
 function makeHarness(options: HarnessOptions = {}) {
@@ -220,9 +223,16 @@ function makeHarness(options: HarnessOptions = {}) {
         folderForThread: () => Effect.succeed(Option.none()),
       }),
   );
+  const assertIntakeAllowed = vi.fn(options.assertIntakeAllowed ?? (() => Effect.void));
+  const markIntake = vi.fn(
+    (_input: Parameters<SpecService.SpecService["Service"]["markIntake"]>[0]) =>
+      Effect.succeed({ createdAt: "2026-06-20T00:00:00.000Z" }),
+  );
+  const layerSpecs = Layer.mock(SpecService.SpecService)({ assertIntakeAllowed, markIntake });
   const layerLaunch = ThreadLaunch.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        layerSpecs,
         layerExternalServices,
         layerThreadManagement,
         layerReceipts,
@@ -273,6 +283,8 @@ function makeHarness(options: HarnessOptions = {}) {
     generateThreadTitle,
     runSetup,
     closeTerminal,
+    assertIntakeAllowed,
+    markIntake,
   };
 }
 
@@ -2228,4 +2240,68 @@ it.effect("replays an accepted send after the project disables the instance", ()
       assert.fail(`expected ThreadManagementProviderInstanceDisabledError, got ${fresh._tag}`);
     }
   }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
+});
+
+const isThreadLaunchError = Schema.is(ThreadLaunch.ThreadLaunchError);
+const codexProvider = {
+  instanceId: modelSelection.instanceId,
+  driver: ProviderDriverKind.make("codex"),
+} as ServerProvider;
+
+it.effect("marks a spec-intake launch before its first message and only once per command", () => {
+  const harness = makeHarness({ providers: [codexProvider] });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const input = {
+      ...launchInput({
+        command: "command:launch:spec-intake",
+        thread: "thread:launch:spec-intake",
+        message: "Add dark mode",
+      }),
+      specIntake: true,
+    };
+    const launched = yield* launches.launch(input);
+    yield* launches.launch(input);
+    assert.deepEqual(harness.assertIntakeAllowed.mock.calls, [[{ projectId, driver: "codex" }]]);
+    assert.deepEqual(harness.markIntake.mock.calls, [
+      [{ projectId, threadId: launched.threadId, driver: "codex" }],
+    ]);
+
+    yield* launches.launch(
+      launchInput({
+        command: "command:launch:no-spec-intake",
+        thread: "thread:launch:no-spec-intake",
+        message: "Add dark mode",
+      }),
+    );
+    assert.equal(harness.markIntake.mock.calls.length, 1);
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("refuses a spec-intake launch before it creates a thread", () => {
+  const harness = makeHarness({
+    providers: [codexProvider],
+    assertIntakeAllowed: () =>
+      Effect.fail(new SpecError({ reason: "disabled", message: "Enable Spec mode first." })),
+  });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const threadId = ThreadId.make("thread:launch:spec-intake-refused");
+    const exit = yield* Effect.exit(
+      launches.launch({
+        ...launchInput({
+          command: "command:launch:spec-intake-refused",
+          thread: threadId,
+          message: "Add dark mode",
+        }),
+        specIntake: true,
+      }),
+    );
+    assert.isTrue(Exit.isFailure(exit));
+    const error = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+    assert.equal(isThreadLaunchError(error) ? error.operation : undefined, "spec-intake");
+    assert.isNull(yield* threads.getThreadShell(threadId));
+    assert.equal(harness.markIntake.mock.calls.length, 0);
+  }).pipe(Effect.provide(harness.layer));
 });

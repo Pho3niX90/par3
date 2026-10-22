@@ -44,6 +44,7 @@ import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.t
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as SpecService from "../specs/SpecService.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -89,6 +90,8 @@ export interface ThreadLaunchInput {
   readonly interactionMode: ProviderInteractionMode;
   readonly workspaceStrategy: ThreadLaunchWorkspaceStrategy;
   readonly initialMessage?: ThreadLaunchInitialMessage;
+  /** The thread waits for its agent to create a spec from the first message. */
+  readonly specIntake?: boolean;
   readonly importedNativeThread?: {
     readonly ref: {
       readonly driver: ProviderDriverKind;
@@ -132,6 +135,7 @@ export class ThreadLaunchError extends Schema.TaggedError<ThreadLaunchError>()(
       "create-thread",
       "update-thread",
       "dispatch-message",
+      "spec-intake",
       "release-run",
       "fail-run",
     ]),
@@ -212,6 +216,7 @@ const make = Effect.gen(function* () {
   const ids = yield* IdAllocator.IdAllocatorV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
+  const specs = yield* SpecService.SpecService;
   const preparationScope = yield* Scope.make("sequential");
   const scheduledLaunches = yield* Ref.make<ReadonlySet<CommandId>>(new Set());
   yield* Effect.addFinalizer(() => Scope.close(preparationScope, Exit.void));
@@ -869,6 +874,21 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         instanceId: input.modelSelection.instanceId,
       });
+      // Spec mode is refused before a thread exists, so a refusal leaves nothing behind.
+      const specIntakeDriver =
+        input.specIntake === true && Option.isNone(launchReceipt)
+          ? (yield* providerRegistry.getProviders).find(
+              (provider) => provider.instanceId === input.modelSelection.instanceId,
+            )?.driver
+          : undefined;
+      if (input.specIntake === true && Option.isNone(launchReceipt)) {
+        yield* specs
+          .assertIntakeAllowed({
+            projectId: input.projectId,
+            ...(specIntakeDriver === undefined ? {} : { driver: specIntakeDriver }),
+          })
+          .pipe(Effect.mapError(mapError(input, "spec-intake")));
+      }
       return yield* Effect.gen(function* () {
         // A retried launch has no client-supplied id to replay against, so
         // recover the thread id its accepted create was recorded under before
@@ -969,6 +989,19 @@ const make = Effect.gen(function* () {
             .threadId ?? candidateThreadId;
         if (project.id !== input.projectId) {
           return yield* mapError(input, "resolve-project", threadId)("Project identity changed.");
+        }
+
+        // The marker precedes the first message, so the run it creates starts as a spec intake.
+        // A replayed launch already did this; marking again could mark a thread that has since
+        // gone on to follow a spec.
+        if (input.specIntake === true && Option.isNone(launchReceipt)) {
+          yield* specs
+            .markIntake({
+              projectId: input.projectId,
+              threadId,
+              ...(specIntakeDriver === undefined ? {} : { driver: specIntakeDriver }),
+            })
+            .pipe(Effect.mapError(mapError(input, "spec-intake", threadId)));
         }
 
         let runId: RunId | null = null;

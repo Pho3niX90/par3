@@ -389,6 +389,8 @@ import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 import {
   SpecDocument,
   SpecError,
+  SpecIntakeInput,
+  SpecIntakeResult,
   SpecMutationInput,
   SpecQueryInput,
   SpecQueryResult,
@@ -555,6 +557,7 @@ export const WS_METHODS = {
   mcpGatewayTest: "mcpGateway.test",
   specsQuery: "specs.query",
   specsMutate: "specs.mutate",
+  specsIntake: "specs.intake",
   specsSubscribe: "specs.subscribe",
   pullRequestsPreview: "pullRequests.preview",
   pullRequestsChecks: "pullRequests.checks",
@@ -1045,6 +1048,12 @@ const WsSpecsQueryRpc = Rpc.make(WS_METHODS.specsQuery, {
 const WsSpecsMutateRpc = Rpc.make(WS_METHODS.specsMutate, {
   payload: SpecMutationInput,
   success: SpecDocument,
+  error: SpecError,
+});
+
+const WsSpecsIntakeRpc = Rpc.make(WS_METHODS.specsIntake, {
+  payload: SpecIntakeInput,
+  success: SpecIntakeResult,
   error: SpecError,
 });
 
@@ -2027,6 +2036,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpGatewayTestRpc,
   WsSpecsQueryRpc,
   WsSpecsMutateRpc,
+  WsSpecsIntakeRpc,
   WsSpecsSubscribeRpc,
   WsPullRequestsPreviewRpc,
   WsPullRequestsChecksRpc,

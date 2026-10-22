@@ -8,6 +8,7 @@ import {
   OrchestratorMcpFailure,
   PreviewTabId,
   ProviderInstanceId,
+  SpecError,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -811,4 +812,26 @@ it.effect("admits provider and OAuth client credentials and points only clients 
       expect(deadProvider.headers["www-authenticate"]).toBe('Bearer error="invalid_token"');
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
+it.effect("limits a thread waiting to start a spec like a bound requirements thread", () =>
+  Effect.gen(function* () {
+    const specsWith = (scopeRole: SpecService.SpecService["Service"]["scopeRole"]) =>
+      ({ scopeRole }) as SpecService.SpecService["Service"];
+    const waiting = yield* McpHttpServer.scopeToSpecRole(
+      specsWith(() => Effect.succeed("requirements")),
+      invocation,
+    );
+    expect(waiting?.thread?.specRole).toBe("requirements");
+    const free = yield* McpHttpServer.scopeToSpecRole(
+      specsWith(() => Effect.succeed(undefined)),
+      invocation,
+    );
+    expect(free?.thread?.specRole).toBeUndefined();
+    const unreadable = yield* McpHttpServer.scopeToSpecRole(
+      specsWith(() => Effect.fail(new SpecError({ reason: "io", message: "unreadable" }))),
+      invocation,
+    );
+    expect(unreadable).toBeNull();
+  }),
 );

@@ -55,7 +55,7 @@ import {
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import * as SpecService from "../specs/SpecService.ts";
-import { specInstructions } from "../specs/specInstructions.ts";
+import { specInstructions, specIntakeInstructions } from "../specs/specInstructions.ts";
 import {
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
@@ -1312,7 +1312,14 @@ export const layer: Layer.Layer<
             message: {
               ...turnInput.message,
               text: withTurnPreamble(
-                [specRun ? specInstructions(specRun.document, specRun.role) : "", context]
+                [
+                  specRun === undefined
+                    ? ""
+                    : specRun.intake
+                      ? specIntakeInstructions(specRun.intake)
+                      : specInstructions(specRun.document, specRun.role),
+                  context,
+                ]
                   .filter((part) => part !== "")
                   .join("\n\n"),
                 userText,
@@ -1356,7 +1363,9 @@ export const layer: Layer.Layer<
               }),
         ),
       );
+      // The spec workflow rides on the first prompt, which only the delivery wrapper adds.
       const deliverySession =
+        specRun === undefined &&
         effectiveHandoffs.length === 0 &&
         missedItems.length === 0 &&
         restartNote === "" &&

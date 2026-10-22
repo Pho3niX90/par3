@@ -6,6 +6,7 @@ import {
   SpecEvidenceInput,
   SpecQueryInput,
   SpecQueryResult,
+  SpecSlug,
   SpecStatus,
   SpecTask,
   TrimmedNonEmptyString,
@@ -60,6 +61,21 @@ export const SpecsToolkit = Toolkit.make(
     parameters: SpecQueryInput,
     success: SpecQueryResult,
   }).annotate(Tool.Readonly, true),
+  Tool.make("spec_create", {
+    ...shared,
+    description:
+      "Only when a person asked this thread to start a spec: create the draft spec from their request and bind this thread to it as the requirements role. slug is the spec folder name (BASE projects: KEY-123_short-kebab). Fails if the thread is not waiting to start a spec or the slug is taken. Use spec_update afterwards.",
+    parameters: Schema.Struct({
+      commandId: revision.commandId,
+      title: TrimmedNonEmptyString,
+      slug: SpecSlug,
+      content: Schema.String,
+    }),
+    success: SpecDocument,
+  })
+    .annotate(Tool.Readonly, false)
+    .annotate(Tool.Destructive, false)
+    .annotate(Tool.Idempotent, true),
   mutation(
     "spec_update",
     "Requirements role: replace the requirements markdown of your bound spec. Preserve AC-n IDs and retire removed ones as ~~AC-n~~. Changing approved requirements revokes approval and interrupts linked work.",

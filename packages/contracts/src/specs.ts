@@ -185,6 +185,13 @@ export const SpecQueryInput = Schema.Struct({
 });
 export type SpecQueryInput = typeof SpecQueryInput.Type;
 
+/**
+ * A thread asked to start a spec from its next message. It ends only when the agent creates the
+ * spec (which binds the thread) or a person cancels it.
+ */
+export const SpecIntake = Schema.Struct({ createdAt: Schema.String });
+export type SpecIntake = typeof SpecIntake.Type;
+
 export const SpecQueryResult = Schema.Struct({
   specs: Schema.Array(SpecSummary),
   detail: Schema.optionalKey(SpecDocument),
@@ -193,8 +200,21 @@ export const SpecQueryResult = Schema.Struct({
   layout: Schema.optionalKey(SpecLayout),
   /** The checkout's `specs/_template.md`, present only for `base` and when the query asked for it. */
   template: Schema.optionalKey(Schema.String),
+  /** Present when the query named a thread that is waiting for its spec to be created. */
+  intake: Schema.optionalKey(SpecIntake),
 });
 export type SpecQueryResult = typeof SpecQueryResult.Type;
+
+/** `mark` waits for the thread's next message to start a spec; `cancel` withdraws that. */
+export const SpecIntakeInput = Schema.Struct({
+  projectId: ProjectId,
+  threadId: ThreadId,
+  action: Schema.Literals(["mark", "cancel"]),
+});
+export type SpecIntakeInput = typeof SpecIntakeInput.Type;
+
+export const SpecIntakeResult = Schema.Struct({ intake: Schema.NullOr(SpecIntake) });
+export type SpecIntakeResult = typeof SpecIntakeResult.Type;
 
 const SpecMutationBase = {
   projectId: ProjectId,

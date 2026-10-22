@@ -160,6 +160,25 @@ const normalizeMcpHttpResponse = (
 // Session tokens are `<payload>.<signature>`; registry tokens are a bare base64url secret.
 const looksLikeProviderToken = (token: string) => token.length > 0 && !token.includes(".");
 
+/**
+ * Looked up per request: a person can bind, unbind or cancel between calls. A thread waiting to
+ * have its spec created is limited like the requirements role it will get. Null when the
+ * restriction cannot be read, which must not fall back to unrestricted.
+ */
+export const scopeToSpecRole = Effect.fn("McpHttpServer.scopeToSpecRole")(function* (
+  specs: SpecService.SpecService["Service"],
+  invocation: McpInvocationContext.McpInvocationScope,
+) {
+  if (!invocation.thread) return invocation;
+  const specRole = yield* specs
+    .scopeRole(invocation.thread.threadId)
+    .pipe(Effect.orElseSucceed(() => null));
+  if (specRole === null) return null;
+  return specRole === undefined
+    ? invocation
+    : { ...invocation, thread: { ...invocation.thread, specRole } };
+});
+
 const makeMcpAuthMiddleware = Effect.gen(function* () {
   const registry = yield* McpSessionRegistry.McpSessionRegistry;
   const specs = yield* SpecService.SpecService;
@@ -186,19 +205,12 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
         offerOAuth: Option.isSome(clients) && !looksLikeProviderToken(token),
       });
     }
-    // Looked up per request: a person can bind or unbind the thread between calls.
-    const specBinding = invocation.thread
-      ? yield* specs.binding(invocation.thread.threadId).pipe(Effect.orElseSucceed(() => null))
-      : undefined;
-    if (specBinding === null) {
+    const scoped = yield* scopeToSpecRole(specs, invocation);
+    if (scoped === null) {
       return HttpServerResponse.text("Could not resolve this thread's Spec restrictions.", {
         status: 503,
       });
     }
-    const scoped =
-      invocation.thread && specBinding
-        ? { ...invocation, thread: { ...invocation.thread, specRole: specBinding.role } }
-        : invocation;
     return yield* httpEffect.pipe(
       Effect.provideService(McpInvocationContext.McpInvocationContext, scoped),
       Effect.map(normalizeMcpHttpResponse),

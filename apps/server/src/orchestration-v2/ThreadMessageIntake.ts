@@ -268,6 +268,8 @@ export const launchThread = Effect.fn("ThreadMessageIntake.launchThread")(functi
         const notAccepted =
           error.operation === "resolve-project" ||
           error.operation === "read-receipt" ||
+          // Both spec-intake checks run before the first message is dispatched.
+          error.operation === "spec-intake" ||
           ((error.operation === "create-thread" || error.operation === "dispatch-message") &&
             (isOrchestratorError(error.cause) || isThreadManagementError(error.cause)) &&
             // Projection errors under create-thread can occur after the message commit.

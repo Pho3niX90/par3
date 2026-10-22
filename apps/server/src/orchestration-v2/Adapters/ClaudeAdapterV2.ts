@@ -1515,6 +1515,7 @@ export function claudeMcpQueryOverrides(input: {
         ...mcpAllowedTools,
         ...(input.specRequirements
           ? [
+              "mcp__t3-code__spec_create",
               "mcp__t3-code__spec_update",
               "mcp__t3-code__spec_request_approval",
               "mcp__t3-code__spec_status",

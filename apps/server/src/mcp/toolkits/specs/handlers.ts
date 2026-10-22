@@ -53,6 +53,20 @@ const mutate =
         .pipe(Effect.mapError(toFailure));
     });
 
+const create = Effect.fn("SpecsMcp.create")(function* (params: {
+  readonly commandId: CommandId;
+  readonly title: string;
+  readonly slug: string;
+  readonly content: string;
+}) {
+  const scope = yield* McpInvocationContext.McpInvocationContext;
+  const own = yield* McpInvocationContext.requireThreadScope(scope, "Spec changes");
+  const service = yield* SpecService.SpecService;
+  return yield* service
+    .createFromIntake({ ...params, threadId: own.thread.threadId })
+    .pipe(Effect.mapError(toFailure));
+});
+
 const query = Effect.fn("SpecsMcp.query")(function* (input: SpecQueryInput) {
   const service = yield* SpecService.SpecService;
   return yield* service.query(input).pipe(Effect.mapError(toFailure));
@@ -60,6 +74,7 @@ const query = Effect.fn("SpecsMcp.query")(function* (input: SpecQueryInput) {
 
 export const layer = McpToolAccess.toLayer(SpecsToolkit, {
   spec_status: McpToolAccess.reads(query),
+  spec_create: McpToolAccess.writesSpec(create),
   spec_update: McpToolAccess.writesSpec(mutate("update")),
   spec_request_approval: McpToolAccess.writesSpec(mutate("request-review")),
   spec_set_status: McpToolAccess.writesSpec(mutate("transition")),

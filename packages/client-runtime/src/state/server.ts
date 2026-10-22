@@ -1377,6 +1377,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:specs-mutate",
       tag: WS_METHODS.specsMutate,
     }),
+    specsIntake: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:specs-intake",
+      tag: WS_METHODS.specsIntake,
+    }),
     mcpGatewayTest: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:mcp-gateway-test",
       tag: WS_METHODS.mcpGatewayTest,

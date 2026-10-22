@@ -276,6 +276,7 @@ function makeLocalCommandHarness(input: {
   readonly interruptRunBeforeOpenFailure?: boolean;
   readonly writeFailure?: unknown;
   readonly failReadsAfterRunning?: boolean;
+  readonly specRun?: SpecService.SpecRun;
   readonly previousTurn?: {
     readonly runStatus: "failed" | "completed";
     readonly turnStatus: "running" | "completed" | "interrupted";
@@ -597,9 +598,12 @@ function makeLocalCommandHarness(input: {
                   ),
                 ),
               )
-            : input.failReadsAfterRunning === true || input.previousTurn !== undefined
+            : input.failReadsAfterRunning === true ||
+                input.previousTurn !== undefined ||
+                input.specRun !== undefined
               ? Effect.succeed({
                   driver: providerThread.driver,
+                  startTurn,
                   providerSession: {
                     id: providerSessionId,
                     driver: providerThread.driver,
@@ -617,14 +621,22 @@ function makeLocalCommandHarness(input: {
                 } as never)
               : Effect.die("A local command must not open a native session."),
   );
+  const startTurn = vi.fn((_input: unknown) => Effect.void);
   const startRootRun = vi.fn<
     (input: RunExecutionService.RunExecutionServiceV2StartRootRunInput) => Effect.Effect<void>
-  >(() =>
-    input.failReadsAfterRunning === true || input.previousTurn !== undefined
-      ? Effect.suspend(() =>
-          providerBusy ? Effect.die("The previous provider turn is still running.") : Effect.void,
-        )
-      : Effect.die("A local command must not start a native turn."),
+  >((rootRun) =>
+    input.specRun !== undefined
+      ? // The run execution is what hands the user's message to the provider.
+        rootRun.session
+          .startTurn({
+            message: { messageId, role: "user", text: input.text, attachments: [] },
+          } as never)
+          .pipe(Effect.orDie)
+      : input.failReadsAfterRunning === true || input.previousTurn !== undefined
+        ? Effect.suspend(() =>
+            providerBusy ? Effect.die("The previous provider turn is still running.") : Effect.void,
+          )
+        : Effect.die("A local command must not start a native turn."),
   );
   const failReadIfRunning = Effect.suspend(() =>
     input.failReadsAfterRunning === true &&
@@ -742,7 +754,11 @@ function makeLocalCommandHarness(input: {
         }),
         Layer.mock(ProviderAuthService.ProviderAuthService)({ tryHandlePromptCommand }),
         Layer.mock(RunExecutionService.RunExecutionServiceV2)({ startRootRun }),
-        SpecService.layerDisabled,
+        input.specRun === undefined
+          ? SpecService.layerDisabled
+          : Layer.mock(SpecService.SpecService)({
+              beforeRun: () => Effect.succeed(input.specRun),
+            }),
         Layer.mock(RuntimePolicy.RuntimePolicyV2)({
           resolve: resolveRuntimePolicy,
         }),
@@ -758,6 +774,7 @@ function makeLocalCommandHarness(input: {
     resolveRuntimePolicy,
     createWorktree,
     open,
+    startTurn,
     writeIfRunCurrent,
     startRootRun,
     interruptTurn,
@@ -1250,3 +1267,34 @@ for (const previousMessages of [[], ["/compact", " /COMPACT "]]) {
       }),
   );
 }
+
+effectIt.effect(
+  "starts a spec intake turn read-only as the requirements role, with the new-spec instructions",
+  () =>
+    Effect.gen(function* () {
+      const harness = makeLocalCommandHarness({
+        text: "Add dark mode",
+        specRun: {
+          role: "requirements",
+          intake: { layout: "base", workspacePath: "/tmp/intake-checkout", year: "2026" },
+        },
+      });
+
+      yield* harness.start;
+
+      expect(harness.startRootRun).toHaveBeenCalledOnce();
+      expect(harness.startRootRun.mock.calls[0]?.[0].runtimePolicy).toMatchObject({
+        specRole: "requirements",
+        interactionMode: "default",
+        approvalPolicy: "never",
+        sandboxPolicy: { type: "readOnly" },
+      });
+      expect(harness.startTurn).toHaveBeenCalledOnce();
+      const sent = harness.startTurn.mock.calls[0]?.[0] as { message: { text: string } };
+      expect(sent.message.text).toContain("<par3_spec_workflow>");
+      expect(sent.message.text).toContain("spec_create");
+      expect(sent.message.text).toContain("KEY-123_short-kebab");
+      expect(sent.message.text).toContain("2026-short-kebab");
+      expect(sent.message.text).toContain("Add dark mode");
+    }),
+);

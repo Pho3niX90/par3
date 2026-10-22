@@ -95,7 +95,7 @@ const withStatus = (spec: string, status: string) =>
 
 const threads = new Map<
   string,
-  { projectId: ProjectId; workspacePath: string; activeRunId: string | null }
+  { projectId: ProjectId; workspacePath: string; activeRunId: string | null; runStatus?: string }
 >();
 const layerProjectionStore = Layer.succeed(ProjectionStore.ProjectionStoreV2, {
   getThreadRecords: (threadId: ThreadId) => {
@@ -107,7 +107,7 @@ const layerProjectionStore = Layer.succeed(ProjectionStore.ProjectionStoreV2, {
         worktreePath: thread.workspacePath,
         activeRunId: thread.activeRunId,
       },
-      runs: [],
+      runs: thread.runStatus ? [{ status: thread.runStatus }] : [],
     });
   },
 } as never);
@@ -614,7 +614,7 @@ it.layer(layerTest)("SpecService", (it) => {
 
         yield* fs.remove(blockedArtifact, { recursive: true });
         const run = yield* service.beforeRun({ threadId, driver: "codex" });
-        assert.isTrue(run?.document.approvalValid);
+        assert.isTrue(run?.document?.approvalValid);
         assert.equal(
           yield* fs.readFileString(
             `${workspaceRoot}/specs/${created.slug}/evidence/verification.md`,
@@ -1127,6 +1127,259 @@ it.layer(layerTest)("SpecService", (it) => {
         service.mutate(createSpec(baseProject, "Proj-125_new-thing", "command:slugs:case"), human),
       );
       assert.equal(wrongCase.reason, "invalid");
+    }),
+  );
+
+  const waitingThread = (
+    suffix: string,
+    projectId: ProjectId,
+    workspacePath: string,
+    runStatus?: string,
+  ) => {
+    const threadId = ThreadId.make(`thread:intake:${suffix}`);
+    threads.set(threadId, {
+      projectId,
+      workspacePath,
+      activeRunId: null,
+      ...(runStatus ? { runStatus } : {}),
+    });
+    return threadId;
+  };
+  const markIntake = (projectId: ProjectId, threadId: ThreadId) =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      return yield* service.setIntake({ projectId, threadId, action: "mark" }, human);
+    });
+  const intakeCreate = (threadId: ThreadId, commandId: string, slug: string, body = content) => ({
+    threadId,
+    commandId: CommandId.make(commandId),
+    slug,
+    title: "Example",
+    content: body,
+  });
+
+  it.effect("starts a spec from an intake: creates it, binds the thread, ends the intake", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* scopedWorkspace;
+      const projectId = ProjectId.make("project:intake-create");
+      const threadId = waitingThread("create", projectId, workspaceRoot);
+      yield* createProject(projectId, workspaceRoot);
+
+      const marked = yield* markIntake(projectId, threadId);
+      assert.isNotNull(marked.intake);
+      assert.deepEqual(yield* markIntake(projectId, threadId), marked);
+      assert.equal(
+        (yield* service.query({ projectId, threadId })).intake?.createdAt,
+        marked.intake?.createdAt,
+      );
+      assert.equal(yield* service.scopeRole(threadId), "requirements");
+      assert.isUndefined(yield* service.binding(threadId));
+
+      const waiting = yield* service.beforeRun({ threadId, driver: "codex" });
+      assert.equal(waiting?.role, "requirements");
+      assert.isUndefined(waiting?.document);
+      assert.deepEqual(
+        { layout: waiting?.intake?.layout, workspacePath: waiting?.intake?.workspacePath },
+        { layout: "par3", workspacePath: workspaceRoot },
+      );
+      const unsupported = yield* Effect.flip(service.beforeRun({ threadId, driver: "cursor" }));
+      assert.equal(unsupported.reason, "unsupported-provider");
+
+      const created = yield* service.createFromIntake(
+        intakeCreate(threadId, "command:intake:create", "setting-lifecycle"),
+      );
+      assert.equal(created.status, "draft");
+      assert.deepEqual(created.bindings, [{ threadId, role: "requirements" }]);
+      assert.equal((yield* service.binding(threadId))?.slug, "setting-lifecycle");
+      assert.equal((yield* service.binding(threadId))?.role, "requirements");
+      assert.isUndefined((yield* service.query({ projectId, threadId })).intake);
+      assert.isTrue(
+        (yield* fs.readFileString(`${workspaceRoot}/specs/setting-lifecycle/spec.md`)).includes(
+          "AC-1: The setting is saved.",
+        ),
+      );
+      const bound = yield* service.beforeRun({ threadId, driver: "codex" });
+      assert.equal(bound?.document?.slug, "setting-lifecycle");
+      assert.isUndefined(bound?.intake);
+
+      // A retry of the same command replays the result; a new command has no intake left to use.
+      const replayed = yield* service.createFromIntake(
+        intakeCreate(threadId, "command:intake:create", "setting-lifecycle"),
+      );
+      assert.equal(replayed.revision, created.revision);
+      const second = yield* Effect.flip(
+        service.createFromIntake(intakeCreate(threadId, "command:intake:again", "another-spec")),
+      );
+      assert.equal(second.reason, "forbidden");
+      const reused = yield* Effect.flip(
+        service.createFromIntake(
+          intakeCreate(threadId, "command:intake:create", "setting-lifecycle", `${content}\nMore.`),
+        ),
+      );
+      assert.equal(reused.reason, "conflict");
+    }),
+  );
+
+  it.effect("refuses spec_create for a thread that is not waiting to start a spec", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const workspaceRoot = yield* scopedWorkspace;
+      const projectId = ProjectId.make("project:intake-none");
+      const threadId = waitingThread("none", projectId, workspaceRoot);
+      yield* createProject(projectId, workspaceRoot);
+
+      const refused = yield* Effect.flip(
+        service.createFromIntake(intakeCreate(threadId, "command:intake:none", "no-intake")),
+      );
+      assert.equal(refused.reason, "forbidden");
+      assert.include(refused.message, "not waiting to start a spec");
+      assert.isUndefined(yield* service.scopeRole(threadId));
+      assert.isUndefined(yield* service.beforeRun({ threadId, driver: "codex" }));
+      assert.lengthOf((yield* service.query({ projectId })).specs, 0);
+    }),
+  );
+
+  it.effect("checks the spec folder name against the checkout's layout and keeps waiting", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const par3Root = yield* scopedWorkspace;
+      const baseRoot = yield* baseWorkspace;
+      const par3Project = ProjectId.make("project:intake-par3-slug");
+      const baseProject = ProjectId.make("project:intake-base-slug");
+      yield* createProject(par3Project, par3Root);
+      yield* createProject(baseProject, baseRoot);
+      const par3Thread = waitingThread("par3-slug", par3Project, par3Root);
+      const baseThread = waitingThread("base-slug", baseProject, baseRoot);
+      yield* markIntake(par3Project, par3Thread);
+      yield* markIntake(baseProject, baseThread);
+
+      const keyedInPar3 = yield* Effect.flip(
+        service.createFromIntake(intakeCreate(par3Thread, "command:slug:par3", baseSlug)),
+      );
+      assert.equal(keyedInPar3.reason, "invalid");
+      assert.equal(yield* service.scopeRole(par3Thread), "requirements");
+      assert.isUndefined(yield* service.binding(par3Thread));
+
+      const wrongCase = yield* Effect.flip(
+        service.createFromIntake(
+          intakeCreate(baseThread, "command:slug:case", "Proj-125_new-thing"),
+        ),
+      );
+      assert.equal(wrongCase.reason, "invalid");
+      const taken = yield* Effect.flip(
+        service.createFromIntake(intakeCreate(baseThread, "command:slug:taken", baseSlug)),
+      );
+      assert.equal(taken.reason, "conflict");
+      assert.isUndefined(yield* service.binding(baseThread));
+
+      assert.equal(
+        (yield* service.beforeRun({ threadId: baseThread, driver: "claudeAgent" }))?.intake?.layout,
+        "base",
+      );
+      const created = yield* service.createFromIntake(
+        intakeCreate(
+          baseThread,
+          "command:slug:base",
+          "PROJ-124_new-thing",
+          withStatus(baseSpec(), "approved"),
+        ),
+      );
+      assert.equal(created.layout, "base");
+      // A new spec is a draft whatever status the agent wrote into the frontmatter.
+      const written = yield* fs.readFileString(`${baseRoot}/specs/PROJ-124_new-thing/spec.md`);
+      assert.include(written, "status: draft");
+      assert.notInclude(written, "status: approved");
+      assert.equal(created.status, "draft");
+      for (const file of ownedFiles)
+        assert.isFalse(yield* fs.exists(`${baseRoot}/specs/PROJ-124_new-thing/${file}`));
+    }),
+  );
+
+  it.effect(
+    "lets only a person mark or cancel an intake, and refuses bound or running threads",
+    () =>
+      Effect.gen(function* () {
+        const service = yield* SpecService.SpecService;
+        const workspaceRoot = yield* scopedWorkspace;
+        const projectId = ProjectId.make("project:intake-human");
+        yield* createProject(projectId, workspaceRoot);
+        const threadId = waitingThread("human", projectId, workspaceRoot);
+        const agent = { kind: "agent" as const, threadId };
+
+        const agentMark = yield* Effect.flip(
+          service.setIntake({ projectId, threadId, action: "mark" }, agent),
+        );
+        assert.equal(agentMark.reason, "forbidden");
+        assert.isUndefined(yield* service.intake(threadId));
+
+        yield* markIntake(projectId, threadId);
+        const agentCancel = yield* Effect.flip(
+          service.setIntake({ projectId, threadId, action: "cancel" }, agent),
+        );
+        assert.equal(agentCancel.reason, "forbidden");
+        assert.isDefined(yield* service.intake(threadId));
+
+        const cancelled = yield* service.setIntake(
+          { projectId, threadId, action: "cancel" },
+          human,
+        );
+        assert.isNull(cancelled.intake);
+        assert.isUndefined(yield* service.intake(threadId));
+        assert.isUndefined(yield* service.scopeRole(threadId));
+        assert.isUndefined(yield* service.beforeRun({ threadId, driver: "codex" }));
+
+        const running = waitingThread("running", projectId, workspaceRoot, "running");
+        const stopFirst = yield* Effect.flip(markIntake(projectId, running));
+        assert.equal(stopFirst.reason, "conflict");
+        assert.isUndefined(yield* service.intake(running));
+
+        const spec = yield* service.mutate(
+          createSpec(projectId, "bound-spec", "command:ih:create"),
+          human,
+        );
+        const boundThread = waitingThread("bound", projectId, workspaceRoot);
+        yield* bind(
+          service,
+          projectId,
+          boundThread,
+          spec.slug,
+          "implementation",
+          spec.revision,
+          "ih",
+        );
+        const alreadyBound = yield* Effect.flip(markIntake(projectId, boundThread));
+        assert.equal(alreadyBound.reason, "conflict");
+
+        const wrongDriver = yield* Effect.flip(
+          service.assertIntakeAllowed({ projectId, driver: "cursor" }),
+        );
+        assert.equal(wrongDriver.reason, "unsupported-provider");
+        yield* service.assertIntakeAllowed({ projectId, driver: "claudeAgent" });
+      }),
+  );
+
+  it.effect("ends an intake when a person binds the thread to an existing spec", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const workspaceRoot = yield* scopedWorkspace;
+      const projectId = ProjectId.make("project:intake-bind");
+      yield* createProject(projectId, workspaceRoot);
+      const spec = yield* service.mutate(
+        createSpec(projectId, "existing-spec", "command:ib:create"),
+        human,
+      );
+      const threadId = waitingThread("bind", projectId, workspaceRoot);
+      yield* markIntake(projectId, threadId);
+
+      yield* bind(service, projectId, threadId, spec.slug, "requirements", spec.revision, "ib");
+      assert.isUndefined(yield* service.intake(threadId));
+      assert.equal(
+        (yield* service.beforeRun({ threadId, driver: "codex" }))?.document?.slug,
+        spec.slug,
+      );
     }),
   );
 });

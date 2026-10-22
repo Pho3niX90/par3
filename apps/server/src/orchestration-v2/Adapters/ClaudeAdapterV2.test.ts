@@ -487,6 +487,22 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     assert.isFalse(overrides.allowedTools?.includes(ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_WILDCARD));
   });
 
+  it("also pre-approves the spec tools a read-only requirements thread uses to write its spec", () => {
+    const mcpSession = mcpSessionFor(ThreadId.make("thread-claude-mcp-spec-requirements"));
+    const overrides = ClaudeAdapterV2.claudeMcpQueryOverrides({
+      mcpSession,
+      readOnlySandbox: true,
+      specRequirements: true,
+    });
+
+    const allowed = overrides.allowedTools ?? [];
+    for (const tool of ["spec_create", "spec_update", "spec_request_approval", "spec_status"]) {
+      assert.include(allowed, `mcp__t3-code__${tool}`);
+    }
+    assert.notInclude(allowed, ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_WILDCARD);
+    assert.notInclude(allowed, "mcp__t3-code__spec_set_status");
+  });
+
   it("invalidates live-query reuse when MCP credentials rotate", () => {
     const threadId = ThreadId.make("thread-claude-mcp-credential-rotation");
     const mcpSession = mcpSessionFor(threadId);

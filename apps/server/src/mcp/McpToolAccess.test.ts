@@ -137,6 +137,7 @@ const ProbeToolkit = Toolkit.make(
     }),
   }),
   Tool.make("writes_environment", probe),
+  Tool.make("writes_spec", probe),
 );
 const ran = Effect.succeed({ ran: "ran" });
 const probeHandlers: McpToolAccess.Handlers<typeof ProbeToolkit.tools> = {
@@ -154,6 +155,7 @@ const probeHandlers: McpToolAccess.Handlers<typeof ProbeToolkit.tools> = {
     (_, modes) => Effect.succeed({ ran: `${modes.runtimeMode}/${modes.interactionMode}` }),
   ),
   writes_environment: McpToolAccess.writesEnvironment(() => ran),
+  writes_spec: McpToolAccess.writesSpec(() => ran),
 };
 const layerProbeHandlers = McpToolAccess.toLayer(ProbeToolkit, probeHandlers);
 
@@ -193,6 +195,7 @@ export const refusedAtCompileTime = () => {
       writes_threads: unchecked,
       starts_threads: unchecked,
       writes_environment: unchecked,
+      writes_spec: unchecked,
     }),
   );
 };
@@ -319,6 +322,9 @@ it.effect.each([
 
   ["writes", specRequirements, {}, "capability_denied"],
   ["writes", specImplementation, {}, "ran"],
+  // The spec tools stay open to a read-only requirements thread, which has no other way to write.
+  ["writes_spec", specRequirements, {}, "ran"],
+  ["writes_spec", readOnlyClient, {}, "capability_denied"],
   ["writes_threads", specImplementation, { threadId: specChildThreadId }, "ran"],
   ["writes_threads", specImplementation, { threadId: supervisedThreadId }, "capability_denied"],
   ["starts_threads", specImplementation, {}, "capability_denied"],

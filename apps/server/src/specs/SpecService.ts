@@ -1,6 +1,10 @@
 import {
+  type CommandId,
   SpecDocument,
   SpecError,
+  type SpecIntake,
+  type SpecIntakeInput,
+  type SpecIntakeResult,
   SpecMutationInput,
   SpecQueryInput,
   SpecQueryResult,
@@ -28,6 +32,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
+import type * as SqlError from "effect/sql/SqlError";
 import * as Hex from "effect/encoding/Hex";
 
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
@@ -62,6 +67,21 @@ export interface Binding {
   readonly slug: string;
   readonly role: SpecRole;
 }
+interface IntakeRow {
+  readonly thread_id: string;
+  readonly project_id: ProjectId;
+  readonly created_at: string;
+}
+/** What a turn needs to start a spec for a thread that has none yet. */
+export interface IntakeRun {
+  readonly layout: SpecLayout;
+  readonly workspacePath: string;
+  readonly year: string;
+}
+/** A bound thread carries its spec; a thread waiting to start one carries only the checkout. */
+export type SpecRun =
+  | { readonly document: SpecDocument; readonly role: SpecRole; readonly intake?: undefined }
+  | { readonly intake: IntakeRun; readonly role: "requirements"; readonly document?: undefined };
 interface RecordRow {
   readonly document_json: string;
   readonly pending_files_json: string | null;
@@ -106,7 +126,35 @@ export class SpecService extends Context.Service<
       threadId: ThreadId;
       runId?: RunId;
       driver?: string;
-    }) => Effect.Effect<{ document: SpecDocument; role: SpecRole } | undefined, SpecError>;
+    }) => Effect.Effect<SpecRun | undefined, SpecError>;
+    /** The pending intake of a thread that has asked to start a spec. */
+    readonly intake: (threadId: ThreadId) => Effect.Effect<SpecIntake | undefined, SpecError>;
+    /** The role that limits a thread's tools: its binding's, or requirements while it waits for a spec. */
+    readonly scopeRole: (threadId: ThreadId) => Effect.Effect<SpecRole | undefined, SpecError>;
+    /** Fails before a thread exists when it could not start a spec, so a launch can refuse cleanly. */
+    readonly assertIntakeAllowed: (input: {
+      projectId: ProjectId;
+      driver?: string;
+    }) => Effect.Effect<void, SpecError>;
+    /** Marks or cancels a thread's intake. Only a person may; the agent's way out is `createFromIntake`. */
+    readonly setIntake: (
+      input: SpecIntakeInput,
+      caller: SpecCaller,
+    ) => Effect.Effect<SpecIntakeResult, SpecError>;
+    /** For a launch that makes the first message start a spec; there is no run to stop yet. */
+    readonly markIntake: (input: {
+      projectId: ProjectId;
+      threadId: ThreadId;
+      driver?: string;
+    }) => Effect.Effect<SpecIntake, SpecError>;
+    /** The agent's `spec_create`: makes the spec, binds the thread as requirements, ends the intake. */
+    readonly createFromIntake: (input: {
+      threadId: ThreadId;
+      commandId: CommandId;
+      slug: string;
+      title: string;
+      content: string;
+    }) => Effect.Effect<SpecDocument, SpecError>;
     readonly invalidations: Stream.Stream<readonly ThreadId[]>;
   }
 >()("t3/specs/SpecService") {}
@@ -319,6 +367,7 @@ const make = Effect.gen(function* () {
     document: SpecDocument,
     files = filesFor(document),
     command?: { id: string; hash: string },
+    alongside?: Effect.Effect<unknown, SqlError.SqlError>,
   ) {
     yield* db(
       sql.withTransaction(
@@ -329,6 +378,7 @@ const make = Effect.gen(function* () {
           if (command)
             yield* sql`INSERT INTO spec_mutations (command_id, request_hash, workspace_path, slug, result_json)
         VALUES (${command.id}, ${command.hash}, ${document.workspacePath}, ${document.slug}, ${json(document)})`;
+          if (alongside) yield* alongside;
         }),
       ),
     );
@@ -521,9 +571,11 @@ const make = Effect.gen(function* () {
           layout === "base" && input.includeTemplate === true
             ? yield* readTemplate(workspace)
             : null;
+        const pendingIntake = input.threadId ? yield* intake(input.threadId) : undefined;
         return {
           specs: summaries,
           ...(detail ? { detail } : {}),
+          ...(pendingIntake ? { intake: pendingIntake } : {}),
           layout,
           ...(template === null ? {} : { template }),
           ...(rows.length > (input.limit ?? 50)
@@ -532,6 +584,68 @@ const make = Effect.gen(function* () {
         };
       }),
     );
+  });
+  // The checks and the first document shared by a person's `create` and an agent's `spec_create`.
+  const prepareNewSpec = Effect.fn("SpecService.prepareNewSpec")(function* (input: {
+    readonly projectId: ProjectId;
+    readonly workspace: string;
+    readonly slug: string;
+    readonly title: string;
+    readonly content: string;
+    readonly expectedRevision: number;
+    readonly supersedes?: string;
+  }) {
+    const { workspace } = input;
+    const layout = yield* detectLayout(workspace);
+    if (
+      !specSlugAllowed(input.slug, layout) ||
+      (input.supersedes !== undefined && !specSlugAllowed(input.supersedes, layout))
+    )
+      return yield* failure(
+        "invalid",
+        layout === "base"
+          ? "Use a folder name like PROJ-123_short-kebab, or lowercase words separated by single hyphens."
+          : "Use lowercase letters, numbers and single hyphens, up to 80 characters.",
+      );
+    if (
+      (yield* readRow(workspace, input.slug))[0] ||
+      (yield* fs
+        .exists(yield* safePath(workspace, `specs/${input.slug}`))
+        .pipe(Effect.mapError(() => failure("io", "Could not inspect the spec directory."))))
+    )
+      return yield* failure("conflict", "That spec already exists. Choose another slug.");
+    const config = yield* db(settings.getSettings);
+    if (
+      !(config.projectSettingsOverrides[input.projectId]?.specModeEnabled ?? config.specModeEnabled)
+    )
+      return yield* failure("disabled", "Enable Spec mode in project Settings first.");
+    if (input.expectedRevision !== 0)
+      return yield* failure("conflict", "New specs start at revision zero.");
+    const constitution =
+      layout === "base"
+        ? null
+        : yield* readOptional(yield* safePath(workspace, "specs/constitution.md"));
+    return {
+      version: 1,
+      slug: input.slug,
+      layout,
+      title: input.title,
+      status: "draft",
+      revision: 1,
+      workspacePath: workspace,
+      updatedAt: DateTime.formatIso(yield* DateTime.now),
+      approvalValid: false,
+      content: input.content,
+      specHash: yield* hashSpec(layout, input.content),
+      constitutionHash: constitution === null ? null : yield* hash(constitution),
+      taskHash: yield* hash("[]"),
+      tasks: [],
+      evidence: [],
+      approval: null,
+      findings: yield* readiness(workspace, layout, input.content),
+      bindings: [],
+      ...(input.supersedes ? { supersedes: input.supersedes } : {}),
+    } satisfies SpecDocument;
   });
   const mutate = Effect.fn("SpecService.mutate")(function* (
     input: SpecMutationInput,
@@ -589,59 +703,15 @@ const make = Effect.gen(function* () {
         let document: SpecDocument;
         let statusBefore: SpecDocument["status"] | undefined;
         if (input.action === "create") {
-          const layout = yield* detectLayout(workspace);
-          if (
-            !specSlugAllowed(input.slug, layout) ||
-            (input.supersedes !== undefined && !specSlugAllowed(input.supersedes, layout))
-          )
-            return yield* failure(
-              "invalid",
-              layout === "base"
-                ? "Use a folder name like PROJ-123_short-kebab, or lowercase words separated by single hyphens."
-                : "Use lowercase letters, numbers and single hyphens, up to 80 characters.",
-            );
-          if (
-            existing ||
-            (yield* fs
-              .exists(yield* safePath(workspace, `specs/${input.slug}`))
-              .pipe(Effect.mapError(() => failure("io", "Could not inspect the spec directory."))))
-          )
-            return yield* failure("conflict", "That spec already exists. Choose another slug.");
-          const config = yield* db(settings.getSettings);
-          if (
-            !(
-              config.projectSettingsOverrides[input.projectId]?.specModeEnabled ??
-              config.specModeEnabled
-            )
-          )
-            return yield* failure("disabled", "Enable Spec mode in project Settings first.");
-          if (input.expectedRevision !== 0)
-            return yield* failure("conflict", "New specs start at revision zero.");
-          const constitution =
-            layout === "base"
-              ? null
-              : yield* readOptional(yield* safePath(workspace, "specs/constitution.md"));
-          document = {
-            version: 1,
+          document = yield* prepareNewSpec({
+            projectId: input.projectId,
+            workspace,
             slug: input.slug,
-            layout,
             title: input.title,
-            status: "draft",
-            revision: 1,
-            workspacePath: workspace,
-            updatedAt: DateTime.formatIso(yield* DateTime.now),
-            approvalValid: false,
             content: input.content,
-            specHash: yield* hashSpec(layout, input.content),
-            constitutionHash: constitution === null ? null : yield* hash(constitution),
-            taskHash: yield* hash("[]"),
-            tasks: [],
-            evidence: [],
-            approval: null,
-            findings: yield* readiness(workspace, layout, input.content),
-            bindings: [],
+            expectedRevision: input.expectedRevision,
             ...(input.supersedes ? { supersedes: input.supersedes } : {}),
-          };
+          });
         } else {
           if (!existing) return yield* failure("not-found", "Spec not found.");
           document =
@@ -889,6 +959,8 @@ const make = Effect.gen(function* () {
               yield* db(
                 sql`INSERT INTO spec_bindings (thread_id, project_id, workspace_path, slug, role) VALUES (${input.threadId}, ${input.projectId}, ${workspace}, ${input.slug}, ${input.role}) ON CONFLICT(thread_id) DO UPDATE SET workspace_path=excluded.workspace_path, slug=excluded.slug, role=excluded.role`,
               );
+              // Binding to a spec is the other way out of waiting to start one.
+              yield* db(sql`DELETE FROM spec_intakes WHERE thread_id = ${input.threadId}`);
               yield* Deferred.succeed(firstBinding, undefined);
               break;
             }
@@ -965,13 +1037,189 @@ const make = Effect.gen(function* () {
       }),
     );
   });
+  const intakeRow = Effect.fn("SpecService.intakeRow")(function* (threadId: ThreadId) {
+    return (yield* db(
+      sql<IntakeRow>`SELECT thread_id, project_id, created_at FROM spec_intakes WHERE thread_id = ${threadId}`,
+    ))[0];
+  });
+  const intake = Effect.fn("SpecService.intake")(function* (threadId: ThreadId) {
+    const row = yield* intakeRow(threadId);
+    return row ? { createdAt: row.created_at } : undefined;
+  });
+  const scopeRole = Effect.fn("SpecService.scopeRole")(function* (threadId: ThreadId) {
+    const linked = yield* binding(threadId);
+    if (linked) return linked.role;
+    return (yield* intakeRow(threadId)) ? ("requirements" as const) : undefined;
+  });
+  const assertIntakeAllowed = Effect.fn("SpecService.assertIntakeAllowed")(function* (input: {
+    projectId: ProjectId;
+    driver?: string;
+  }) {
+    const config = yield* db(settings.getSettings);
+    if (
+      !(config.projectSettingsOverrides[input.projectId]?.specModeEnabled ?? config.specModeEnabled)
+    )
+      return yield* failure("disabled", "Enable Spec mode in project Settings first.");
+    if (input.driver !== undefined && !specRoleSupported(input.driver, "requirements"))
+      return yield* failure(
+        "unsupported-provider",
+        "Writing requirements needs Codex or Claude. Choose another model to start a spec.",
+      );
+  });
+  const activeRunStatuses = new Set(["preparing", "starting", "running", "waiting"]);
+  const markIntake = Effect.fn("SpecService.markIntake")(function* (input: {
+    projectId: ProjectId;
+    threadId: ThreadId;
+    driver?: string;
+  }) {
+    yield* assertIntakeAllowed(input);
+    const workspace = yield* resolve(input);
+    return yield* locked(
+      workspace,
+      Effect.gen(function* () {
+        if (yield* binding(input.threadId))
+          return yield* failure(
+            "conflict",
+            "This thread already follows a spec. Leave Spec mode first.",
+          );
+        const projection = yield* db(projections.getThreadRecords(input.threadId, ["runs"]));
+        if (projection.runs.some((run) => activeRunStatuses.has(run.status)))
+          return yield* failure("conflict", "Stop the thread before starting a spec.");
+        const now = DateTime.formatIso(yield* DateTime.now);
+        yield* db(
+          sql`INSERT OR IGNORE INTO spec_intakes (thread_id, project_id, created_at) VALUES (${input.threadId}, ${input.projectId}, ${now})`,
+        );
+        yield* PubSub.publish(changes, undefined);
+        return { createdAt: (yield* intakeRow(input.threadId))?.created_at ?? now };
+      }),
+    );
+  });
+  const setIntake = Effect.fn("SpecService.setIntake")(function* (
+    input: SpecIntakeInput,
+    caller: SpecCaller,
+  ) {
+    if (caller.kind !== "human")
+      return yield* failure("forbidden", "Starting or cancelling a spec needs a human client.");
+    if (input.action === "mark") return { intake: yield* markIntake(input) };
+    const workspace = yield* resolve(input);
+    return yield* locked(
+      workspace,
+      Effect.gen(function* () {
+        yield* db(sql`DELETE FROM spec_intakes WHERE thread_id = ${input.threadId}`);
+        yield* PubSub.publish(changes, undefined);
+        return { intake: null };
+      }),
+    );
+  });
+  const replayCreate = Effect.fn("SpecService.replayCreate")(function* (
+    commandId: CommandId,
+    requestHash: string,
+  ) {
+    const receipt = (yield* db(
+      sql<{
+        request_hash: string;
+        result_json: string;
+        workspace_path: string;
+        slug: string;
+      }>`SELECT request_hash, result_json, workspace_path, slug FROM spec_mutations WHERE command_id = ${commandId}`,
+    ))[0];
+    if (!receipt) return undefined;
+    if (receipt.request_hash !== requestHash)
+      return yield* failure("conflict", "This command ID was already used for another operation.");
+    yield* persistFiles(receipt.workspace_path, receipt.slug);
+    return yield* parse(receipt.result_json);
+  });
+  const createFromIntake = Effect.fn("SpecService.createFromIntake")(function* (input: {
+    threadId: ThreadId;
+    commandId: CommandId;
+    slug: string;
+    title: string;
+    content: string;
+  }) {
+    const requestHash = yield* hash(
+      json({
+        threadId: input.threadId,
+        slug: input.slug,
+        title: input.title,
+        content: input.content,
+      }),
+    );
+    const replayed = yield* replayCreate(input.commandId, requestHash);
+    if (replayed) return replayed;
+    const waiting = yield* intakeRow(input.threadId);
+    if (!waiting)
+      return yield* failure(
+        "forbidden",
+        "This thread is not waiting to start a spec. A person starts one by choosing Spec mode in the composer.",
+      );
+    const workspace = yield* resolve({ projectId: waiting.project_id, threadId: input.threadId });
+    return yield* locked(
+      workspace,
+      Effect.gen(function* () {
+        const raced = yield* replayCreate(input.commandId, requestHash);
+        if (raced) return raced;
+        if (!(yield* intakeRow(input.threadId)))
+          return yield* failure("forbidden", "This thread is no longer waiting to start a spec.");
+        const created = yield* prepareNewSpec({
+          projectId: waiting.project_id,
+          workspace,
+          slug: input.slug,
+          title: input.title,
+          content: input.content,
+          expectedRevision: 0,
+        });
+        const document: SpecDocument = {
+          ...created,
+          bindings: [{ threadId: input.threadId, role: "requirements" }],
+          // BASE readers see the lifecycle in the spec's frontmatter.
+          ...(created.layout === "base"
+            ? { content: setFrontmatterStatus(created.content, created.status) }
+            : {}),
+        };
+        // One transaction: a crash cannot leave a spec without its binding or a binding without
+        // its spec. This is the one binding made while the thread's own run is active.
+        yield* save(
+          waiting.project_id,
+          document,
+          filesFor(document),
+          { id: input.commandId, hash: requestHash },
+          Effect.all([
+            sql`INSERT INTO spec_bindings (thread_id, project_id, workspace_path, slug, role) VALUES (${input.threadId}, ${waiting.project_id}, ${workspace}, ${document.slug}, 'requirements') ON CONFLICT(thread_id) DO UPDATE SET workspace_path=excluded.workspace_path, slug=excluded.slug, role=excluded.role`,
+            sql`DELETE FROM spec_intakes WHERE thread_id = ${input.threadId}`,
+          ]),
+        );
+        yield* Deferred.succeed(firstBinding, undefined);
+        return document;
+      }),
+    );
+  });
   const beforeRun = Effect.fn("SpecService.beforeRun")(function* (input: {
     threadId: ThreadId;
     runId?: RunId;
     driver?: string;
   }) {
     const linked = yield* binding(input.threadId);
-    if (!linked) return undefined;
+    if (!linked) {
+      const waiting = yield* intakeRow(input.threadId);
+      if (!waiting) return undefined;
+      if (input.driver !== undefined && !specRoleSupported(input.driver, "requirements"))
+        return yield* failure(
+          "unsupported-provider",
+          "This provider cannot enforce the selected Spec role. Select a supported provider.",
+        );
+      const workspacePath = yield* resolve({
+        projectId: waiting.project_id,
+        threadId: input.threadId,
+      });
+      return {
+        role: "requirements" as const,
+        intake: {
+          layout: yield* detectLayout(workspacePath),
+          workspacePath,
+          year: DateTime.formatIso(yield* DateTime.now).slice(0, 4),
+        },
+      };
+    }
     const workspace = yield* resolve({ projectId: linked.projectId, threadId: input.threadId });
     if (workspace !== linked.workspacePath)
       return yield* failure(
@@ -1054,6 +1302,12 @@ const make = Effect.gen(function* () {
     binding,
     beforeRun,
     inherit,
+    intake,
+    scopeRole,
+    assertIntakeAllowed,
+    setIntake,
+    markIntake,
+    createFromIntake,
     invalidations: Stream.fromPubSub(invalidated),
     subscribe: (input) =>
       Stream.unwrap(
@@ -1081,6 +1335,12 @@ export const layerDisabled = Layer.succeed(
     binding: () => Effect.succeed(undefined),
     inherit: () => Effect.void,
     beforeRun: () => Effect.succeed(undefined),
+    intake: () => Effect.succeed(undefined),
+    scopeRole: () => Effect.succeed(undefined),
+    assertIntakeAllowed: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    setIntake: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    markIntake: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    createFromIntake: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
     invalidations: Stream.empty,
   }),
 );
