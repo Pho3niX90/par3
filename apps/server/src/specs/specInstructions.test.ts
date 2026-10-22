@@ -29,13 +29,16 @@ describe("specInstructions", () => {
   it("tells BASE agents to follow the project's template without Par3's files or constitution", () => {
     for (const role of roles) {
       const text = specInstructions(document("base"), role);
-      expect(text).not.toMatch(/constitution|tasks\.json|approval\.json/i);
+      expect(text).not.toMatch(/constitution|tasks\.json/i);
       expect(text).toContain("specs/_template.md");
       expect(text).toContain("prd.md, tech-analysis.md and status.json");
       expect(text).toContain("spec_write_artifact");
       expect(text).toContain("spec_validate");
+      expect(text).toContain("spec_resolve_remark");
+      expect(text).toContain("never write a *-comments.json or approval.json file");
     }
     expect(specInstructions(document("par3"), "requirements")).not.toContain("spec_validate");
+    expect(specInstructions(document("par3"), "requirements")).not.toContain("spec_resolve_remark");
   });
 
   it("tells a new-spec turn to choose a KEY-123_short-kebab folder in BASE and ask when there is no key", () => {

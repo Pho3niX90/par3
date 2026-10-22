@@ -387,13 +387,13 @@ import {
 import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 import {
-  SpecDocument,
   SpecError,
   SpecIntakeInput,
   SpecIntakeResult,
   SpecMutationInput,
   SpecQueryInput,
   SpecQueryResult,
+  SpecMutationResult,
 } from "./specs.ts";
 
 export const WS_METHODS = {
@@ -1047,7 +1047,7 @@ const WsSpecsQueryRpc = Rpc.make(WS_METHODS.specsQuery, {
 
 const WsSpecsMutateRpc = Rpc.make(WS_METHODS.specsMutate, {
   payload: SpecMutationInput,
-  success: SpecDocument,
+  success: SpecMutationResult,
   error: SpecError,
 });
 

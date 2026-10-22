@@ -496,7 +496,14 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     });
 
     const allowed = overrides.allowedTools ?? [];
-    for (const tool of ["spec_create", "spec_update", "spec_request_approval", "spec_status"]) {
+    for (const tool of [
+      "spec_create",
+      "spec_update",
+      "spec_request_approval",
+      "spec_status",
+      "spec_validate",
+      "spec_resolve_remark",
+    ]) {
       assert.include(allowed, `mcp__t3-code__${tool}`);
     }
     assert.notInclude(allowed, ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_WILDCARD);

@@ -292,7 +292,7 @@ export const makeBaseWorkflow = (env: BaseEnv) => {
     );
   });
 
-  return { readBytes, planApproval, applyApproval, syncStatusTable };
+  return { readBytes, writeAtomic, planApproval, applyApproval, syncStatusTable };
 };
 
 const VALIDATOR_TIMEOUT = "60 seconds";

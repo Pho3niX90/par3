@@ -6,6 +6,8 @@ import {
   SpecEvidenceInput,
   SpecQueryInput,
   SpecQueryResult,
+  SpecRemark,
+  SpecRemarkDocument,
   SpecSlug,
   SpecStatus,
   SpecTask,
@@ -84,6 +86,21 @@ export const SpecsToolkit = Toolkit.make(
     parameters: Schema.Struct({}),
     success: SpecValidateResult,
   }).annotate(Tool.Readonly, true),
+  Tool.make("spec_resolve_remark", {
+    ...shared,
+    description:
+      "Record the outcome of one review remark of your bound spec (BASE projects). Use it for each request UUID you were asked to process, after applying the change: outcome addressed with a concise response, or unmatched with the reason the remark could not be matched or applied. Never edit the *-comments.json ledgers yourself. Fails when the remark is already addressed, unmatched or deleted.",
+    parameters: Schema.Struct({
+      document: SpecRemarkDocument,
+      id: TrimmedNonEmptyString,
+      outcome: Schema.Literals(["addressed", "unmatched"]),
+      response: TrimmedNonEmptyString,
+    }),
+    success: SpecRemark,
+  })
+    .annotate(Tool.Readonly, false)
+    .annotate(Tool.Destructive, false)
+    .annotate(Tool.Idempotent, false),
   mutation(
     "spec_update",
     "Requirements role: replace the requirements markdown of your bound spec. Preserve AC-n IDs and retire removed ones as ~~AC-n~~. Changing approved requirements revokes approval and interrupts linked work.",

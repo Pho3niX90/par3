@@ -59,6 +59,7 @@ import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as SpecRemarkService from "../specs/SpecRemarkService.ts";
 import * as SpecService from "../specs/SpecService.ts";
 
 const layerSpecService = SpecService.layer.pipe(
@@ -295,6 +296,16 @@ const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
     ),
   ),
 );
+const layerSpecRemarksProvided = SpecRemarkService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      layerSpecService,
+      layerThreadLaunchProvided,
+      ProjectStore.layer,
+      ProjectionStore.layer,
+    ),
+  ),
+);
 const layerThreadLifecycleProvided = ThreadLifecycleService.layer.pipe(
   Layer.provide(layerThreadManagementProvided),
 );
@@ -419,6 +430,7 @@ export const layerProduction = Layer.mergeAll(
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
+  layerSpecRemarksProvided,
   layerThreadLifecycleProvided,
   layerScheduledTaskProvided,
   layerSecretRequestsProvided,

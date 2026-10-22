@@ -14,6 +14,10 @@ import {
   type RunId,
   type SpecLayout,
   type SpecRef,
+  type SpecRemark,
+  type SpecRemarkDocument,
+  type SpecRemarkLedgerView,
+  type SpecRemarksView,
   type SpecValidateResult,
   specRoleSupported,
   specSlugAllowed,
@@ -43,7 +47,23 @@ import * as ProcessRunner from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { currentApproval, isoSeconds } from "./baseFiles.ts";
+import { detectIndent, serializeJson } from "./baseFiles.ts";
 import { makeBaseValidators, makeBaseWorkflow, validatorBlock } from "./baseWorkflow.ts";
+import { toggleChecklistLine, withoutCheckboxState } from "./markdownChecklist.ts";
+import {
+  appendEntry,
+  appendEvent,
+  buildEntry,
+  documentPath,
+  emptyLedger,
+  ledgerPath,
+  openEntries,
+  parseLedger,
+  remarkProblem,
+  remarksPrompt,
+  REMARK_DOCUMENTS,
+  viewEntries,
+} from "./remarkLedger.ts";
 import {
   readFrontmatterLifecycleStatus,
   setFrontmatterStatus,
@@ -113,16 +133,38 @@ const decodeFiles = Schema.decodeUnknownEffect(
 // Specs stored before layouts existed carry no layout and are par3 specs.
 const layoutOf = (document: { readonly layout?: SpecLayout }): SpecLayout =>
   document.layout ?? "par3";
+// The ledgers and the approval log record people's decisions; agents change them only through tools.
+const PAR3_ONLY_FILES = /^(?:approval\.json|tasks\.json|[a-z0-9-]+-comments\.json)$/;
 const BASE_ARTIFACTS = /^(?:prd\.md|tech-analysis\.md|status\.json)$/;
 const readonlyRoles = new Set<SpecRole>(["requirements", "researcher", "verifier"]);
 export const isReadOnlyRole = (role: SpecRole) => readonlyRoles.has(role);
+
+export type SpecRemarkMutationInput = Extract<
+  SpecMutationInput,
+  { action: "remark-add" | "remark-delete" | "remarks-send" }
+>;
+/** The changes that move a spec's own record; remark changes only touch review ledgers. */
+export type SpecDocumentMutationInput = Exclude<SpecMutationInput, SpecRemarkMutationInput>;
+
+/** What a send needs to open its thread; see `SpecService.prepareRemarksSend`. */
+export interface RemarksSendPlan {
+  readonly projectId: ProjectId;
+  readonly threadId?: ThreadId;
+  readonly slug: string;
+  readonly document: SpecRemarkDocument;
+  readonly workspace: string;
+  readonly ids: ReadonlyArray<string>;
+  /** The ids among `ids` that had been sent before. */
+  readonly resent: ReadonlyArray<string>;
+  readonly prompt: string;
+}
 
 export class SpecService extends Context.Service<
   SpecService,
   {
     readonly query: (input: SpecQueryInput) => Effect.Effect<SpecQueryResult, SpecError>;
     readonly mutate: (
-      input: SpecMutationInput,
+      input: SpecDocumentMutationInput,
       caller: SpecCaller,
     ) => Effect.Effect<SpecDocument, SpecError>;
     readonly subscribe: (input: SpecQueryInput) => Stream.Stream<SpecQueryResult, SpecError>;
@@ -163,6 +205,38 @@ export class SpecService extends Context.Service<
     }) => Effect.Effect<SpecDocument, SpecError>;
     /** Runs the project's own validators (BASE) or reports Par3's readiness findings. */
     readonly validate: (input: SpecRef) => Effect.Effect<SpecValidateResult, SpecError>;
+    /** A person adds or withdraws a remark in a BASE spec's review ledger. */
+    readonly remark: (
+      input: Extract<SpecMutationInput, { action: "remark-add" | "remark-delete" }>,
+      caller: SpecCaller,
+    ) => Effect.Effect<SpecRemark, SpecError>;
+    /** The spec as it is now, for answering a change that does not touch its record. */
+    readonly read: (input: SpecRef) => Effect.Effect<SpecDocument, SpecError>;
+    /**
+     * Checks that a send has something to send and returns the first message for the thread that
+     * will process it. Nothing is written until `commitRemarksSend`.
+     */
+    readonly prepareRemarksSend: (
+      input: Extract<SpecMutationInput, { action: "remarks-send" }>,
+      caller: SpecCaller,
+    ) => Effect.Effect<RemarksSendPlan, SpecError>;
+    /** Marks the remarks of a plan `submitted` once their thread exists. */
+    readonly commitRemarksSend: (plan: RemarksSendPlan) => Effect.Effect<void, SpecError>;
+    /** The agent's `spec_resolve_remark`: appends `addressed` or `unmatched` to an open remark. */
+    readonly resolveRemark: (input: {
+      threadId: ThreadId;
+      document: SpecRemarkDocument;
+      id: string;
+      outcome: "addressed" | "unmatched";
+      response: string;
+    }) => Effect.Effect<SpecRemark, SpecError>;
+    /** Binds a thread that was just created for a spec, before its first message. */
+    readonly bindNewThread: (input: {
+      projectId: ProjectId;
+      threadId: ThreadId;
+      slug: string;
+      role: SpecRole;
+    }) => Effect.Effect<void, SpecError>;
     readonly invalidations: Stream.Stream<readonly ThreadId[]>;
   }
 >()("t3/specs/SpecService") {}
@@ -324,9 +398,10 @@ const make = Effect.gen(function* () {
     if (layout === "par3") return checkReady(content, PAR3_READINESS);
     return checkReady(content, baseReadiness(yield* readTemplate(workspace)));
   });
-  // BASE agents rewrite the frontmatter status and updated lines themselves; neither is a requirements change.
+  // BASE agents rewrite the frontmatter status and updated lines themselves, and its checklists get
+  // ticked as work proceeds; neither is a requirements change.
   const hashSpec = (layout: SpecLayout, content: string) =>
-    hash(layout === "base" ? withoutVolatileFrontmatter(content) : content);
+    hash(layout === "base" ? withoutCheckboxState(withoutVolatileFrontmatter(content)) : content);
   const hashes = Effect.fn("SpecService.hashes")(function* (
     workspace: string,
     slug: string,
@@ -447,6 +522,27 @@ const make = Effect.gen(function* () {
     let document = yield* parse(row.document_json);
     const layout = layoutOf(document);
     const current = yield* hashes(workspace, slug, layout);
+    if (layout === "base" && document.specHash !== current.specHash) {
+      // A hash stored before checkbox state was ignored: if the stored text hashes to today's value
+      // it is the same requirements, so the approval and evidence move to the new hash.
+      const previous = document.specHash;
+      const migrated = yield* hashSpec(layout, document.content);
+      if (
+        migrated === current.specHash &&
+        previous === (yield* hash(withoutVolatileFrontmatter(document.content)))
+      ) {
+        document = {
+          ...document,
+          content: current.content,
+          specHash: migrated,
+          approval: document.approval && { ...document.approval, specHash: migrated },
+          evidence: document.evidence.map((item) =>
+            item.requirementsHash === previous ? { ...item, requirementsHash: migrated } : item,
+          ),
+        };
+        yield* save(projectId, document);
+      }
+    }
     if (
       document.specHash !== current.specHash ||
       document.constitutionHash !== current.constitutionHash
@@ -601,6 +697,82 @@ const make = Effect.gen(function* () {
       );
     }
   });
+  const decodeText = (bytes: Uint8Array) =>
+    Effect.try({
+      try: () => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes),
+      catch: () => failure("invalid", "That file is not valid UTF-8."),
+    });
+  // Each document with its ledger; a ledger Par3 cannot read is reported and never rewritten.
+  const remarksView = Effect.fn("SpecService.remarksView")(function* (
+    workspace: string,
+    slug: string,
+  ): Effect.fn.Return<SpecRemarksView> {
+    const documents: SpecRemarkLedgerView[] = [];
+    for (const document of REMARK_DOCUMENTS) {
+      const view = yield* Effect.gen(function* () {
+        const text = yield* readOptional(yield* safePath(workspace, documentPath(slug, document)));
+        const ledgerText = yield* readOptional(
+          yield* safePath(workspace, ledgerPath(slug, document)),
+        );
+        const ledger = ledgerText === null ? undefined : parseLedger(ledgerText);
+        return {
+          document,
+          exists: text !== null,
+          ...(document !== "spec.md" && text !== null ? { text } : {}),
+          entries: ledger ? viewEntries(ledger) : [],
+          ...(ledgerText !== null && !ledger
+            ? { error: "The remark ledger is not valid; Par3 leaves it untouched." }
+            : {}),
+        } satisfies SpecRemarkLedgerView;
+      }).pipe(
+        Effect.orElseSucceed(
+          () =>
+            ({
+              document,
+              exists: false,
+              entries: [],
+              error: "The remark files could not be read.",
+            }) satisfies SpecRemarkLedgerView,
+        ),
+      );
+      documents.push(view);
+    }
+    return { documents };
+  });
+  const checklistFailure = (reason: "missing" | "stale" | "not-task") =>
+    reason === "stale"
+      ? failure("conflict", "That line changed since you read it. Reload and try again.")
+      : failure(
+          "invalid",
+          reason === "missing"
+            ? "That line is no longer in the document."
+            : "That line is not a checklist item.",
+        );
+  const toggleOtherDocument = Effect.fn("SpecService.toggleOtherDocument")(function* (
+    workspace: string,
+    input: Extract<SpecMutationInput, { action: "checklist-toggle" }>,
+  ) {
+    const file = yield* safePath(workspace, documentPath(input.slug, input.document));
+    // Read, check and write under one lock, and by rename, so two toggles cannot lose each other.
+    yield* locked(
+      file,
+      Effect.gen(function* () {
+        const bytes = yield* workflow.readBytes(file);
+        if (bytes === null) return yield* failure("not-found", `${input.document} is missing.`);
+        const toggled = toggleChecklistLine(
+          yield* decodeText(bytes),
+          input.line,
+          input.expectedText,
+          input.checked,
+        );
+        if (!toggled.ok) return yield* checklistFailure(toggled.reason);
+        if (toggled.changed)
+          yield* workflow
+            .writeAtomic(file, new TextEncoder().encode(toggled.content))
+            .pipe(Effect.mapError(() => failure("io", `Could not write ${input.document}.`)));
+      }),
+    );
+  });
   const query = Effect.fn("SpecService.query")(function* (input: SpecQueryInput) {
     const workspace = yield* resolve(input);
     return yield* locked(
@@ -647,9 +819,14 @@ const make = Effect.gen(function* () {
             ? yield* readTemplate(workspace)
             : null;
         const pendingIntake = input.threadId ? yield* intake(input.threadId) : undefined;
+        const remarks =
+          input.includeRemarks === true && detail && layoutOf(detail) === "base"
+            ? yield* remarksView(workspace, detail.slug)
+            : undefined;
         return {
           specs: summaries,
           ...(detail ? { detail } : {}),
+          ...(remarks ? { remarks } : {}),
           ...(pendingIntake ? { intake: pendingIntake } : {}),
           layout,
           ...(template === null ? {} : { template }),
@@ -723,7 +900,7 @@ const make = Effect.gen(function* () {
     } satisfies SpecDocument;
   });
   const mutate = Effect.fn("SpecService.mutate")(function* (
-    input: SpecMutationInput,
+    input: SpecDocumentMutationInput,
     caller: SpecCaller,
   ) {
     const workspace = yield* resolve(input);
@@ -770,6 +947,7 @@ const make = Effect.gen(function* () {
               "confirm-evidence",
               "bind",
               "unbind",
+              "checklist-toggle",
             ].includes(input.action)
           )
             return yield* failure("forbidden", "This spec action requires a human client.");
@@ -804,13 +982,22 @@ const make = Effect.gen(function* () {
             input.action !== "unbind"
           )
             return yield* failure("inconsistent", document.error);
+          if (input.action === "checklist-toggle" && input.document !== "spec.md") {
+            // prd.md and tech-analysis.md are not tracked by the spec, so there is no revision to move.
+            if (layoutOf(document) !== "base")
+              return yield* failure("invalid", "Checklists are toggled in BASE specs.");
+            yield* toggleOtherDocument(workspace, input);
+            yield* PubSub.publish(changes, undefined);
+            return yield* hydrateBindings(document);
+          }
           document = {
             ...document,
             revision: document.revision + 1,
             updatedAt: DateTime.formatIso(yield* DateTime.now),
           };
           switch (input.action) {
-            case "update": {
+            case "update":
+            case "checklist-toggle": {
               if (callerRole !== "human" && callerRole !== "requirements")
                 return yield* failure(
                   "forbidden",
@@ -821,21 +1008,33 @@ const make = Effect.gen(function* () {
                   "invalid",
                   "Create a superseding spec to change completed requirements.",
                 );
-              const invalid = checkCriterionHistory(document.content, input.content);
+              let incoming: string;
+              if (input.action === "update") incoming = input.content;
+              else {
+                if (layoutOf(document) !== "base")
+                  return yield* failure("invalid", "Checklists are toggled in BASE specs.");
+                const toggled = toggleChecklistLine(
+                  document.content,
+                  input.line,
+                  input.expectedText,
+                  input.checked,
+                );
+                if (!toggled.ok) return yield* checklistFailure(toggled.reason);
+                incoming = toggled.content;
+              }
+              const invalid = checkCriterionHistory(document.content, incoming);
               if (invalid) return yield* failure("invalid", invalid);
               const layout = layoutOf(document);
-              const specHash = yield* hashSpec(layout, input.content);
+              const specHash = yield* hashSpec(layout, incoming);
               // For BASE a status or updated edit alone is not a requirements change.
               const changed =
-                layout === "base"
-                  ? specHash !== document.specHash
-                  : input.content !== document.content;
+                layout === "base" ? specHash !== document.specHash : incoming !== document.content;
               document = {
                 ...withoutError(document),
-                content: input.content,
-                title: input.title ?? document.title,
+                content: incoming,
+                title: (input.action === "update" ? input.title : undefined) ?? document.title,
                 specHash,
-                findings: yield* readiness(workspace, layout, input.content),
+                findings: yield* readiness(workspace, layout, incoming),
                 ...(changed
                   ? {
                       approvalValid: false,
@@ -1070,6 +1269,11 @@ const make = Effect.gen(function* () {
               // BASE's requirements phase writes these beside spec.md before anyone approves, and a
               // read-only requirements agent has no other way to write files. approval.json and
               // tasks.json are deliberately absent: approval is human-only and tasks have their own tool.
+              if (layoutOf(document) === "base" && PAR3_ONLY_FILES.test(input.path))
+                return yield* failure(
+                  "invalid",
+                  "Review ledgers and approval records are written by Par3 only. Use spec_resolve_remark for remarks.",
+                );
               if (layoutOf(document) === "base" && BASE_ARTIFACTS.test(input.path)) {
                 if (callerRole === "researcher" || callerRole === "verifier")
                   return yield* failure("forbidden", "This role cannot write BASE files.");
@@ -1112,6 +1316,7 @@ const make = Effect.gen(function* () {
           (statusBefore === undefined ||
             document.status !== statusBefore ||
             input.action === "update" ||
+            input.action === "checklist-toggle" ||
             input.action === "request-review");
         if (syncsStatus)
           document = {
@@ -1321,6 +1526,229 @@ const make = Effect.gen(function* () {
       warnings: report.warnings,
     } satisfies SpecValidateResult;
   });
+  const requireHuman = (caller: SpecCaller, message: string) =>
+    caller.kind === "human" ? Effect.void : Effect.fail(failure("forbidden", message));
+  const remarkTarget = Effect.fn("SpecService.remarkTarget")(function* (input: {
+    readonly projectId: ProjectId;
+    readonly threadId?: ThreadId;
+    readonly slug: string;
+    readonly document: SpecRemarkDocument;
+  }) {
+    const workspace = yield* resolve(input);
+    yield* locked(workspace, discover(input.projectId, workspace));
+    const row = (yield* readRow(workspace, input.slug))[0];
+    if (!row) return yield* failure("not-found", "Spec not found.");
+    if (layoutOf(yield* parse(row.document_json)) !== "base")
+      return yield* failure("invalid", "Remarks are for BASE specs.");
+    const documentRelative = documentPath(input.slug, input.document);
+    const ledgerRelative = ledgerPath(input.slug, input.document);
+    return {
+      workspace,
+      documentRelative,
+      ledgerRelative,
+      documentFile: yield* safePath(workspace, documentRelative),
+      ledgerFile: yield* safePath(workspace, ledgerRelative),
+    };
+  });
+  type RemarkTarget = Effect.Success<ReturnType<typeof remarkTarget>>;
+  const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+  const uuid = crypto
+    .randomUUIDv4()
+    .pipe(Effect.mapError(() => failure("io", "Could not create an id.")));
+  const readLedger = Effect.fn("SpecService.readLedger")(function* (target: RemarkTarget) {
+    const text = yield* readOptional(target.ledgerFile);
+    if (text === null) return { text, ledger: emptyLedger(target.documentRelative, yield* nowIso) };
+    const ledger = parseLedger(text);
+    if (!ledger)
+      return yield* failure(
+        "invalid",
+        `${target.ledgerRelative} is not a remark ledger. Par3 leaves it untouched; fix or remove it.`,
+      );
+    return { text, ledger };
+  });
+  const writeLedger = (
+    target: RemarkTarget,
+    ledger: Parameters<typeof serializeJson>[0],
+    previous: string | null,
+  ) =>
+    workflow
+      .writeAtomic(
+        target.ledgerFile,
+        new TextEncoder().encode(
+          serializeJson(ledger, previous === null ? "  " : detectIndent(previous)),
+        ),
+      )
+      .pipe(Effect.mapError(() => failure("io", `Could not write ${target.ledgerRelative}.`)));
+  // Every ledger change is a read-modify-write under the file's lock, so concurrent remarks and an
+  // agent's resolution never overwrite each other.
+  const changeLedger = <A, E, R>(target: RemarkTarget, effect: Effect.Effect<A, E, R>) =>
+    locked(target.ledgerFile, effect);
+  const remark = Effect.fn("SpecService.remark")(function* (
+    input: Extract<SpecMutationInput, { action: "remark-add" | "remark-delete" }>,
+    caller: SpecCaller,
+  ) {
+    yield* requireHuman(caller, "Remarks need a human client.");
+    const target = yield* remarkTarget(input);
+    return yield* changeLedger(
+      target,
+      Effect.gen(function* () {
+        const now = yield* nowIso;
+        const { text, ledger } = yield* readLedger(target);
+        if (input.action === "remark-add") {
+          const problem = remarkProblem(input);
+          if (problem) return yield* failure("invalid", problem);
+          if ((yield* readOptional(target.documentFile)) === null)
+            return yield* failure("not-found", `${input.document} is missing.`);
+          const entry = buildEntry(input, { id: yield* uuid, eventId: yield* uuid }, now);
+          const next = appendEntry(ledger, entry, now);
+          yield* writeLedger(target, next, text);
+          yield* PubSub.publish(changes, undefined);
+          return viewEntries(next).at(-1)!;
+        }
+        const appended = appendEvent(
+          ledger,
+          input.id,
+          { eventId: yield* uuid, type: "deleted" },
+          ["pending"],
+          now,
+        );
+        if (!appended.ok)
+          return yield* failure(
+            appended.reason === "not-found" ? "not-found" : "conflict",
+            appended.reason === "not-found"
+              ? "That remark does not exist."
+              : "Only a remark that was never sent can be withdrawn.",
+          );
+        yield* writeLedger(target, appended.ledger, text);
+        yield* PubSub.publish(changes, undefined);
+        return appended.entry;
+      }),
+    );
+  });
+  const prepareRemarksSend = Effect.fn("SpecService.prepareRemarksSend")(function* (
+    input: Extract<SpecMutationInput, { action: "remarks-send" }>,
+    caller: SpecCaller,
+  ) {
+    yield* requireHuman(caller, "Sending remarks needs a human client.");
+    const target = yield* remarkTarget(input);
+    if ((yield* readOptional(target.documentFile)) === null)
+      return yield* failure("not-found", `${input.document} is missing.`);
+    const { ledger } = yield* readLedger(target);
+    const open = openEntries(ledger);
+    if (!open.length)
+      return yield* failure("invalid", "There are no open remarks to send for this document.");
+    const ids = open.map((item) => item.id);
+    return {
+      projectId: input.projectId,
+      ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+      slug: input.slug,
+      document: input.document,
+      workspace: target.workspace,
+      ids,
+      resent: open.filter((item) => item.status === "submitted").map((item) => item.id),
+      prompt: remarksPrompt({
+        documentPath: target.documentRelative,
+        commentsPath: target.ledgerRelative,
+        ids,
+      }),
+    } satisfies RemarksSendPlan;
+  });
+  const commitRemarksSend = Effect.fn("SpecService.commitRemarksSend")(function* (
+    plan: RemarksSendPlan,
+  ) {
+    const target = yield* remarkTarget(plan);
+    yield* changeLedger(
+      target,
+      Effect.gen(function* () {
+        const now = yield* nowIso;
+        const { text, ledger } = yield* readLedger(target);
+        // Only remarks never sent get an event; a resent one already shows as submitted.
+        let next = ledger;
+        for (const id of plan.ids) {
+          const appended = appendEvent(
+            next,
+            id,
+            { eventId: yield* uuid, type: "submitted" },
+            ["pending"],
+            now,
+          );
+          if (appended.ok) next = appended.ledger;
+        }
+        if (next === ledger) return;
+        yield* writeLedger(target, next, text);
+        yield* PubSub.publish(changes, undefined);
+      }),
+    );
+  });
+  const resolveRemark = Effect.fn("SpecService.resolveRemark")(function* (input: {
+    threadId: ThreadId;
+    document: SpecRemarkDocument;
+    id: string;
+    outcome: "addressed" | "unmatched";
+    response: string;
+  }) {
+    const own = yield* binding(input.threadId);
+    if (!own) return yield* failure("forbidden", "This thread is not bound to a spec.");
+    if (own.role !== "requirements" && own.role !== "implementation")
+      return yield* failure("forbidden", "This role cannot resolve remarks.");
+    const response = input.response.trim();
+    if (!response)
+      return yield* failure("invalid", "Say briefly what you did or why you could not.");
+    const target = yield* remarkTarget({
+      projectId: own.projectId,
+      threadId: input.threadId,
+      slug: own.slug,
+      document: input.document,
+    });
+    return yield* changeLedger(
+      target,
+      Effect.gen(function* () {
+        const { text, ledger } = yield* readLedger(target);
+        const appended = appendEvent(
+          ledger,
+          input.id,
+          { eventId: yield* uuid, type: input.outcome, response },
+          ["pending", "submitted"],
+          yield* nowIso,
+        );
+        if (!appended.ok)
+          return yield* failure(
+            appended.reason === "not-found" ? "not-found" : "conflict",
+            appended.reason === "not-found"
+              ? "That remark does not exist."
+              : `That remark is already ${appended.status}.`,
+          );
+        yield* writeLedger(target, appended.ledger, text);
+        yield* PubSub.publish(changes, undefined);
+        return appended.entry;
+      }),
+    );
+  });
+  const read = Effect.fn("SpecService.read")(function* (input: SpecRef) {
+    const workspace = yield* resolve(input);
+    return yield* locked(workspace, refresh(input.projectId, workspace, input.slug));
+  });
+  const bindNewThread = Effect.fn("SpecService.bindNewThread")(function* (input: {
+    projectId: ProjectId;
+    threadId: ThreadId;
+    slug: string;
+    role: SpecRole;
+  }) {
+    const workspace = yield* resolve({ projectId: input.projectId, threadId: input.threadId });
+    yield* locked(
+      workspace,
+      Effect.gen(function* () {
+        yield* discover(input.projectId, workspace);
+        if (!(yield* readRow(workspace, input.slug))[0])
+          return yield* failure("not-found", "That spec is not in the thread's checkout.");
+        yield* db(
+          sql`INSERT INTO spec_bindings (thread_id, project_id, workspace_path, slug, role) VALUES (${input.threadId}, ${input.projectId}, ${workspace}, ${input.slug}, ${input.role}) ON CONFLICT(thread_id) DO UPDATE SET workspace_path=excluded.workspace_path, slug=excluded.slug, role=excluded.role`,
+        );
+        yield* Deferred.succeed(firstBinding, undefined);
+        yield* PubSub.publish(changes, undefined);
+      }),
+    );
+  });
   const beforeRun = Effect.fn("SpecService.beforeRun")(function* (input: {
     threadId: ThreadId;
     runId?: RunId;
@@ -1437,6 +1865,12 @@ const make = Effect.gen(function* () {
     markIntake,
     createFromIntake,
     validate,
+    remark,
+    read,
+    prepareRemarksSend,
+    commitRemarksSend,
+    resolveRemark,
+    bindNewThread,
     invalidations: Stream.fromPubSub(invalidated),
     subscribe: (input) =>
       Stream.unwrap(
@@ -1471,6 +1905,12 @@ export const layerDisabled = Layer.succeed(
     markIntake: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
     createFromIntake: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
     validate: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    remark: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    read: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    prepareRemarksSend: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    commitRemarksSend: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    resolveRemark: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    bindNewThread: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
     invalidations: Stream.empty,
   }),
 );

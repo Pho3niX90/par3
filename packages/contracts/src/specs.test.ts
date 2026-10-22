@@ -7,6 +7,7 @@ import { OrchestrationV2ThreadLaunchInput } from "./orchestrationV2.ts";
 import { WS_METHODS } from "./rpc.ts";
 import {
   SpecIntakeInput,
+  SpecMutationResult,
   SpecQueryResult,
   SpecMutationInput,
   SpecQueryInput,
@@ -130,5 +131,96 @@ describe("Spec contracts", () => {
     expect(decode(launch).specIntake).toBeUndefined();
     expect(decode({ ...launch, specIntake: true }).specIntake).toBe(true);
     expect(() => decode({ ...launch, specIntake: false })).toThrow();
+  });
+
+  it("takes remark and checklist changes through the guarded mutate method", () => {
+    const decode = Schema.decodeUnknownSync(SpecMutationInput);
+    const base = {
+      projectId: "project-1",
+      slug: "PROJ-123_short-title",
+      commandId: "command-1",
+      document: "prd.md",
+    };
+    expect(
+      decode({
+        ...base,
+        action: "remark-add",
+        kind: "text-edit",
+        operation: "reword",
+        section: { heading: "Scope", text: "Body" },
+        selection: { text: "old", prefix: "a ", suffix: " b" },
+        value: "new",
+      }).action,
+    ).toBe("remark-add");
+    expect(decode({ ...base, action: "remark-delete", id: "uuid-1" }).action).toBe("remark-delete");
+    expect(decode({ ...base, action: "remarks-send" }).action).toBe("remarks-send");
+    expect(
+      decode({
+        ...base,
+        action: "checklist-toggle",
+        expectedRevision: 3,
+        line: 12,
+        expectedText: "- [ ] one",
+        checked: true,
+      }).action,
+    ).toBe("checklist-toggle");
+    expect(() =>
+      decode({
+        ...base,
+        action: "remark-add",
+        kind: "note",
+        operation: "comment",
+        section: { heading: "x" },
+      }),
+    ).toThrow();
+    expect(() => decode({ ...base, document: "notes.md", action: "remarks-send" })).toThrow();
+    expect(() =>
+      decode({
+        ...base,
+        action: "checklist-toggle",
+        expectedRevision: 3,
+        line: 0,
+        expectedText: "",
+        checked: true,
+      }),
+    ).toThrow();
+    expect(CLIENT_GUARDED_RPC_SCOPES[WS_METHODS.specsMutate]).toBe(AuthOrchestrationOperateScope);
+  });
+
+  it("returns what a remark action produced beside the document", () => {
+    const decode = Schema.decodeUnknownSync(SpecMutationResult);
+    const document = {
+      version: 1,
+      slug: "PROJ-123_short-title",
+      title: "Example",
+      status: "draft",
+      revision: 1,
+      workspacePath: "/repo",
+      updatedAt: "2026-10-20T00:00:00.000Z",
+      approvalValid: false,
+      content: "# Example",
+      tasks: [],
+      evidence: [],
+      approval: null,
+      findings: [],
+      specHash: "a",
+      constitutionHash: null,
+      taskHash: "b",
+      bindings: [],
+    };
+    expect(decode(document).sent).toBeUndefined();
+    const sent = { threadId: "thread-1", ids: ["a", "b"], resent: ["a"] };
+    expect(decode({ ...document, sent }).sent).toEqual(sent);
+    const remark = {
+      id: "a",
+      kind: "comment",
+      operation: "comment",
+      createdAt: "2026-10-20T00:00:00.000Z",
+      section: { heading: "Scope" },
+      status: "pending",
+      events: [{ eventId: "e", type: "created", timestamp: "2026-10-20T00:00:00.000Z" }],
+    };
+    expect(decode({ ...document, remark }).remark?.status).toBe("pending");
+    expect(() => decode({ ...document, remark: { ...remark, status: "open" } })).toThrow();
   });
 });

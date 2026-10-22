@@ -23,6 +23,7 @@ import { subscribeCodexAuthCallback } from "./provider/CodexAuthCallback.ts";
 import {
   AcpRegistryOperationError,
   CommandId,
+  SpecError,
   authScopeResponse,
   AuthAccessStreamError,
   type AuthAccessStreamEvent,
@@ -263,6 +264,7 @@ import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as JiraIssues from "./jira/JiraIssues.ts";
 import * as McpGateway from "./mcpGateway/McpGateway.ts";
+import * as SpecRemarkService from "./specs/SpecRemarkService.ts";
 import * as SpecService from "./specs/SpecService.ts";
 import * as ThreadRepositories from "./vcs/ThreadRepositories.ts";
 
@@ -1262,6 +1264,7 @@ type WsRpcServices =
   | SessionStore.SessionStore
   | SourceControlDiscovery.SourceControlDiscovery
   | SourceControlRepositoryService.SourceControlRepositoryService
+  | SpecRemarkService.SpecRemarkService
   | SpecService.SpecService
   | SqlClient.SqlClient
   | StorageCleanup.StorageCleanup
@@ -1365,6 +1368,7 @@ const makeLayerWsRpc = (
       const jiraIssues = yield* JiraIssues.JiraIssues;
       const mcpGateway = yield* McpGateway.McpGateway;
       const specs = yield* SpecService.SpecService;
+      const specRemarks = yield* SpecRemarkService.SpecRemarkService;
       const threadRepositories = yield* ThreadRepositories.ThreadRepositories;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
@@ -2620,12 +2624,25 @@ const makeLayerWsRpc = (
         [WS_METHODS.mcpGatewayTest]: (input) => mcpGateway.test(input.serverId),
         [WS_METHODS.specsQuery]: (input) => specs.query(input),
         [WS_METHODS.specsSubscribe]: (input) => specs.subscribe(input),
-        [WS_METHODS.specsMutate]: (input) =>
-          specs.mutate(input, {
+        [WS_METHODS.specsMutate]: (input) => {
+          const run = specRemarks.mutate(input, {
             kind: "human",
             subject: currentSession.subject,
             label: `Client ${currentSession.sessionId}`,
-          }),
+          });
+          // Sending remarks opens a thread, which waits for the server to finish starting.
+          return input.action === "remarks-send"
+            ? startup
+                .enqueueCommand(run)
+                .pipe(
+                  Effect.mapError((error) =>
+                    error._tag === "SpecError"
+                      ? error
+                      : new SpecError({ reason: "io", message: "The server is not ready yet." }),
+                  ),
+                )
+            : run;
+        },
         [WS_METHODS.specsIntake]: (input) =>
           specs.setIntake(input, {
             kind: "human",

@@ -130,6 +130,7 @@ interface HarnessOptions {
   readonly providers?: ReadonlyArray<ServerProvider>;
   readonly git?: Partial<GitWorkflow.GitWorkflowService["Service"]>;
   readonly assertIntakeAllowed?: SpecService.SpecService["Service"]["assertIntakeAllowed"];
+  readonly bindNewThread?: SpecService.SpecService["Service"]["bindNewThread"];
 }
 
 function makeHarness(options: HarnessOptions = {}) {
@@ -228,7 +229,12 @@ function makeHarness(options: HarnessOptions = {}) {
     (_input: Parameters<SpecService.SpecService["Service"]["markIntake"]>[0]) =>
       Effect.succeed({ createdAt: "2026-06-20T00:00:00.000Z" }),
   );
-  const layerSpecs = Layer.mock(SpecService.SpecService)({ assertIntakeAllowed, markIntake });
+  const bindNewThread = vi.fn(options.bindNewThread ?? (() => Effect.void));
+  const layerSpecs = Layer.mock(SpecService.SpecService)({
+    assertIntakeAllowed,
+    markIntake,
+    bindNewThread,
+  });
   const layerLaunch = ThreadLaunch.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -285,6 +291,7 @@ function makeHarness(options: HarnessOptions = {}) {
     closeTerminal,
     assertIntakeAllowed,
     markIntake,
+    bindNewThread,
   };
 }
 
@@ -2303,5 +2310,69 @@ it.effect("refuses a spec-intake launch before it creates a thread", () => {
     assert.equal(isThreadLaunchError(error) ? error.operation : undefined, "spec-intake");
     assert.isNull(yield* threads.getThreadShell(threadId));
     assert.equal(harness.markIntake.mock.calls.length, 0);
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("binds a thread to its spec before the first message and only once per command", () => {
+  const harness = makeHarness({ providers: [codexProvider] });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const input = {
+      ...launchInput({
+        command: "command:launch:spec-binding",
+        thread: "thread:launch:spec-binding",
+        message: "Process the remarks",
+      }),
+      specBinding: { slug: "PROJ-123_short-title", role: "requirements" as const },
+    };
+    const launched = yield* launches.launch(input);
+    yield* launches.launch(input);
+    assert.deepEqual(harness.bindNewThread.mock.calls, [
+      [
+        {
+          projectId,
+          threadId: launched.threadId,
+          slug: "PROJ-123_short-title",
+          role: "requirements",
+        },
+      ],
+    ]);
+
+    yield* launches.launch(
+      launchInput({
+        command: "command:launch:no-spec-binding",
+        thread: "thread:launch:no-spec-binding",
+        message: "Plain thread",
+      }),
+    );
+    assert.equal(harness.bindNewThread.mock.calls.length, 1);
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("sends no message when binding the thread to its spec fails", () => {
+  const harness = makeHarness({
+    providers: [codexProvider],
+    bindNewThread: () =>
+      Effect.fail(new SpecError({ reason: "not-found", message: "That spec is gone." })),
+  });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const threadId = ThreadId.make("thread:launch:spec-binding-failed");
+    const exit = yield* Effect.exit(
+      launches.launch({
+        ...launchInput({
+          command: "command:launch:spec-binding-failed",
+          thread: threadId,
+          message: "Process the remarks",
+        }),
+        specBinding: { slug: "PROJ-123_short-title", role: "requirements" },
+      }),
+    );
+    assert.isTrue(Exit.isFailure(exit));
+    const error = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+    assert.equal(isThreadLaunchError(error) ? error.operation : undefined, "spec-intake");
+    const projection = yield* threads.getThreadProjection(threadId);
+    assert.lengthOf(projection?.messages ?? [], 0);
   }).pipe(Effect.provide(harness.layer));
 });

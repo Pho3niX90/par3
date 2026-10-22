@@ -18,6 +18,7 @@ import {
   type RunId,
   type RuntimeMode,
   type ScheduledTaskId,
+  type SpecRole,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -92,6 +93,8 @@ export interface ThreadLaunchInput {
   readonly initialMessage?: ThreadLaunchInitialMessage;
   /** The thread waits for its agent to create a spec from the first message. */
   readonly specIntake?: boolean;
+  /** The thread follows an existing spec in this role from its first message. */
+  readonly specBinding?: { readonly slug: string; readonly role: SpecRole };
   readonly importedNativeThread?: {
     readonly ref: {
       readonly driver: ProviderDriverKind;
@@ -1001,6 +1004,13 @@ const make = Effect.gen(function* () {
               threadId,
               ...(specIntakeDriver === undefined ? {} : { driver: specIntakeDriver }),
             })
+            .pipe(Effect.mapError(mapError(input, "spec-intake", threadId)));
+        }
+
+        // Bound before the first message, so its first turn already runs under the spec's role.
+        if (input.specBinding !== undefined && Option.isNone(launchReceipt)) {
+          yield* specs
+            .bindNewThread({ projectId: input.projectId, threadId, ...input.specBinding })
             .pipe(Effect.mapError(mapError(input, "spec-intake", threadId)));
         }
 

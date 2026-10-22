@@ -3,10 +3,12 @@ import {
   OrchestratorMcpFailure,
   type SpecMutationInput,
   type SpecQueryInput,
+  type SpecRemarkDocument,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import * as SpecService from "../../../specs/SpecService.ts";
+import type { SpecDocumentMutationInput } from "../../../specs/SpecService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { SpecsToolkit } from "./tools.ts";
@@ -21,6 +23,10 @@ type AgentAction = Exclude<
   | "confirm-evidence"
   | "bind"
   | "unbind"
+  | "checklist-toggle"
+  | "remark-add"
+  | "remark-delete"
+  | "remarks-send"
 >;
 
 const toFailure = (error: { readonly message: string }) =>
@@ -47,7 +53,7 @@ const mutate =
         projectId: binding.projectId,
         threadId: own.thread.threadId,
         slug: binding.slug,
-      } as SpecMutationInput;
+      } as SpecDocumentMutationInput;
       return yield* service
         .mutate(input, { kind: "agent", threadId: own.thread.threadId })
         .pipe(Effect.mapError(toFailure));
@@ -64,6 +70,20 @@ const create = Effect.fn("SpecsMcp.create")(function* (params: {
   const service = yield* SpecService.SpecService;
   return yield* service
     .createFromIntake({ ...params, threadId: own.thread.threadId })
+    .pipe(Effect.mapError(toFailure));
+});
+
+const resolveRemark = Effect.fn("SpecsMcp.resolveRemark")(function* (params: {
+  readonly document: SpecRemarkDocument;
+  readonly id: string;
+  readonly outcome: "addressed" | "unmatched";
+  readonly response: string;
+}) {
+  const scope = yield* McpInvocationContext.McpInvocationContext;
+  const own = yield* McpInvocationContext.requireThreadScope(scope, "Resolving a remark");
+  const service = yield* SpecService.SpecService;
+  return yield* service
+    .resolveRemark({ ...params, threadId: own.thread.threadId })
     .pipe(Effect.mapError(toFailure));
 });
 
@@ -96,6 +116,7 @@ export const layer = McpToolAccess.toLayer(SpecsToolkit, {
   spec_status: McpToolAccess.reads(query),
   spec_create: McpToolAccess.writesSpec(create),
   spec_validate: McpToolAccess.readsAsCaller(validate),
+  spec_resolve_remark: McpToolAccess.writesSpec(resolveRemark),
   spec_update: McpToolAccess.writesSpec(mutate("update")),
   spec_request_approval: McpToolAccess.writesSpec(mutate("request-review")),
   spec_set_status: McpToolAccess.writesSpec(mutate("transition")),

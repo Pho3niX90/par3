@@ -4,8 +4,10 @@ import {
   CommandId,
   EventId,
   ProjectId,
+  ProviderInstanceId,
   SpecError,
   ThreadId,
+  type ModelSelection,
   type SpecMutationInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -19,13 +21,18 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as Context from "effect/Context";
 
 import * as ProcessRunner from "../processRunner.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as SpecRemarkService from "./SpecRemarkService.ts";
 import * as SpecService from "./SpecService.ts";
+import type { SpecDocumentMutationInput } from "./SpecService.ts";
 import { ApprovalHooks, PYTHON_MISSING } from "./baseWorkflow.ts";
+import { withoutVolatileFrontmatter } from "./specFrontmatter.ts";
 
 const now = "2026-10-20T00:00:00.000Z";
 const human = { kind: "human" as const, subject: "reviewer-1", label: "Reviewer" };
@@ -158,7 +165,38 @@ const layerProcessRunner = Layer.succeed(ProcessRunner.ProcessRunner, {
   },
 });
 
-const layerTest = SpecService.layer.pipe(
+// The remarks send opens a thread through the launch service; the test records what it was asked.
+const launches: ThreadLaunchService.ThreadLaunchInput[] = [];
+const launchState = { fail: false };
+const providerDrivers = { current: [{ instanceId: "codex", driver: "codex" }] };
+const layerLaunch = Layer.succeed(ThreadLaunchService.ThreadLaunchService, {
+  launch: (input: ThreadLaunchService.ThreadLaunchInput) => {
+    launches.push(input);
+    return launchState.fail
+      ? Effect.fail(
+          new ThreadLaunchService.ThreadLaunchError({
+            operation: "create-thread",
+            commandId: input.commandId,
+            projectId: input.projectId,
+            cause: "boom",
+          }),
+        )
+      : Effect.succeed({
+          threadId: ThreadId.make("thread:remarks-opened"),
+          projection: {} as never,
+          resumed: false,
+        });
+  },
+} as never);
+const layerProviders = Layer.succeed(ProviderRegistry.ProviderRegistry, {
+  getProviders: Effect.sync(() => providerDrivers.current),
+} as never);
+const codexModel = {
+  instanceId: ProviderInstanceId.make("codex"),
+  model: "gpt-5.1-codex",
+} as ModelSelection;
+
+const layerSpecs = SpecService.layer.pipe(
   Layer.provideMerge(layerGit),
   Layer.provideMerge(layerProcessRunner),
   Layer.provideMerge(ProjectStore.layer),
@@ -167,8 +205,17 @@ const layerTest = SpecService.layer.pipe(
   Layer.provideMerge(SqlitePersistence.layerMemory),
   Layer.provideMerge(NodeServices.layer),
 );
+const layerTest = SpecRemarkService.layer.pipe(
+  Layer.provideMerge(layerLaunch),
+  Layer.provideMerge(layerProviders),
+  Layer.provideMerge(layerSpecs),
+);
 
-const createProject = (projectId: ProjectId, workspaceRoot: string) =>
+const createProject = (
+  projectId: ProjectId,
+  workspaceRoot: string,
+  defaultModelSelection: ModelSelection | null = null,
+) =>
   Effect.gen(function* () {
     const projects = yield* ProjectStore.ProjectStoreV2;
     yield* projects.apply({
@@ -186,7 +233,7 @@ const createProject = (projectId: ProjectId, workspaceRoot: string) =>
         projectId,
         title: "Spec test project",
         workspaceRoot,
-        defaultModelSelection: null,
+        defaultModelSelection,
         scripts: [],
         createdAt: now,
         updatedAt: now,
@@ -195,7 +242,7 @@ const createProject = (projectId: ProjectId, workspaceRoot: string) =>
   });
 
 const mutation = (
-  action: SpecMutationInput["action"],
+  action: SpecDocumentMutationInput["action"],
   projectId: ProjectId,
   slug: string,
   commandId: string,
@@ -209,7 +256,7 @@ const mutation = (
     commandId: CommandId.make(commandId),
     expectedRevision,
     ...fields,
-  }) as SpecMutationInput;
+  }) as SpecDocumentMutationInput;
 
 const createSpec = (projectId: ProjectId, slug: string, commandId: string, body = content) =>
   mutation("create", projectId, slug, commandId, 0, {
@@ -420,6 +467,32 @@ const testPlan = {
   status: "draft",
   cases: [{ id: "TC-1", ac: "AC-1", steps: ["Save the setting"] }],
 };
+
+const lineOf = (text: string, needle: string) =>
+  text.split("\n").findIndex((line) => line.includes(needle)) + 1;
+const remarkInput = (
+  action: "remark-add" | "remark-delete" | "remarks-send",
+  projectId: ProjectId,
+  slug: string,
+  document: "spec.md" | "prd.md" | "tech-analysis.md",
+  commandId: string,
+  fields: Record<string, unknown> = {},
+) =>
+  ({
+    action,
+    projectId,
+    slug,
+    document,
+    commandId: CommandId.make(commandId),
+    ...fields,
+  }) as SpecMutationInput;
+const comment = (text: string, heading = "Open questions") => ({
+  kind: "comment",
+  operation: "comment",
+  section: { heading },
+  comment: text,
+});
+const LEDGER_TIME = "1970-01-01T00:00:00.000Z";
 
 it.layer(layerTest)("SpecService", (it) => {
   it.effect("creates, reviews, and approves a spec with a human decision", () =>
@@ -2137,6 +2210,999 @@ it.layer(layerTest)("SpecService", (it) => {
       assert.isFalse(report.ok);
       assert.isAbove(report.findings.length, 0);
       assert.lengthOf(processCalls, 0);
+    }),
+  );
+
+  it.effect("writes a remark to the review ledger the way the BASE panel does", () =>
+    Effect.gen(function* () {
+      const remarks = yield* SpecRemarkService.SpecRemarkService;
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:remark-ledger");
+      yield* createProject(projectId, root);
+      const discovered = (yield* service.query({ projectId, slug: baseSlug })).detail!;
+      const ledgerFile = `${root}/specs/${baseSlug}/spec-comments.json`;
+
+      const added = yield* remarks.mutate(
+        remarkInput(
+          "remark-add",
+          projectId,
+          baseSlug,
+          "spec.md",
+          "command:remark:add",
+          comment("Answer: (a) per connection"),
+        ),
+        human,
+      );
+      assert.equal(added.remark?.status, "pending");
+      assert.equal(added.revision, discovered.revision);
+
+      const text = yield* fs.readFileString(ledgerFile);
+      assert.isTrue(text.startsWith('{\n  "$schema"'));
+      assert.isTrue(text.endsWith("}\n"));
+      const ledger = JSON.parse(text);
+      assert.equal(ledger.$schema, "https://json-schema.org/draft/2020-12/schema");
+      assert.equal(ledger.schemaVersion, "1.0.0");
+      assert.equal(ledger.documentPath, `specs/${baseSlug}/spec.md`);
+      assert.equal(ledger.createdAt, LEDGER_TIME);
+      assert.equal(ledger.updatedAt, LEDGER_TIME);
+      assert.lengthOf(ledger.entries, 1);
+      const [entry] = ledger.entries;
+      assert.match(entry.id, /^[0-9a-f-]{36}$/);
+      const { id: _id, events: _events, ...rest } = entry;
+      assert.deepEqual(rest, {
+        kind: "comment",
+        operation: "comment",
+        createdAt: LEDGER_TIME,
+        section: { heading: "Open questions" },
+        comment: "Answer: (a) per connection",
+      });
+      assert.lengthOf(entry.events, 1);
+      assert.equal(entry.events[0].type, "created");
+      assert.equal(entry.events[0].timestamp, LEDGER_TIME);
+      assert.equal(added.remark?.id, entry.id);
+      assert.isFalse(yield* fs.exists(`${ledgerFile}.par3-tmp`));
+    }),
+  );
+
+  it.effect("keeps unknown ledger fields, entries and indent when it adds and withdraws", () =>
+    Effect.gen(function* () {
+      const remarks = yield* SpecRemarkService.SpecRemarkService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:remark-keep");
+      yield* createProject(projectId, root);
+      const ledgerFile = `${root}/specs/${baseSlug}/spec-comments.json`;
+      const foreign = {
+        id: "foreign-1",
+        kind: "comment",
+        operation: "comment",
+        createdAt: "2026-09-01T09:00:00.000Z",
+        section: { heading: "Scope" },
+        comment: "Written by the extension",
+        futureField: { keep: ["me"] },
+        events: [{ eventId: "f1", type: "created", timestamp: "2026-09-01T09:00:00.000Z" }],
+      };
+      const original = {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        schemaVersion: "1.0.0",
+        documentPath: `specs/${baseSlug}/spec.md`,
+        createdAt: "2026-09-01T09:00:00.000Z",
+        updatedAt: "2026-09-01T09:00:00.000Z",
+        reviewer: { name: "Jane Doe" },
+        entries: [foreign, { unknownShape: true }],
+      };
+      yield* fs.writeFileString(ledgerFile, JSON.stringify(original, null, 4) + "\n");
+
+      const added = yield* remarks.mutate(
+        remarkInput(
+          "remark-add",
+          projectId,
+          baseSlug,
+          "spec.md",
+          "command:remark:keep-add",
+          comment("Second"),
+        ),
+        human,
+      );
+      let text = yield* fs.readFileString(ledgerFile);
+      assert.isTrue(text.startsWith('{\n    "$schema"'));
+      let parsed = JSON.parse(text);
+      assert.deepEqual(parsed.reviewer, original.reviewer);
+      assert.equal(parsed.createdAt, original.createdAt);
+      assert.equal(parsed.updatedAt, LEDGER_TIME);
+      assert.deepEqual(parsed.entries[0], foreign);
+      assert.deepEqual(parsed.entries[1], { unknownShape: true });
+      assert.equal(parsed.entries[2].id, added.remark?.id);
+
+      // Only the remark that was never sent can be withdrawn, and withdrawing adds an event.
+      const withdrawn = yield* remarks.mutate(
+        remarkInput("remark-delete", projectId, baseSlug, "spec.md", "command:remark:keep-del", {
+          id: added.remark!.id,
+        }),
+        human,
+      );
+      assert.equal(withdrawn.remark?.status, "deleted");
+      text = yield* fs.readFileString(ledgerFile);
+      parsed = JSON.parse(text);
+      assert.deepEqual(
+        parsed.entries[2].events.map((event: { type: string }) => event.type),
+        ["created", "deleted"],
+      );
+      assert.deepEqual(parsed.entries[0], foreign);
+      const again = yield* Effect.flip(
+        remarks.mutate(
+          remarkInput("remark-delete", projectId, baseSlug, "spec.md", "command:remark:keep-del2", {
+            id: added.remark!.id,
+          }),
+          human,
+        ),
+      );
+      assert.equal(again.reason, "conflict");
+      const unknown = yield* Effect.flip(
+        remarks.mutate(
+          remarkInput("remark-delete", projectId, baseSlug, "spec.md", "command:remark:keep-del3", {
+            id: "nope",
+          }),
+          human,
+        ),
+      );
+      assert.equal(unknown.reason, "not-found");
+    }),
+  );
+
+  it.effect(
+    "refuses remarks that make no sense, on missing documents, in Par3 specs, and for agents",
+    () =>
+      Effect.gen(function* () {
+        const remarks = yield* SpecRemarkService.SpecRemarkService;
+        const service = yield* SpecService.SpecService;
+        const fs = yield* FileSystem.FileSystem;
+        const root = yield* baseWorkspace;
+        const projectId = ProjectId.make("project:remark-refuse");
+        const threadId = ThreadId.make("thread:remark-refuse");
+        yield* createProject(projectId, root);
+        threads.set(threadId, { projectId, workspacePath: root, activeRunId: null });
+        const folder = `${root}/specs/${baseSlug}`;
+        const add = (
+          document: "spec.md" | "prd.md",
+          suffix: string,
+          fields: Record<string, unknown>,
+        ) =>
+          remarks.mutate(
+            remarkInput(
+              "remark-add",
+              projectId,
+              baseSlug,
+              document,
+              `command:remark:refuse:${suffix}`,
+              fields,
+            ),
+            human,
+          );
+
+        assert.equal(
+          (yield* Effect.flip(add("spec.md", "empty", comment("  ")))).reason,
+          "invalid",
+        );
+        assert.equal(
+          (yield* Effect.flip(
+            add("spec.md", "edit", {
+              kind: "text-edit",
+              operation: "reword",
+              section: { heading: "Scope" },
+              selection: { text: "old" },
+            }),
+          )).reason,
+          "invalid",
+        );
+        assert.equal(
+          (yield* Effect.flip(add("prd.md", "nodoc", comment("Hm")))).reason,
+          "not-found",
+        );
+        assert.isFalse(yield* fs.exists(`${folder}/prd-comments.json`));
+
+        yield* fs.writeFileString(`${folder}/spec-comments.json`, "not json");
+        const broken = yield* Effect.flip(add("spec.md", "broken", comment("Hm")));
+        assert.equal(broken.reason, "invalid");
+        assert.equal(yield* fs.readFileString(`${folder}/spec-comments.json`), "not json");
+        yield* fs.remove(`${folder}/spec-comments.json`);
+
+        const discovered = (yield* service.query({ projectId, slug: baseSlug })).detail!;
+        yield* bind(
+          service,
+          projectId,
+          threadId,
+          baseSlug,
+          "requirements",
+          discovered.revision,
+          "remark-refuse",
+        );
+        const agent = yield* Effect.flip(
+          service.remark(
+            remarkInput(
+              "remark-add",
+              projectId,
+              baseSlug,
+              "spec.md",
+              "command:remark:agent",
+              comment("Hm"),
+            ) as never,
+            { kind: "agent", threadId },
+          ),
+        );
+        assert.equal(agent.reason, "forbidden");
+
+        const par3Root = yield* scopedWorkspace;
+        const par3Project = ProjectId.make("project:remark-refuse-par3");
+        yield* createProject(par3Project, par3Root);
+        yield* service.mutate(
+          createSpec(par3Project, "par3-remarks", "command:remark:par3-create"),
+          human,
+        );
+        const par3 = yield* Effect.flip(
+          remarks.mutate(
+            remarkInput(
+              "remark-add",
+              par3Project,
+              "par3-remarks",
+              "spec.md",
+              "command:remark:par3",
+              comment("Hm"),
+            ),
+            human,
+          ),
+        );
+        assert.equal(par3.reason, "invalid");
+        assert.isFalse(yield* fs.exists(`${par3Root}/specs/par3-remarks/spec-comments.json`));
+      }),
+  );
+
+  it.effect("serializes concurrent ledger changes so none is lost", () =>
+    Effect.gen(function* () {
+      const remarks = yield* SpecRemarkService.SpecRemarkService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:remark-concurrent");
+      yield* createProject(projectId, root);
+      yield* Effect.all(
+        ["a", "b", "c", "d", "e"].map((name) =>
+          remarks.mutate(
+            remarkInput(
+              "remark-add",
+              projectId,
+              baseSlug,
+              "spec.md",
+              `command:remark:c:${name}`,
+              comment(`Remark ${name}`),
+            ),
+            human,
+          ),
+        ),
+        { concurrency: "unbounded" },
+      );
+      const ledger = JSON.parse(
+        yield* fs.readFileString(`${root}/specs/${baseSlug}/spec-comments.json`),
+      );
+      assert.sameMembers(
+        ledger.entries.map((entry: { comment: string }) => entry.comment),
+        ["a", "b", "c", "d", "e"].map((name) => `Remark ${name}`),
+      );
+      assert.lengthOf(new Set(ledger.entries.map((entry: { id: string }) => entry.id)), 5);
+    }),
+  );
+
+  it.effect("returns the ledgers and the other documents only when the query asks", () =>
+    Effect.gen(function* () {
+      const remarks = yield* SpecRemarkService.SpecRemarkService;
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:remark-query");
+      yield* createProject(projectId, root);
+      const folder = `${root}/specs/${baseSlug}`;
+      yield* fs.writeFileString(`${folder}/prd.md`, "# PRD\n\n- [ ] one\n");
+      yield* remarks.mutate(
+        remarkInput(
+          "remark-add",
+          projectId,
+          baseSlug,
+          "prd.md",
+          "command:remark:q",
+          comment("Why?", "PRD"),
+        ),
+        human,
+      );
+      yield* fs.writeFileString(`${folder}/tech-analysis-comments.json`, "{ nope");
+
+      assert.isUndefined((yield* service.query({ projectId, slug: baseSlug })).remarks);
+      const view = (yield* service.query({ projectId, slug: baseSlug, includeRemarks: true }))
+        .remarks!;
+      assert.deepEqual(
+        view.documents.map((item) => [item.document, item.exists, item.entries.length]),
+        [
+          ["spec.md", true, 0],
+          ["prd.md", true, 1],
+          ["tech-analysis.md", false, 0],
+        ],
+      );
+      assert.isUndefined(view.documents[0]?.text);
+      assert.equal(view.documents[1]?.text, "# PRD\n\n- [ ] one\n");
+      assert.equal(view.documents[1]?.entries[0]?.section.heading, "PRD");
+      assert.include(view.documents[2]?.error, "not valid");
+      assert.equal(yield* fs.readFileString(`${folder}/tech-analysis-comments.json`), "{ nope");
+    }),
+  );
+
+  it.effect("lets a bound agent resolve an open remark once, and nobody else", () =>
+    Effect.gen(function* () {
+      const remarks = yield* SpecRemarkService.SpecRemarkService;
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:remark-resolve");
+      yield* createProject(projectId, root);
+      const requirements = ThreadId.make("thread:remark-resolve:requirements");
+      const researcher = ThreadId.make("thread:remark-resolve:researcher");
+      const stranger = ThreadId.make("thread:remark-resolve:stranger");
+      for (const id of [requirements, researcher, stranger])
+        threads.set(id, { projectId, workspacePath: root, activeRunId: null });
+      const discovered = (yield* service.query({ projectId, slug: baseSlug })).detail!;
+      const bound = yield* bind(
+        service,
+        projectId,
+        requirements,
+        baseSlug,
+        "requirements",
+        discovered.revision,
+        "resolve-r",
+      );
+      yield* bind(
+        service,
+        projectId,
+        researcher,
+        baseSlug,
+        "researcher",
+        bound.revision,
+        "resolve-s",
+      );
+
+      const ids: string[] = [];
+      for (const name of ["a", "b", "c", "d"])
+        ids.push(
+          (yield* remarks.mutate(
+            remarkInput(
+              "remark-add",
+              projectId,
+              baseSlug,
+              "spec.md",
+              `command:remark:r:${name}`,
+              comment(name),
+            ),
+            human,
+          )).remark!.id,
+        );
+      const [a, b, c, d] = ids as [string, string, string, string];
+      yield* service.commitRemarksSend({
+        projectId,
+        slug: baseSlug,
+        document: "spec.md",
+        workspace: root,
+        ids: [a, b],
+        resent: [],
+        prompt: "",
+      });
+      const resolve = (
+        threadId: ThreadId,
+        id: string,
+        outcome: "addressed" | "unmatched",
+        response = "Done.",
+      ) => service.resolveRemark({ threadId, document: "spec.md", id, outcome, response });
+
+      // A submitted remark and a pending one can both be resolved.
+      const addressed = yield* resolve(requirements, a, "addressed", "Boundary confirmed.");
+      assert.equal(addressed.status, "addressed");
+      assert.equal(addressed.response, "Boundary confirmed.");
+      assert.deepEqual(
+        addressed.events.map((event) => event.type),
+        ["created", "submitted", "addressed"],
+      );
+      const unmatched = yield* resolve(requirements, c, "unmatched", "The quoted text is gone.");
+      assert.equal(unmatched.status, "unmatched");
+
+      // A closed remark cannot be resolved again, whatever the outcome.
+      assert.equal((yield* Effect.flip(resolve(requirements, a, "unmatched"))).reason, "conflict");
+      assert.equal((yield* Effect.flip(resolve(requirements, c, "addressed"))).reason, "conflict");
+      yield* remarks.mutate(
+        remarkInput("remark-delete", projectId, baseSlug, "spec.md", "command:remark:r:del", {
+          id: d,
+        }),
+        human,
+      );
+      assert.equal((yield* Effect.flip(resolve(requirements, d, "addressed"))).reason, "conflict");
+      assert.equal(
+        (yield* Effect.flip(resolve(requirements, "nope", "addressed"))).reason,
+        "not-found",
+      );
+      assert.equal(
+        (yield* Effect.flip(resolve(requirements, b, "addressed", "  "))).reason,
+        "invalid",
+      );
+      assert.equal((yield* Effect.flip(resolve(researcher, b, "addressed"))).reason, "forbidden");
+      assert.equal((yield* Effect.flip(resolve(stranger, b, "addressed"))).reason, "forbidden");
+
+      const ledger = JSON.parse(
+        yield* fs.readFileString(`${root}/specs/${baseSlug}/spec-comments.json`),
+      );
+      const statuses = ledger.entries.map(
+        (entry: { events: Array<{ type: string }> }) => entry.events.at(-1)?.type,
+      );
+      assert.deepEqual(statuses, ["addressed", "submitted", "unmatched", "deleted"]);
+      // Resolving never touches the spec.
+      assert.equal(
+        (yield* service.query({ projectId, slug: baseSlug })).detail!.revision,
+        bound.revision + 1,
+      );
+    }),
+  );
+
+  it.effect("sends the open remarks to a new requirements thread bound to the spec", () =>
+    Effect.gen(function* () {
+      const remarks = yield* SpecRemarkService.SpecRemarkService;
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:remark-send");
+      yield* createProject(projectId, root, codexModel);
+      launches.length = 0;
+      const ledgerFile = `${root}/specs/${baseSlug}/spec-comments.json`;
+      const requirements = ThreadId.make("thread:remark-send:requirements");
+      threads.set(requirements, { projectId, workspacePath: root, activeRunId: null });
+      const eventTypes = Effect.gen(function* () {
+        const ledger = JSON.parse(yield* fs.readFileString(ledgerFile));
+        return ledger.entries.map((entry: { events: Array<{ type: string }> }) =>
+          entry.events.map((event) => event.type),
+        ) as string[][];
+      });
+      const add = (name: string) =>
+        remarks.mutate(
+          remarkInput(
+            "remark-add",
+            projectId,
+            baseSlug,
+            "spec.md",
+            `command:remark:s:${name}`,
+            comment(name),
+          ),
+          human,
+        );
+      const send = (suffix: string) =>
+        remarks.mutate(
+          remarkInput(
+            "remarks-send",
+            projectId,
+            baseSlug,
+            "spec.md",
+            `command:remark:send:${suffix}`,
+          ),
+          human,
+        );
+
+      // Nothing to send: no thread, no ledger.
+      const empty = yield* Effect.flip(send("none"));
+      assert.equal(empty.reason, "invalid");
+      assert.include(empty.message, "no open remarks");
+      assert.lengthOf(launches, 0);
+
+      const a = (yield* add("a")).remark!.id;
+      const b = (yield* add("b")).remark!.id;
+      const first = yield* send("1");
+      assert.deepEqual(first.sent, {
+        threadId: ThreadId.make("thread:remarks-opened"),
+        ids: [a, b],
+        resent: [],
+      });
+      assert.lengthOf(launches, 1);
+      const launch = launches[0]!;
+      assert.equal(launch.commandId, CommandId.make("command:remark:send:1"));
+      assert.equal(launch.title, `Remarks: ${baseSlug}`);
+      assert.deepEqual(launch.modelSelection, codexModel);
+      assert.deepEqual(launch.workspaceStrategy, { type: "root" });
+      assert.deepEqual(launch.specBinding, { slug: baseSlug, role: "requirements" });
+      assert.deepEqual(launch.initialMessage?.attachments, []);
+      const prompt = launch.initialMessage?.text ?? "";
+      assert.include(prompt, `specs/${baseSlug}/spec.md`);
+      assert.include(prompt, `specs/${baseSlug}/spec-comments.json`);
+      assert.include(prompt, `open request UUIDs:\n${a}\n${b}\n`);
+      assert.deepEqual(yield* eventTypes, [
+        ["created", "submitted"],
+        ["created", "submitted"],
+      ]);
+
+      // A second send lists what is still open, resends the submitted ones without a new event, and
+      // leaves out what was resolved.
+      const c = (yield* add("c")).remark!.id;
+      const bound = yield* bind(
+        service,
+        projectId,
+        requirements,
+        baseSlug,
+        "requirements",
+        (yield* service.query({ projectId, slug: baseSlug })).detail!.revision,
+        "remark-send",
+      );
+      assert.isAbove(bound.revision, 0);
+      yield* service.resolveRemark({
+        threadId: requirements,
+        document: "spec.md",
+        id: b,
+        outcome: "addressed",
+        response: "Done.",
+      });
+      const second = yield* send("2");
+      assert.deepEqual(second.sent, {
+        threadId: ThreadId.make("thread:remarks-opened"),
+        ids: [a, c],
+        resent: [a],
+      });
+      assert.include(launches[1]?.initialMessage?.text ?? "", `open request UUIDs:\n${a}\n${c}\n`);
+      assert.notInclude(launches[1]?.initialMessage?.text ?? "", b);
+      assert.deepEqual(yield* eventTypes, [
+        ["created", "submitted"],
+        ["created", "submitted", "addressed"],
+        ["created", "submitted"],
+      ]);
+    }),
+  );
+
+  it.effect("leaves the ledger alone when the thread cannot be started", () =>
+    Effect.gen(function* () {
+      const remarks = yield* SpecRemarkService.SpecRemarkService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const noModel = ProjectId.make("project:remark-send-nomodel");
+      yield* createProject(noModel, root);
+      const projectId = ProjectId.make("project:remark-send-fail");
+      const otherRoot = yield* baseWorkspace;
+      yield* createProject(projectId, otherRoot, codexModel);
+      launches.length = 0;
+      const ledgerOf = (workspace: string) =>
+        fs.readFileString(`${workspace}/specs/${baseSlug}/spec-comments.json`);
+      const send = (project: ProjectId, suffix: string) =>
+        remarks.mutate(
+          remarkInput(
+            "remarks-send",
+            project,
+            baseSlug,
+            "spec.md",
+            `command:remark:fail:${suffix}`,
+          ),
+          human,
+        );
+      for (const [project, name] of [
+        [noModel, "m"],
+        [projectId, "p"],
+      ] as const)
+        yield* remarks.mutate(
+          remarkInput(
+            "remark-add",
+            project,
+            baseSlug,
+            "spec.md",
+            `command:remark:fail:add:${name}`,
+            comment("x"),
+          ),
+          human,
+        );
+
+      const withoutModel = yield* Effect.flip(send(noModel, "nomodel"));
+      assert.equal(withoutModel.reason, "invalid");
+      assert.include(withoutModel.message, "default model");
+
+      const before = yield* ledgerOf(otherRoot);
+      providerDrivers.current = [{ instanceId: "codex", driver: "cursor" }];
+      const unsupported = yield* Effect.flip(send(projectId, "provider")).pipe(
+        Effect.ensuring(
+          Effect.sync(
+            () => void (providerDrivers.current = [{ instanceId: "codex", driver: "codex" }]),
+          ),
+        ),
+      );
+      assert.equal(unsupported.reason, "unsupported-provider");
+
+      launchState.fail = true;
+      const failed = yield* Effect.flip(send(projectId, "launch")).pipe(
+        Effect.ensuring(Effect.sync(() => void (launchState.fail = false))),
+      );
+      assert.equal(failed.reason, "io");
+      assert.lengthOf(launches, 1);
+      assert.equal(yield* ledgerOf(otherRoot), before);
+
+      const agent = yield* Effect.flip(
+        remarks.mutate(
+          remarkInput("remarks-send", projectId, baseSlug, "spec.md", "command:remark:fail:agent"),
+          { kind: "agent", threadId: ThreadId.make("thread:nobody") },
+        ),
+      );
+      assert.equal(agent.reason, "forbidden");
+    }),
+  );
+
+  it.effect("sends from a worktree into the worktree's own checkout", () =>
+    Effect.gen(function* () {
+      const remarks = yield* SpecRemarkService.SpecRemarkService;
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const projectRoot = yield* scopedWorkspace;
+      const worktree = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:remark-worktree");
+      const viewing = ThreadId.make("thread:remark-worktree");
+      yield* createProject(projectId, projectRoot, codexModel);
+      threads.set(viewing, { projectId, workspacePath: worktree, activeRunId: null });
+      launches.length = 0;
+      yield* service.query({ projectId, threadId: viewing });
+
+      yield* remarks.mutate(
+        remarkInput("remark-add", projectId, baseSlug, "spec.md", "command:remark:wt:add", {
+          ...comment("In the worktree"),
+          threadId: viewing,
+        }),
+        human,
+      );
+      assert.isFalse(yield* fs.exists(`${projectRoot}/specs`));
+      const sent = yield* remarks.mutate(
+        remarkInput("remarks-send", projectId, baseSlug, "spec.md", "command:remark:wt:send", {
+          threadId: viewing,
+        }),
+        human,
+      );
+      assert.lengthOf(sent.sent?.ids ?? [], 1);
+      assert.deepEqual(launches[0]?.workspaceStrategy, {
+        type: "existing_worktree",
+        worktreePath: worktree,
+      });
+      const ledger = JSON.parse(
+        yield* fs.readFileString(`${worktree}/specs/${baseSlug}/spec-comments.json`),
+      );
+      assert.equal(ledger.entries[0].events.at(-1).type, "submitted");
+    }),
+  );
+
+  it.effect("toggles a checklist box in spec.md through the normal update path", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const ctx = yield* reviewedBaseSpec("checklist-spec");
+      const { root, projectId } = ctx;
+      const specFile = `${root}/specs/${baseSlug}/spec.md`;
+      const approved = yield* ctx.approve;
+      const onDisk = yield* fs.readFileString(specFile);
+      const line = lineOf(onDisk, "AC-1");
+      const toggle = (revision: number, suffix: string, fields: Record<string, unknown>) =>
+        service.mutate(
+          {
+            action: "checklist-toggle",
+            projectId,
+            slug: baseSlug,
+            document: "spec.md",
+            commandId: CommandId.make(`command:checklist:${suffix}`),
+            expectedRevision: revision,
+            line,
+            expectedText: "- [ ] AC-1: The setting is saved.",
+            checked: true,
+            ...fields,
+          } as SpecDocumentMutationInput,
+          human,
+        );
+
+      // A concurrent edit or an old revision is refused and nothing changes.
+      assert.equal(
+        (yield* Effect.flip(
+          toggle(approved.revision, "stale", { expectedText: "- [ ] AC-1: Old text." }),
+        )).reason,
+        "conflict",
+      );
+      assert.equal(
+        (yield* Effect.flip(toggle(approved.revision - 1, "old", {}))).reason,
+        "conflict",
+      );
+      assert.equal(yield* fs.readFileString(specFile), onDisk);
+
+      const ticked = yield* toggle(approved.revision, "tick", {});
+      assert.equal(yield* fs.readFileString(specFile), onDisk.replace("- [ ] AC-1", "- [x] AC-1"));
+      assert.equal(ticked.revision, approved.revision + 1);
+      assert.equal(ticked.status, "approved");
+      assert.isTrue(ticked.approvalValid);
+      assert.equal(ticked.specHash, approved.specHash);
+
+      const unticked = yield* toggle(ticked.revision, "untick", {
+        expectedText: "- [x] AC-1: The setting is saved.",
+        checked: false,
+      });
+      assert.equal(yield* fs.readFileString(specFile), onDisk);
+      assert.isTrue(unticked.approvalValid);
+
+      const agent = ThreadId.make("thread:checklist:agent");
+      threads.set(agent, { projectId, workspacePath: root, activeRunId: null });
+      const bound = yield* bind(
+        service,
+        projectId,
+        agent,
+        baseSlug,
+        "requirements",
+        unticked.revision,
+        "checklist",
+      );
+      const refused = yield* Effect.flip(
+        service.mutate(
+          {
+            action: "checklist-toggle",
+            projectId,
+            threadId: agent,
+            slug: baseSlug,
+            document: "spec.md",
+            commandId: CommandId.make("command:checklist:agent"),
+            expectedRevision: bound.revision,
+            line,
+            expectedText: "- [ ] AC-1: The setting is saved.",
+            checked: true,
+          } as SpecDocumentMutationInput,
+          { kind: "agent", threadId: agent },
+        ),
+      );
+      assert.equal(refused.reason, "forbidden");
+    }),
+  );
+
+  it.effect("toggles prd.md and tech-analysis.md in place without a spec revision", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:checklist-prd");
+      yield* createProject(projectId, root);
+      const folder = `${root}/specs/${baseSlug}`;
+      const discovered = (yield* service.query({ projectId, slug: baseSlug })).detail!;
+      const prd = "# PRD\r\n\r\n- [ ] one\r\n- [x] two";
+      yield* fs.writeFileString(`${folder}/prd.md`, prd);
+      const toggle = (
+        document: "prd.md" | "tech-analysis.md",
+        suffix: string,
+        fields: Record<string, unknown>,
+      ) =>
+        service.mutate(
+          {
+            action: "checklist-toggle",
+            projectId,
+            slug: baseSlug,
+            document,
+            commandId: CommandId.make(`command:checklist-prd:${suffix}`),
+            expectedRevision: discovered.revision,
+            line: 3,
+            expectedText: "- [ ] one",
+            checked: true,
+            ...fields,
+          } as SpecDocumentMutationInput,
+          human,
+        );
+
+      const result = yield* toggle("prd.md", "tick", {});
+      assert.equal(
+        yield* fs.readFileString(`${folder}/prd.md`),
+        "# PRD\r\n\r\n- [x] one\r\n- [x] two",
+      );
+      assert.equal(result.revision, discovered.revision);
+      assert.equal(yield* fs.readFileString(`${folder}/spec.md`), baseSpec());
+      assert.isFalse(yield* fs.exists(`${folder}/prd.md.par3-tmp`));
+
+      // The same request again is harmless; a changed line is refused.
+      yield* toggle("prd.md", "again", {});
+      assert.equal(
+        yield* fs.readFileString(`${folder}/prd.md`),
+        "# PRD\r\n\r\n- [x] one\r\n- [x] two",
+      );
+      const stale = yield* Effect.flip(toggle("prd.md", "stale", { expectedText: "- [ ] uno" }));
+      assert.equal(stale.reason, "conflict");
+      assert.equal(
+        (yield* Effect.flip(toggle("tech-analysis.md", "missing", {}))).reason,
+        "not-found",
+      );
+    }),
+  );
+
+  it.effect("toggles only in BASE specs", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const root = yield* scopedWorkspace;
+      const projectId = ProjectId.make("project:checklist-par3");
+      yield* createProject(projectId, root);
+      const created = yield* service.mutate(
+        createSpec(projectId, "par3-checklist", "command:checklist-par3:create"),
+        human,
+      );
+      const refused = yield* Effect.flip(
+        service.mutate(
+          {
+            action: "checklist-toggle",
+            projectId,
+            slug: "par3-checklist",
+            document: "spec.md",
+            commandId: CommandId.make("command:checklist-par3:toggle"),
+            expectedRevision: created.revision,
+            line: 1,
+            expectedText: "# Example",
+            checked: true,
+          } as SpecDocumentMutationInput,
+          human,
+        ),
+      );
+      assert.equal(refused.reason, "invalid");
+    }),
+  );
+
+  it.effect("ignores checkbox state in BASE's requirements hash but not in a Par3 spec's", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const ctx = yield* reviewedBaseSpec("checkbox-hash");
+      const specFile = `${ctx.root}/specs/${baseSlug}/spec.md`;
+      const approved = yield* ctx.approve;
+      const query = () =>
+        service
+          .query({ projectId: ctx.projectId, slug: baseSlug })
+          .pipe(Effect.map((result) => result.detail!));
+      const onDisk = yield* fs.readFileString(specFile);
+
+      yield* fs.writeFileString(
+        specFile,
+        onDisk.replace("- [ ] AC-1", "- [x] AC-1").replace("- [x] AC-2", "- [ ] AC-2"),
+      );
+      const ticked = yield* query();
+      assert.isTrue(ticked.approvalValid);
+      assert.equal(ticked.status, "approved");
+      assert.equal(ticked.revision, approved.revision);
+      assert.equal(ticked.specHash, approved.specHash);
+
+      yield* fs.writeFileString(
+        specFile,
+        onDisk.replace(
+          "- [ ] AC-1: The setting is saved.",
+          "- [x] AC-1: The setting is saved twice.",
+        ),
+      );
+      const reworded = yield* query();
+      assert.isFalse(reworded.approvalValid);
+      assert.equal(reworded.status, "review");
+
+      const par3Root = yield* scopedWorkspace;
+      const par3Project = ProjectId.make("project:checkbox-hash-par3");
+      yield* createProject(par3Project, par3Root);
+      const created = yield* service.mutate(
+        createSpec(
+          par3Project,
+          "par3-boxes",
+          "command:checkbox:create",
+          content.replace("- AC-1:", "- [ ] AC-1:"),
+        ),
+        human,
+      );
+      const par3Approved = yield* reviewAndApprove(
+        service,
+        par3Project,
+        created.slug,
+        created.revision,
+        "par3-boxes",
+      );
+      assert.isTrue(par3Approved.approvalValid);
+      const par3File = `${par3Root}/specs/par3-boxes/spec.md`;
+      yield* fs.writeFileString(
+        par3File,
+        (yield* fs.readFileString(par3File)).replace("- [ ] AC-1", "- [x] AC-1"),
+      );
+      const par3After = (yield* service.query({ projectId: par3Project, slug: "par3-boxes" }))
+        .detail!;
+      assert.isFalse(par3After.approvalValid);
+      assert.equal(par3After.status, "review");
+    }),
+  );
+
+  it.effect("keeps approvals recorded before checkbox state was ignored", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const sql = yield* SqlClient.SqlClient;
+      const fs = yield* FileSystem.FileSystem;
+      const ctx = yield* reviewedBaseSpec("checkbox-migrate");
+      const specFile = `${ctx.root}/specs/${baseSlug}/spec.md`;
+      const approved = yield* ctx.approve;
+
+      // Rewind the record to what the previous version stored: a hash of the text as it was.
+      const row = (yield* sql<{
+        document_json: string;
+      }>`SELECT document_json FROM spec_documents WHERE workspace_path = ${ctx.root} AND slug = ${baseSlug}`)[0]!;
+      const stored = JSON.parse(row.document_json);
+      const legacy = yield* sha256(withoutVolatileFrontmatter(stored.content));
+      assert.notEqual(legacy, approved.specHash);
+      const evidence = [
+        {
+          id: "e",
+          acs: ["AC-1"],
+          kind: "automated",
+          description: "Checked",
+          checkpoint: "abc",
+          requirementsHash: legacy,
+          taskHash: stored.taskHash,
+          passed: true,
+        },
+      ];
+      const rewound = JSON.stringify({
+        ...stored,
+        specHash: legacy,
+        approval: { ...stored.approval, specHash: legacy },
+        evidence,
+      });
+      yield* sql`UPDATE spec_documents SET document_json = ${rewound} WHERE workspace_path = ${ctx.root} AND slug = ${baseSlug}`;
+      yield* fs.writeFileString(
+        specFile,
+        (yield* fs.readFileString(specFile)).replace("- [ ] AC-1", "- [x] AC-1"),
+      );
+
+      const migrated = (yield* service.query({ projectId: ctx.projectId, slug: baseSlug })).detail!;
+      assert.isTrue(migrated.approvalValid);
+      assert.equal(migrated.status, "approved");
+      assert.equal(migrated.revision, approved.revision);
+      assert.equal(migrated.specHash, approved.specHash);
+      assert.equal(migrated.approval?.specHash, approved.specHash);
+      assert.equal(migrated.evidence[0]?.requirementsHash, approved.specHash);
+    }),
+  );
+
+  it.effect("keeps review ledgers and the approval log out of agent artifact writes", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:remark-artifact");
+      const threadId = ThreadId.make("thread:remark-artifact");
+      yield* createProject(projectId, root);
+      threads.set(threadId, { projectId, workspacePath: root, activeRunId: null });
+      const discovered = (yield* service.query({ projectId, slug: baseSlug })).detail!;
+      const bound = yield* bind(
+        service,
+        projectId,
+        threadId,
+        baseSlug,
+        "requirements",
+        discovered.revision,
+        "remark-artifact",
+      );
+      for (const path of [
+        "spec-comments.json",
+        "prd-comments.json",
+        "tech-analysis-comments.json",
+        "approval.json",
+      ]) {
+        const refused = yield* Effect.flip(
+          service.mutate(
+            mutation(
+              "artifact",
+              projectId,
+              baseSlug,
+              `command:remark-artifact:${path}`,
+              bound.revision,
+              {
+                threadId,
+                path,
+                content: "{}",
+              },
+            ),
+            { kind: "agent", threadId },
+          ),
+        );
+        assert.equal(refused.reason, "invalid");
+        assert.include(refused.message, "Par3 only");
+        assert.isFalse(yield* fs.exists(`${root}/specs/${baseSlug}/${path}`));
+      }
     }),
   );
 });

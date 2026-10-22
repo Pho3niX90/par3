@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import {
   CommandId,
   NonNegativeInt,
+  PositiveInt,
   ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
@@ -187,6 +188,90 @@ export const SpecDocument = Schema.Struct({
 });
 export type SpecDocument = typeof SpecDocument.Type;
 
+/**
+ * BASE's review panel keeps a ledger of remarks beside each document (`<stem>-comments.json`).
+ * Par3 reads and writes the same files; a remark's status is never stored, it is the type of its
+ * last event.
+ */
+export const SpecRemarkDocument = Schema.Literals(["spec.md", "prd.md", "tech-analysis.md"]);
+export type SpecRemarkDocument = typeof SpecRemarkDocument.Type;
+
+export const SpecRemarkKind = Schema.Literals(["comment", "text-edit"]);
+export type SpecRemarkKind = typeof SpecRemarkKind.Type;
+
+export const SpecRemarkOperation = Schema.Literals(["comment", "delete", "add", "reword"]);
+export type SpecRemarkOperation = typeof SpecRemarkOperation.Type;
+
+export const SpecRemarkEventType = Schema.Literals([
+  "created",
+  "submitted",
+  "addressed",
+  "unmatched",
+  "deleted",
+]);
+export type SpecRemarkEventType = typeof SpecRemarkEventType.Type;
+
+/** `pending` is a remark whose last event is `created`. */
+export const SpecRemarkStatus = Schema.Literals([
+  "pending",
+  "submitted",
+  "addressed",
+  "unmatched",
+  "deleted",
+]);
+export type SpecRemarkStatus = typeof SpecRemarkStatus.Type;
+
+export const SpecRemarkEvent = Schema.Struct({
+  eventId: Schema.String,
+  type: SpecRemarkEventType,
+  timestamp: Schema.String,
+  response: Schema.optionalKey(Schema.String),
+});
+export type SpecRemarkEvent = typeof SpecRemarkEvent.Type;
+
+export const SpecRemarkSection = Schema.Struct({
+  heading: Schema.String,
+  text: Schema.optionalKey(Schema.String),
+});
+export type SpecRemarkSection = typeof SpecRemarkSection.Type;
+
+export const SpecRemarkSelection = Schema.Struct({
+  text: Schema.String,
+  prefix: Schema.optionalKey(Schema.String),
+  suffix: Schema.optionalKey(Schema.String),
+});
+export type SpecRemarkSelection = typeof SpecRemarkSelection.Type;
+
+export const SpecRemark = Schema.Struct({
+  id: Schema.String,
+  kind: SpecRemarkKind,
+  operation: SpecRemarkOperation,
+  createdAt: Schema.String,
+  section: SpecRemarkSection,
+  selection: Schema.optionalKey(SpecRemarkSelection),
+  comment: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.String),
+  status: SpecRemarkStatus,
+  /** The response of the last `addressed` or `unmatched` event. */
+  response: Schema.optionalKey(Schema.String),
+  events: Schema.Array(SpecRemarkEvent),
+});
+export type SpecRemark = typeof SpecRemark.Type;
+
+export const SpecRemarkLedgerView = Schema.Struct({
+  document: SpecRemarkDocument,
+  exists: Schema.Boolean,
+  /** The text of `prd.md` and `tech-analysis.md`; `spec.md` is the detail's `content`. */
+  text: Schema.optionalKey(Schema.String),
+  entries: Schema.Array(SpecRemark),
+  /** The ledger exists but could not be read; Par3 leaves it untouched. */
+  error: Schema.optionalKey(Schema.String),
+});
+export type SpecRemarkLedgerView = typeof SpecRemarkLedgerView.Type;
+
+export const SpecRemarksView = Schema.Struct({ documents: Schema.Array(SpecRemarkLedgerView) });
+export type SpecRemarksView = typeof SpecRemarksView.Type;
+
 export const SpecQueryInput = Schema.Struct({
   projectId: ProjectId,
   threadId: Schema.optionalKey(ThreadId),
@@ -195,6 +280,8 @@ export const SpecQueryInput = Schema.Struct({
   limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
   /** Ask for the checkout's `specs/_template.md`; sent only when a client will seed a new spec. */
   includeTemplate: Schema.optionalKey(Schema.Boolean),
+  /** Ask for the selected BASE spec's remark ledgers and the text of its other documents. */
+  includeRemarks: Schema.optionalKey(Schema.Boolean),
 });
 export type SpecQueryInput = typeof SpecQueryInput.Type;
 
@@ -215,6 +302,8 @@ export const SpecQueryResult = Schema.Struct({
   template: Schema.optionalKey(Schema.String),
   /** Present when the query named a thread that is waiting for its spec to be created. */
   intake: Schema.optionalKey(SpecIntake),
+  /** Present for a selected BASE spec when the query asked for remarks. */
+  remarks: Schema.optionalKey(SpecRemarksView),
 });
 export type SpecQueryResult = typeof SpecQueryResult.Type;
 
@@ -228,6 +317,25 @@ export type SpecIntakeInput = typeof SpecIntakeInput.Type;
 
 export const SpecIntakeResult = Schema.Struct({ intake: Schema.NullOr(SpecIntake) });
 export type SpecIntakeResult = typeof SpecIntakeResult.Type;
+
+/** What a send opened, besides the document. */
+export const SpecRemarksSent = Schema.Struct({
+  /** The new requirements thread. */
+  threadId: ThreadId,
+  /** The remarks handed to it, in the order its first message lists them. */
+  ids: Schema.Array(Schema.String),
+  /** The ids among them that had been sent before. */
+  resent: Schema.Array(Schema.String),
+});
+export type SpecRemarksSent = typeof SpecRemarksSent.Type;
+
+// Remark changes are not spec revisions, so they take no `expectedRevision`.
+const SpecRemarkMutationBase = {
+  projectId: ProjectId,
+  threadId: Schema.optionalKey(ThreadId),
+  slug: SpecSlug,
+  document: SpecRemarkDocument,
+};
 
 const SpecMutationBase = {
   projectId: ProjectId,
@@ -282,6 +390,46 @@ export const SpecMutationInput = Schema.Union([
     role: SpecRole,
   }),
   Schema.Struct({ ...SpecMutationBase, action: Schema.Literal("unbind") }),
+  /** A person's remark on a BASE document, written to its review ledger. */
+  Schema.Struct({
+    ...SpecRemarkMutationBase,
+    commandId: CommandId,
+    action: Schema.Literal("remark-add"),
+    kind: SpecRemarkKind,
+    operation: SpecRemarkOperation,
+    section: SpecRemarkSection,
+    selection: Schema.optionalKey(SpecRemarkSelection),
+    comment: Schema.optionalKey(Schema.String),
+    value: Schema.optionalKey(Schema.String),
+  }),
+  /** Withdraws a remark that was never sent. */
+  Schema.Struct({
+    ...SpecRemarkMutationBase,
+    commandId: CommandId,
+    action: Schema.Literal("remark-delete"),
+    id: TrimmedNonEmptyString,
+  }),
+  /**
+   * Opens a new requirements thread for the document's open remarks and marks the pending ones
+   * submitted. `commandId` makes a retried send open one thread.
+   */
+  Schema.Struct({
+    ...SpecRemarkMutationBase,
+    commandId: CommandId,
+    action: Schema.Literal("remarks-send"),
+  }),
+  /**
+   * Ticks or unticks one markdown task-list line. `expectedText` is the line as the client saw it;
+   * a line that changed since is refused. Only `spec.md` is tracked by `expectedRevision`.
+   */
+  Schema.Struct({
+    ...SpecMutationBase,
+    action: Schema.Literal("checklist-toggle"),
+    document: SpecRemarkDocument,
+    line: PositiveInt,
+    expectedText: Schema.String,
+    checked: Schema.Boolean,
+  }),
   Schema.Struct({
     ...SpecMutationBase,
     action: Schema.Literal("artifact"),
@@ -290,6 +438,18 @@ export const SpecMutationInput = Schema.Union([
   }),
 ]);
 export type SpecMutationInput = typeof SpecMutationInput.Type;
+
+/**
+ * The document after the change, plus what a remark action produced. A client that only wants the
+ * document can ignore the rest.
+ */
+export const SpecMutationResult = Schema.Struct({
+  ...SpecDocument.fields,
+  /** The remark that was added or withdrawn. */
+  remark: Schema.optionalKey(SpecRemark),
+  sent: Schema.optionalKey(SpecRemarksSent),
+});
+export type SpecMutationResult = typeof SpecMutationResult.Type;
 
 export const SpecErrorReason = Schema.Literals([
   "not-found",
