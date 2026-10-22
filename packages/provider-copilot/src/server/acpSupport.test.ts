@@ -113,6 +113,25 @@ describe("applyCopilotAcpModelSelection", () => {
     }),
   );
 
+  it.effect("selects through session model state when the model config option is empty", () =>
+    Effect.gen(function* () {
+      const { runtime, calls } = makeRuntime();
+      const applied = yield* applyCopilotAcpModelSelection({
+        runtime,
+        sessionSetupResult: {
+          ...withModelState,
+          configOptions: (withModelConfigOption.configOptions ?? []).map((option) => ({
+            ...option,
+            options: [],
+          })),
+        },
+        requestedModelId: "claude-haiku-4.5",
+      });
+      expect(applied).toBe("claude-haiku-4.5");
+      expect(calls).toEqual([{ method: "setSessionModel", model: "claude-haiku-4.5" }]);
+    }),
+  );
+
   it.effect("surfaces a rejection when the session advertised model state", () =>
     Effect.gen(function* () {
       const { runtime } = makeRuntime({ rejectSessionModel: true });

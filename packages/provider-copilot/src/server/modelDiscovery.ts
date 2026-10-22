@@ -28,11 +28,15 @@ export function copilotModelsFromSessionSetup(
   const modelOption = setup.configOptions?.find(
     (option) => option.category === "model" && option.type === "select",
   );
-  const candidates: ReadonlyArray<{ readonly id: string; readonly name: string }> =
+  const modelOptionCandidates =
     modelOption?.type === "select"
       ? modelOption.options
           .flatMap((entry) => ("value" in entry ? [entry] : entry.options))
           .map((entry) => ({ id: entry.value, name: entry.name }))
+      : [];
+  const candidates =
+    modelOptionCandidates.length > 0
+      ? modelOptionCandidates
       : (setup.models?.availableModels ?? []).map((model) => ({
           id: model.modelId,
           name: model.name,

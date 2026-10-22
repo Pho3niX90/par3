@@ -76,6 +76,9 @@ describe("checkCopilotProviderStatus", () => {
       expect(result.status).toBe("ready");
       expect(result.version).toBe("1.0.95");
       expect(result.models.map((model) => model.slug)).toEqual(["default"]);
+      expect(result.message).toContain(
+        "Copilot Free and Student plans use automatic model selection.",
+      );
       expect(result.slashCommands?.map((command) => command.name)).toEqual(["compact"]);
     }),
   );

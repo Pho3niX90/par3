@@ -88,7 +88,11 @@ export function applyCopilotAcpModelSelection(input: {
   if (requestedModelId === COPILOT_DEFAULT_MODEL_SLUG || requestedModelId === currentModelId) {
     return Effect.succeed(currentModelId);
   }
-  if (modelOption !== undefined) {
+  const useSessionModelState =
+    sessionSetupResult.models != null &&
+    modelOption?.type === "select" &&
+    modelOption.options.every((entry) => !("value" in entry) && entry.options.length === 0);
+  if (modelOption !== undefined && !useSessionModelState) {
     return runtime.setModel(requestedModelId).pipe(Effect.as(requestedModelId));
   }
   const setSessionModel = runtime

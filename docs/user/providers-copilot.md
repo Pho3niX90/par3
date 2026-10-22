@@ -53,8 +53,14 @@ first finds the CLI working, by briefly starting a Copilot session in an empty t
 without signing in, and again from every thread you start. If you are not signed in to Copilot yet,
 the list fills in after your first thread.
 
-If a model is missing, add its ID under **Custom models** in the instance settings. Run `/model` in
-the Copilot CLI to see the IDs your plan offers.
+[Copilot Free and Student plans](https://docs.github.com/en/copilot/get-started/plans) support only
+automatic model selection. On these plans, seeing only **Copilot Default** is expected: GitHub
+chooses the model for each request. Individual paid plans can offer named models too; an enterprise
+account is not required.
+
+For plans that allow manual model selection, run `/model` in the Copilot CLI to check the IDs your
+account offers. If an available model is missing from Par3, add its ID under **Custom models** in
+the instance settings. Custom models do not unlock models excluded by your plan.
 
 ## Subagents and tools
 

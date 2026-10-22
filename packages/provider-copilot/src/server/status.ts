@@ -272,7 +272,7 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
       version,
       status: "ready",
       auth: { status: "unknown" },
-      message: `GitHub Copilot CLI ${version ?? "available"}.${target}${credential}`,
+      message: `GitHub Copilot CLI ${version ?? "available"}.${target}${credential} Copilot Free and Student plans use automatic model selection.`,
       ...(usageUrl === undefined
         ? {}
         : {
