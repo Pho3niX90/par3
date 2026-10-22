@@ -22,6 +22,7 @@
 - [Remote access](./user/remote-access.md)
 - [Parity Connect troubleshooting](./user/t3-connect-troubleshooting.md)
 - [Shared MCP servers](./user/shared-mcp-servers.md)
+- [Vault and sync](./user/vault-and-sync.md)
 - [Outside agents (MCP)](./user/outside-agents.md)
 - [Running in the background](./user/background-service.md)
 - [Updating T3 Code](./user/updating.md)

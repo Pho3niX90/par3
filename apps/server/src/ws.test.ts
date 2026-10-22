@@ -88,6 +88,8 @@ import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import * as SpecService from "./specs/SpecService.ts";
+import * as SyncStore from "./sync/SyncStore.ts";
+import * as VaultService from "./vault/VaultService.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
@@ -362,6 +364,8 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),
   Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
   Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),
+  Layer.mock(SyncStore.SyncStore)({}),
+  Layer.mock(VaultService.VaultService)({}),
   SpecService.layerDisabled,
 );
 
@@ -384,12 +388,13 @@ it.effect(
     Effect.gen(function* () {
       const keybindings = yield* Keybindings.Keybindings;
       const settings = yield* ServerSettings.ServerSettingsService;
+      const clientSettings = yield* ServerSettings.ServerSettingsClientView;
       const keybindingsSubscribed = yield* Deferred.make<void>();
       const settingsSubscribed = yield* Deferred.make<void>();
       const keybindingsChanges = keybindings.subscribeChanges.pipe(
         Effect.tap(() => Deferred.succeed(keybindingsSubscribed, undefined)),
       );
-      const settingsChanges = settings.subscribeChanges.pipe(
+      const settingsChanges = clientSettings.subscribeChanges.pipe(
         Effect.tap(() => Deferred.succeed(settingsSubscribed, undefined)),
       );
       const initialKeybindings = (yield* keybindings.getSnapshot).keybindings;
@@ -444,9 +449,9 @@ it.effect(
           streamChanges: Stream.unwrap(keybindingsChanges),
           subscribeChanges: keybindingsChanges,
         }),
-        Layer.succeed(ServerSettings.ServerSettingsService, {
-          ...settings,
-          streamChanges: Stream.unwrap(settingsChanges),
+        Layer.succeed(ServerSettings.ServerSettingsService, settings),
+        Layer.succeed(ServerSettings.ServerSettingsClientView, {
+          ...clientSettings,
           subscribeChanges: settingsChanges,
         }),
       );

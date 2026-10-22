@@ -8,6 +8,7 @@ import {
   type ProviderInstanceMutation,
   defaultInstanceIdForDriver,
   isProviderDriverKind,
+  parseVaultReference,
   ProviderDriverKind,
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
@@ -54,6 +55,7 @@ import {
 } from "./sourceControl/sourceControlHostSecrets.ts";
 
 import { mapSettingsSecrets, SECRET_REDACTED, type SettingsSecret } from "./settingsSecrets.ts";
+import { resolveVaultValues } from "./vault/vaultStorage.ts";
 
 export {
   resolveReviewGuideModelSelection,
@@ -129,8 +131,9 @@ const normalizeServerSettings = (
   );
 
 export function redactServerSettingsForClient(settings: ServerSettings): ServerSettings {
+  // A `vault:NAME` reference names a secret without revealing it, so clients see it as written.
   return mapSettingsSecrets(settings, (secret) =>
-    secret.sensitive
+    secret.sensitive && parseVaultReference(secret.value) === null
       ? { value: "", redacted: secret.redacted || secret.value.length > 0 }
       : { value: secret.value, redacted: false },
   );
@@ -202,6 +205,19 @@ export class ServerSettingsService extends Context.Service<
 >()("t3/serverSettings/ServerSettingsService") {
   static readonly layerTest = (overrides: DeepPartial<ServerSettings> = {}) => layerTest(overrides);
 }
+
+/**
+ * Settings as clients may see them: saved secrets redacted and `vault:` references as written.
+ * Built from stored settings rather than by redacting resolved ones, which would turn a
+ * reference into an anonymous saved secret.
+ */
+export class ServerSettingsClientView extends Context.Service<
+  ServerSettingsClientView,
+  {
+    readonly getSettings: Effect.Effect<ServerSettings, ServerSettingsError>;
+    readonly subscribeChanges: Effect.Effect<Stream.Stream<ServerSettings>, never, Scope.Scope>;
+  }
+>()("t3/serverSettings/ServerSettingsClientView") {}
 
 const makeTest = Effect.fn("serverSettings.makeTest")(function* (
   overrides: DeepPartial<ServerSettings> = {},
@@ -626,7 +642,12 @@ const make = Effect.gen(function* () {
     function* (settings: ServerSettings) {
       const pending: SettingsSecret[] = [];
       mapSettingsSecrets(settings, (secret) => {
-        if (secret.kind === "field" && !secret.redacted && secret.value.length > 0) {
+        if (
+          secret.kind === "field" &&
+          !secret.redacted &&
+          secret.value.length > 0 &&
+          parseVaultReference(secret.value) === null
+        ) {
           pending.push(secret);
         }
         return secret;
@@ -804,10 +825,29 @@ const make = Effect.gen(function* () {
     function* (settings: ServerSettings): Effect.fn.Return<ServerSettings, ServerSettingsError> {
       const storedSecrets = new Map<string, string>();
       const pending = new Map<string, SettingsSecret>();
+      const vaultNames = new Set<string>();
       mapSettingsSecrets(settings, (secret) => {
         if (secret.sensitive && secret.redacted) pending.set(secret.secretName, secret);
+        const vaultName = secret.redacted ? null : parseVaultReference(secret.value);
+        if (vaultName !== null) vaultNames.add(vaultName);
         return secret;
       });
+      const vaultValues =
+        vaultNames.size === 0
+          ? new Map<string, string>()
+          : yield* resolveVaultValues(secretStore, vaultNames).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({ settingsPath, operation: "read-secret", cause }),
+              ),
+            );
+      for (const name of vaultNames) {
+        if (!vaultValues.has(name)) {
+          yield* Effect.logWarning("a settings value refers to a vault secret this server lacks", {
+            secret: name,
+          });
+        }
+      }
       for (const secret of pending.values()) {
         const value = yield* secretStore.get(secret.secretName).pipe(
           Effect.mapError(
@@ -826,13 +866,19 @@ const make = Effect.gen(function* () {
           Option.isSome(value) ? textDecoder.decode(value.value) : "",
         );
       }
-      return mapSettingsSecrets(settings, (secret) => ({
-        value:
-          secret.sensitive && secret.redacted
-            ? (storedSecrets.get(secret.secretName) ?? "")
-            : secret.value,
-        redacted: secret.sensitive && secret.kind === "environment" && secret.redacted,
-      }));
+      return mapSettingsSecrets(settings, (secret) => {
+        const vaultName = secret.redacted ? null : parseVaultReference(secret.value);
+        if (vaultName !== null) {
+          return { value: vaultValues.get(vaultName) ?? "", redacted: false };
+        }
+        return {
+          value:
+            secret.sensitive && secret.redacted
+              ? (storedSecrets.get(secret.secretName) ?? "")
+              : secret.value,
+          redacted: secret.sensitive && secret.kind === "environment" && secret.redacted,
+        };
+      });
     },
   );
 
@@ -881,7 +927,8 @@ const make = Effect.gen(function* () {
             ? { environmentVariable: secret.environmentVariable }
             : {}),
         };
-        if (!secret.sensitive) {
+        // A vault reference is stored as written; any secret it replaced is removed.
+        if (!secret.sensitive || (!secret.redacted && parseVaultReference(secret.value) !== null)) {
           changes.push({ ...metadata, kind: "remove", operation: "remove-secret" });
           return { value: secret.value, redacted: false };
         }
@@ -889,6 +936,10 @@ const make = Effect.gen(function* () {
         const inlineValue =
           old?.sensitive && !old.redacted && old.value.length > 0 ? old.value : undefined;
         const value = secret.redacted ? inlineValue : secret.value;
+        if (value !== undefined && parseVaultReference(value) !== null) {
+          changes.push({ ...metadata, kind: "remove", operation: "remove-secret" });
+          return { value, redacted: false };
+        }
         if (value === undefined) {
           nextSecretNames.add(secret.secretName);
           return { value: "", redacted: true };
@@ -1145,7 +1196,18 @@ const make = Effect.gen(function* () {
     yield* Deferred.succeed(startedDeferred, undefined).pipe(Effect.orDie);
   });
 
-  return {
+  const toClient = (settings: ServerSettings) =>
+    resolveTextGenerationProvider(redactServerSettingsForClient(settings));
+  const clientView = ServerSettingsClientView.of({
+    getSettings: getSettingsFromCache.pipe(Effect.map(toClient)),
+    subscribeChanges: PubSub.subscribe(changesPubSub).pipe(
+      Effect.map((subscription) =>
+        Stream.fromSubscription(subscription).pipe(Stream.map(toClient)),
+      ),
+    ),
+  });
+
+  const service = {
     start,
     ready: Deferred.await(startedDeferred),
     getSettings: getSettingsFromCache.pipe(
@@ -1174,6 +1236,15 @@ const make = Effect.gen(function* () {
       );
     },
   } satisfies ServerSettingsService["Service"];
+  return { service, clientView };
 });
 
-export const layer = Layer.effect(ServerSettingsService, make);
+export const layer = Layer.effectContext(
+  make.pipe(
+    Effect.map(({ service, clientView }) =>
+      Context.make(ServerSettingsService, service).pipe(
+        Context.add(ServerSettingsClientView, clientView),
+      ),
+    ),
+  ),
+);

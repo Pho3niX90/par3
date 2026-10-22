@@ -44,6 +44,7 @@ import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { DraftInput } from "../ui/draft-input";
 import { SecretInput } from "./SecretInput";
+import { VaultSecretPicker } from "./VaultSecretPicker";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -304,6 +305,8 @@ function ProviderEnvironmentFieldRow(props: {
 export function ProviderEnvironmentSection(props: {
   readonly environment: ReadonlyArray<ProviderInstanceEnvironmentVariable>;
   readonly onChange: (environment: ReadonlyArray<ProviderInstanceEnvironmentVariable>) => void;
+  /** Offers the vault of the environment being edited for sensitive values. */
+  readonly environmentId?: EnvironmentId | undefined;
 }) {
   const [rows, setRows] = useState<ReadonlyArray<EnvironmentDraftRow>>(() =>
     props.environment.map(makeEnvironmentDraftRow),
@@ -435,6 +438,12 @@ export function ProviderEnvironmentSection(props: {
                   aria-label={`Environment variable value ${index + 1}`}
                 />
               )}
+              {variable.sensitive ? (
+                <VaultSecretPicker
+                  environmentId={props.environmentId}
+                  onPick={(value) => updateVariable(variable.id, { value })}
+                />
+              ) : null}
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -1238,6 +1247,7 @@ export function ProviderInstanceCard({
         <ProviderEnvironmentSection
           environment={genericEnvironment}
           onChange={updateGenericEnvironment}
+          environmentId={environmentId}
         />
       </SettingsSection>
       {environmentId !== undefined && liveProvider?.driver === "acpRegistry" ? (

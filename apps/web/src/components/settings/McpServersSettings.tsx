@@ -1,16 +1,19 @@
 import { useAtomValue } from "@effect/atom-react";
 import type {
+  EnvironmentId,
   McpGatewayServerStatus,
   McpGatewayTestResult,
   McpServerConfig,
   McpServerHeader,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import { Link } from "@tanstack/react-router";
 import { MoreVertical, PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { randomUUID } from "../../lib/utils";
 import { serverEnvironment } from "../../state/server";
+import { useSyncViews } from "../../state/sync";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ConnectionStatusDot } from "../ConnectionStatusDot";
 import { Button } from "../ui/button";
@@ -46,6 +49,7 @@ import { SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingsScopeNotice } from "./SettingsScopeNotice";
 import { useScopedSettings } from "./useScopedSettings";
+import { VaultSecretPicker } from "./VaultSecretPicker";
 
 type TestOutcome =
   | { readonly status: "pending" }
@@ -91,6 +95,10 @@ function McpServersForm() {
   const testGenerations = useRef(new Map<string, number>());
   const [editing, setEditing] = useState<{ server: McpServerConfig; isNew: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  const syncView = useSyncViews().find((view) => view.environmentId === environmentId);
+  const syncsMcpServers =
+    syncView?.snapshot.participation?.enabled === true &&
+    syncView.snapshot.participation.categories.includes("mcpServers");
 
   const refreshStatus = useEffectEvent(async () => {
     if (!environmentId) return;
@@ -197,6 +205,13 @@ function McpServersForm() {
                 server={server}
                 status={statuses.find((status) => status.id === server.id)}
                 test={tests[server.id]}
+                needsVault={
+                  syncsMcpServers &&
+                  syncView.snapshot.items.some(
+                    (item) =>
+                      item.key === `mcpServers:${server.id}` && item.skipped === "needs-vault",
+                  )
+                }
                 disabled={!canEdit || busy}
                 onToggle={(enabled) => void saveServer({ ...server, enabled })}
                 onPolicy={(toolPolicy) =>
@@ -214,6 +229,7 @@ function McpServersForm() {
         <McpServerEditor
           key={editing.server.id}
           server={editing.server}
+          environmentId={environmentId}
           isNew={editing.isNew}
           servers={servers}
           busy={busy}
@@ -255,6 +271,7 @@ function McpServerRow(props: {
   readonly server: McpServerConfig;
   readonly status: McpGatewayServerStatus | undefined;
   readonly test: TestOutcome | undefined;
+  readonly needsVault: boolean;
   readonly disabled: boolean;
   readonly onToggle: (enabled: boolean) => void;
   readonly onPolicy: (policy: McpServerConfig["toolPolicy"]) => void;
@@ -285,6 +302,15 @@ function McpServerRow(props: {
           <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
             {describeMcpServerTransport(server)}
           </p>
+          {props.needsVault ? (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Holds a saved secret;{" "}
+              <Link to="/settings/sync" className="underline underline-offset-2">
+                move it to the vault
+              </Link>{" "}
+              to sync.
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Switch
@@ -398,6 +424,7 @@ function VariablesEditor(props: {
   readonly label: string;
   readonly namePlaceholder: string;
   readonly variables: ReadonlyArray<Variable>;
+  readonly environmentId: EnvironmentId | null;
   readonly disabled: boolean;
   readonly onChange: (variables: ReadonlyArray<Variable>) => void;
 }) {
@@ -437,13 +464,20 @@ function VariablesEditor(props: {
             onChange={(event) => edit(index, { name: event.target.value })}
           />
           {variable.sensitive ? (
-            <SecretInput
-              aria-label={`${props.label} value`}
-              configured={variable.valueRedacted === true}
-              value={variable.valueRedacted ? "" : variable.value}
-              disabled={props.disabled}
-              onChange={(event) => edit(index, { value: event.target.value })}
-            />
+            <div className="flex min-w-0 items-center gap-1">
+              <SecretInput
+                aria-label={`${props.label} value`}
+                configured={variable.valueRedacted === true}
+                value={variable.valueRedacted ? "" : variable.value}
+                disabled={props.disabled}
+                onChange={(event) => edit(index, { value: event.target.value })}
+              />
+              <VaultSecretPicker
+                environmentId={props.environmentId}
+                disabled={props.disabled}
+                onPick={(value) => edit(index, { value })}
+              />
+            </div>
           ) : (
             <Input
               aria-label={`${props.label} value`}
@@ -481,6 +515,7 @@ function VariablesEditor(props: {
 
 function McpServerEditor(props: {
   readonly server: McpServerConfig;
+  readonly environmentId: EnvironmentId | null;
   readonly isNew: boolean;
   readonly servers: ReadonlyArray<McpServerConfig>;
   readonly busy: boolean;
@@ -631,6 +666,7 @@ function McpServerEditor(props: {
                 label="Environment variables"
                 namePlaceholder="API_KEY"
                 variables={environment}
+                environmentId={props.environmentId}
                 disabled={props.busy}
                 onChange={setEnvironment}
               />
@@ -655,6 +691,7 @@ function McpServerEditor(props: {
                 label="Headers"
                 namePlaceholder="Authorization"
                 variables={headers}
+                environmentId={props.environmentId}
                 disabled={props.busy}
                 onChange={setHeaders}
               />

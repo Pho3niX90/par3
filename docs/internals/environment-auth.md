@@ -129,3 +129,20 @@ Host videos can change in place. Their [HTTP
 responses](../../apps/server/src/http.ts) omit cache validators because file
 metadata cannot prove byte-for-byte identity for `If-Range`. Adding weak
 validators would turn native-player seeks into full downloads.
+
+## The vault key is an owner capability
+
+Vault and config sync add no channel between servers: a client connected to both machines relays
+items, using the sync store's compare-and-swap writes so concurrent clients cannot clobber each
+other ([plan](../../packages/client-runtime/src/sync/plan.ts),
+[store](../../apps/server/src/sync/SyncStore.ts)). Vault entries cross that path only as
+ciphertext sealed with the vault key, which never leaves a member server except wrapped for
+another server's X25519 key. A client therefore never holds a secret, but a client with
+`access:write` on a member can add a machine to the vault, so owner access on any member is
+owner access to every secret. The recipient key is signed by the joining environment's signing
+key and shown as a fingerprint for a person to compare; neither stops an owner who controls both
+ends, and they are not meant to.
+
+Clients read settings through the stored form, where `vault:NAME` stays a reference. Redacting
+resolved settings instead would turn every reference into an anonymous saved secret, and a
+client echoing that back would store the resolved value under the setting.

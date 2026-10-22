@@ -451,6 +451,12 @@ export function summarizeT3ToolCalls(
     case "mcp-servers":
       label = phrase("Listed", "list", `shared MCP servers ${times}`);
       break;
+    case "vault-list":
+      label = phrase("Listed", "list", `vault secrets ${times}`);
+      break;
+    case "vault-read":
+      label = phrase("Read", "read", quantity(selected.length, "vault secret"));
+      break;
     case "mcp-call": {
       const targets = new Set(selected.map((call) => mcpCallTarget(call.input)));
       const [target] = targets;

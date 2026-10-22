@@ -1,15 +1,18 @@
 import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
+  AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
+  AuthProvidersManageScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS } from "./rpc.ts";
+import { VaultMutation, vaultMutationNeedsOwner } from "./vault.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
@@ -20,6 +23,13 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   // Testing starts the server's command on the host, like saving it would.
   [WS_METHODS.mcpGatewayTest]: AuthSettingsWriteScope,
   [WS_METHODS.specsMutate]: AuthOrchestrationOperateScope,
+  // Sync writes into provider homes and settings on the host.
+  [WS_METHODS.syncApply]: AuthProvidersManageScope,
+  [WS_METHODS.syncSetParticipation]: AuthProvidersManageScope,
+  // Owner-only mutations are raised to access:write below.
+  [WS_METHODS.vaultMutate]: AuthSettingsWriteScope,
+  // Holding the vault key opens every secret, so handing it out is an owner decision.
+  [WS_METHODS.vaultWrapKeyFor]: AuthAccessWriteScope,
   [WS_METHODS.pullRequestsRunAction]: AuthSourceControlWriteScope,
   [WS_METHODS.pullRequestsUpdate]: AuthSourceControlWriteScope,
   [WS_METHODS.pullRequestsComment]: AuthSourceControlWriteScope,
@@ -57,6 +67,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
 export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
 
 const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
+const decodeVaultMutation = Schema.decodeUnknownSync(VaultMutation);
 const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
 
 export function clientRpcRequiredScopes(
@@ -72,6 +83,11 @@ export function clientRpcRequiredScopes(
       input.type === "thread.sidekick.set"
       ? [AuthOrchestrationOperateScope]
       : [];
+  }
+  if (method === WS_METHODS.vaultMutate && input !== undefined) {
+    return vaultMutationNeedsOwner(decodeVaultMutation(input))
+      ? [AuthAccessWriteScope]
+      : [AuthSettingsWriteScope];
   }
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);

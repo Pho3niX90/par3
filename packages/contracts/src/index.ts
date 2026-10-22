@@ -55,6 +55,8 @@ export * from "./review.ts";
 export * from "./mcpApps.ts";
 export * from "./mcpGateway.ts";
 export * from "./specs.ts";
+export * from "./sync.ts";
+export * from "./vault.ts";
 export * from "./browserImport.ts";
 export * from "./browserProfile.ts";
 export * from "./device.ts";

@@ -41,6 +41,11 @@ export const RPC_REQUIRED_SCOPES = {
   ...CLIENT_GUARDED_RPC_SCOPES,
   [WS_METHODS.specsQuery]: AuthOrchestrationReadScope,
   [WS_METHODS.specsSubscribe]: AuthOrchestrationReadScope,
+  // Item contents can be agent instructions or vault ciphertext; listing them is provider admin.
+  [WS_METHODS.syncSubscribe]: AuthProvidersManageScope,
+  [WS_METHODS.syncRead]: AuthProvidersManageScope,
+  [WS_METHODS.vaultList]: AuthSettingsWriteScope,
+  [WS_METHODS.vaultImportCandidates]: AuthSettingsWriteScope,
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
