@@ -113,7 +113,7 @@ Join modifiers and a key with `+`, such as `mod+shift+d` or `ctrl+l`.
 ## When conditions
 
 Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
-`previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
+`previewOpen`, `mergeViewFocus`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
 `turnRunning`, `editableFocus`, `isWeb`, and `isDesktop`.
 `editableFocus` is true while a text field, the composer, or another editor has
 the keyboard. `isWeb` is true in a browser tab. `isDesktop` is true in the
@@ -138,6 +138,15 @@ query searches the entire thread, including older messages. Thread search requir
 update an older server to enable it. Select **Retry** if a search fails. It defaults to
 `mod+f` outside terminals and previews. Press **Enter** or **Shift+Enter** to move between matches,
 and **Escape** to close find.
+
+## Resolving conflicts
+
+`merge.open` opens the Conflicts panel for the focused thread and has no default shortcut. In the
+three-pane merge view, `merge.nextConflict` (**F7**) and `merge.prevConflict` (**Shift+F7**) move
+between unresolved conflicts, and `merge.acceptOurs` and `merge.acceptTheirs` take a side for the
+conflict at the cursor. The last two have no default shortcut; assign them in
+**Settings → Keybindings**. Add `mergeViewFocus` to their `when` condition so they run only while the
+merge view has the keyboard; the defaults for F7 and Shift+F7 already do.
 
 ## Precedence
 

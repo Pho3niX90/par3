@@ -8,6 +8,7 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { useEnvironmentQuery } from "~/state/query";
 import { useProject, useQuietThreadShell } from "~/state/entities";
 import { vcsEnvironment } from "~/state/vcs";
@@ -29,13 +30,23 @@ export function useThreadConflictRepositories(threadRef: ScopedThreadRef | null)
   readonly repositories: ReadonlyArray<ConflictRepository>;
 } {
   const thread = useQuietThreadShell(threadRef);
-  const project = useProject(
-    thread ? { environmentId: thread.environmentId, projectId: thread.projectId } : null,
+  // A thread opened on a prepared checkout is a draft until its first message, and can already
+  // have a merge to resolve.
+  const draft = useComposerDraftStore((store) =>
+    threadRef === null ? null : store.getDraftThreadByRef(threadRef),
   );
-  const threadCwd = thread?.worktreePath ?? project?.workspaceRoot ?? null;
+  const project = useProject(
+    thread
+      ? { environmentId: thread.environmentId, projectId: thread.projectId }
+      : draft
+        ? { environmentId: draft.environmentId, projectId: draft.projectId }
+        : null,
+  );
+  const environmentId = thread?.environmentId ?? draft?.environmentId ?? null;
+  const threadCwd = (thread ?? draft)?.worktreePath ?? project?.workspaceRoot ?? null;
   const statusQuery = useEnvironmentQuery(
-    thread && threadCwd !== null
-      ? vcsEnvironment.status({ environmentId: thread.environmentId, input: { cwd: threadCwd } })
+    environmentId !== null && threadCwd !== null
+      ? vcsEnvironment.status({ environmentId, input: { cwd: threadCwd } })
       : null,
   );
   const threadCwdIsRepo = statusQuery.data?.isRepo;
@@ -47,10 +58,10 @@ export function useThreadConflictRepositories(threadRef: ScopedThreadRef | null)
         })
       : null,
   );
-  if (thread === null) return { environmentId: null, repositories: NO_REPOSITORIES };
+  if (environmentId === null) return { environmentId: null, repositories: NO_REPOSITORIES };
   if (threadCwdIsRepo === false) {
     return {
-      environmentId: thread.environmentId,
+      environmentId,
       repositories: (childrenQuery.data?.repositories ?? []).map((repository) => ({
         cwd: repository.cwd,
         label: repository.relativePath,
@@ -58,7 +69,7 @@ export function useThreadConflictRepositories(threadRef: ScopedThreadRef | null)
     };
   }
   return {
-    environmentId: thread.environmentId,
+    environmentId,
     repositories: threadCwd === null ? NO_REPOSITORIES : [{ cwd: threadCwd, label: null }],
   };
 }

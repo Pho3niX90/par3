@@ -76,7 +76,11 @@ import {
   type ShortcutMatchContext,
 } from "~/keybindings";
 import { primaryServerKeybindingsAtom } from "~/state/server";
-import { usePullRequestDefaultMergeMethodResolver } from "./usePullRequestActions";
+import {
+  usePullRequestDefaultMergeMethodResolver,
+  type PreparedPullRequestCheckout,
+} from "./usePullRequestActions";
+import { useUpdateFromBase } from "./useUpdateFromBase";
 import { OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST } from "./pullRequestCheckoutToast";
 import { changeRequestRepositoryUrl, gitHubPullRequestBrowserUrl } from "~/lib/openPullRequestLink";
 import { usePreparePullRequestThreadAction } from "~/lib/sourceControlActions";
@@ -1179,8 +1183,9 @@ export function PullRequestDetailPanel({
     kind: string,
     task: { prompt: string; reviewComments?: ReadonlyArray<ReviewCommentContext> } | null,
     mode: "worktree" | "local" = "worktree",
-  ) => {
-    if (!handoffSummary || handoff !== null) return;
+    options?: { readonly quiet?: boolean },
+  ): Promise<PreparedPullRequestCheckout | null> => {
+    if (!handoffSummary || handoff !== null) return null;
     if (attachTarget !== null && task !== null) {
       writeTaskToComposer(attachTarget, task);
       toastManager.add({
@@ -1188,20 +1193,20 @@ export function PullRequestDetailPanel({
         title: "Added to the composer",
         description: "The task is in the composer — read it over, then send.",
       });
-      return;
+      return null;
     }
-    if (checkoutRoot === null) return;
+    if (checkoutRoot === null) return null;
     if (
       !prepareThread.isAllowed ||
       !readEnvironmentScope(actingEnvironmentId, AuthSourceControlWriteScope)
     ) {
-      return;
+      return null;
     }
     if (
       mode === "worktree" &&
       !readEnvironmentScope(actingEnvironmentId, AuthOrchestrationOperateScope)
     ) {
-      return;
+      return null;
     }
     setHandoff(kind);
     const toastId = toastManager.add({
@@ -1226,7 +1231,7 @@ export function PullRequestDetailPanel({
         title: "Could not open a thread for the checkout",
         description: "Try again from the project, or open a thread first.",
       });
-      return;
+      return null;
     }
     const prepared = await prepareThread.run({
       reference: handoffSummary.url,
@@ -1242,17 +1247,17 @@ export function PullRequestDetailPanel({
           isAtomCommandInterrupted(prepared) ? undefined : squashAtomCommandFailure(prepared),
         ),
       });
-      return;
+      return null;
     }
     const pointed = await newThread(projectRef, {
       branch: prepared.value.branch,
       worktreePath: prepared.value.worktreePath,
       envMode: prepared.value.worktreePath === null ? "local" : "worktree",
     }).then(
-      (session) => session !== null,
-      () => false,
+      (session) => session,
+      () => null,
     );
-    if (!pointed) {
+    if (pointed === null) {
       setHandoff(null);
       // The checkout is on disk; only the thread failed to move onto it. Writing the task now
       // would send the agent at whatever the thread was already open on — which is the one
@@ -1262,10 +1267,20 @@ export function PullRequestDetailPanel({
         title: "Checked out, but the thread stayed where it was",
         description: `The checkout is ready on \`${prepared.value.branch}\`. Point a thread at it from the branch picker, then ask again.`,
       });
-      return;
+      return null;
     }
     setHandoff(null);
+    const checkout: PreparedPullRequestCheckout = {
+      threadRef: scopeThreadRef(actingEnvironmentId, pointed.threadId),
+      cwd: prepared.value.worktreePath ?? checkoutRoot,
+      branch: prepared.value.branch,
+      isOnPullRequestHead: prepared.value.isOnPullRequestHead,
+    };
     if (task === null) {
+      if (options?.quiet === true) {
+        toastManager.close(toastId);
+        return checkout;
+      }
       toastManager.update(
         toastId,
         prepared.value.isOnPullRequestHead
@@ -1279,7 +1294,7 @@ export function PullRequestDetailPanel({
             }
           : OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST,
       );
-      return;
+      return checkout;
     }
     await openThreadWithTask(projectRef, task, opened);
     toastManager.update(
@@ -1292,7 +1307,25 @@ export function PullRequestDetailPanel({
           }
         : OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST,
     );
+    return checkout;
   };
+
+  // The thread the panel sits beside, whether it has started or is still a draft.
+  const sideThreadRef =
+    attachTarget === null
+      ? null
+      : typeof attachTarget === "string"
+        ? (() => {
+            const draft = useComposerDraftStore.getState().getDraftSession(attachTarget);
+            return draft === null ? null : scopeThreadRef(draft.environmentId, draft.threadId);
+          })()
+        : attachTarget;
+  const updateFromBase = useUpdateFromBase({
+    environmentId: actingEnvironmentId,
+    detail: handoffSummary ?? null,
+    threadRef: sideThreadRef,
+    prepareCheckout: () => startHandoff("update-base", null, "worktree", { quiet: true }),
+  });
 
   const askAboutPullRequest = () => {
     if (!detail) return;
@@ -1600,7 +1633,38 @@ export function PullRequestDetailPanel({
       </Menu>
     ) : null;
 
-  const resolveConflictsControl = (
+  const updateFromBaseControl = updateFromBase.available ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="inline-flex shrink-0">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={
+                handoff !== null ||
+                updateFromBase.pending ||
+                (sideThreadRef === null && checkoutRoot === null)
+              }
+              onClick={() => void updateFromBase.run()}
+              aria-label={updateFromBase.pending ? "Updating..." : "Update from base locally"}
+            >
+              <PullRequestGlyph.merged aria-hidden className="size-3.5" />
+              <span className="@max-[30rem]/pr-header:hidden">
+                {updateFromBase.pending ? "Updating..." : "Update from base"}
+              </span>
+            </Button>
+          </span>
+        }
+      />
+      <TooltipPopup side="top">
+        Merge {handoffSummary?.baseBranch ?? "the base branch"} into this branch here, then resolve
+        any conflicts yourself
+      </TooltipPopup>
+    </Tooltip>
+  ) : null;
+
+  const resolveConflictsButton = (
     <Tooltip>
       <TooltipTrigger
         render={
@@ -1624,6 +1688,13 @@ export function PullRequestDetailPanel({
         {handoff === "conflicts" ? "Preparing..." : "Resolve conflicts"}
       </TooltipPopup>
     </Tooltip>
+  );
+
+  const resolveConflictsControl = (
+    <>
+      {updateFromBaseControl}
+      {resolveConflictsButton}
+    </>
   );
 
   if (detailQuery.isPending && !detail) {

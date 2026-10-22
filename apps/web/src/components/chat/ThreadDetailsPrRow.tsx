@@ -63,6 +63,8 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
+import { useThreadRouteRef } from "../../hooks/useThreadRouteTarget";
+import { useUpdateFromBase } from "../pullRequest/useUpdateFromBase";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   THREAD_DETAILS_PANEL_ICON_CLASS,
@@ -166,6 +168,12 @@ export function ThreadDetailsPrRow({
     },
   });
   const { handoff, startHandoff } = usePullRequestHandoffs({ environmentId, detail });
+  const updateFromBase = useUpdateFromBase({
+    environmentId,
+    detail,
+    threadRef: useThreadRouteRef(),
+    prepareCheckout: () => startHandoff("update-base", null, "worktree", { quiet: true }),
+  });
   const [confirmingMerge, setConfirmingMerge] = useState(false);
 
   const rowAction = resolveThreadPanelPullRequestAction(detail);
@@ -428,6 +436,28 @@ export function ThreadDetailsPrRow({
             ) : null}
             {watchControl("icon")}
             <span className="flex-1" />
+            {rowAction === "resolve" && updateFromBase.available ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <ThreadDetailsControl
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      part="meta"
+                      tone="primary"
+                      disabled={actionPending || handoff !== null || updateFromBase.pending}
+                      onClick={() => void updateFromBase.run()}
+                    />
+                  }
+                >
+                  {updateFromBase.pending ? "Updating..." : "Update"}
+                </TooltipTrigger>
+                <TooltipPopup side="top">
+                  Merge the base branch into this one here, then resolve any conflicts yourself
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
             {trailingAction ? (
               <Tooltip>
                 <TooltipTrigger

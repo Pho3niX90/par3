@@ -61,6 +61,8 @@ import {
   PreviewSnapshotToolkit,
   PreviewStandardToolkit,
 } from "./toolkits/preview/tools.ts";
+import * as ConflictsHandlers from "./toolkits/conflicts/handlers.ts";
+import { ConflictsToolkit } from "./toolkits/conflicts/tools.ts";
 import * as WorktreeHandlers from "./toolkits/worktree/handlers.ts";
 import { WorktreeToolkit } from "./toolkits/worktree/tools.ts";
 import * as WorktreeMcpService from "./WorktreeMcpService.ts";
@@ -1109,6 +1111,8 @@ const layerWorktreeToolkitRegistration = toolkitRegistration(
   WorktreeHandlers.layer,
 ).pipe(Layer.provide(WorktreeMcpService.layer));
 
+const layerConflictsRegistration = toolkitRegistration(ConflictsToolkit, ConflictsHandlers.layer);
+
 const layerPreviewControlsRegistration = toolkitRegistration(
   PreviewControlsToolkit,
   PreviewControlsHandlers.layer,
@@ -1169,6 +1173,7 @@ export const layer = Layer.mergeAll(
   layerEnvironmentToolkit,
   layerPreviewControlsRegistration,
   layerWorktreeToolkitRegistration,
+  layerConflictsRegistration,
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
