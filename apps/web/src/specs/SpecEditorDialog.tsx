@@ -14,13 +14,14 @@ import {
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import { defaultSpecContent } from "./specs.logic";
+import { seedSpecContent } from "./specs.logic";
 import {
   isValidSpecSlug,
   makeSpecRevision,
   parseSpecSlugOrNull,
   slugifySpecTitle,
   useRunSpecMutation,
+  useSpecsData,
 } from "./state";
 
 export type SpecEditorTarget =
@@ -42,34 +43,37 @@ export function SpecEditorDialog({
 }) {
   const runMutation = useRunSpecMutation();
   const editing = target.mode === "edit" ? target.spec : null;
+  // A new spec follows the checkout's layout, which the specs query reports.
+  const checkout = useSpecsData(
+    environmentId,
+    { projectId, limit: 1, includeTemplate: true },
+    editing === null,
+  ).data;
+  const layout = checkout?.layout ?? "par3";
   const [title, setTitle] = useState(editing?.title ?? "");
-  const [slug, setSlug] = useState(editing?.slug ?? "");
-  const [slugEdited, setSlugEdited] = useState(false);
-  const [content, setContent] = useState(editing?.content ?? defaultSpecContent(""));
-  const [contentEdited, setContentEdited] = useState(editing !== null);
+  // Until edited, the slug and content follow the title and the checkout's template.
+  const [typedSlug, setTypedSlug] = useState<string | null>(null);
+  const [typedContent, setTypedContent] = useState<string | null>(null);
   const [supersedes, setSupersedes] = useState(editing?.supersedes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const slug = typedSlug ?? slugifySpecTitle(title, layout);
+  const content = typedContent ?? editing?.content ?? seedSpecContent(title, checkout?.template);
   const effectiveSlug = editing ? editing.slug : slug;
-  const slugInvalid = editing === null && slug.length > 0 && !isValidSpecSlug(slug);
-  const supersedesSlug = supersedes.trim().length > 0 ? parseSpecSlugOrNull(supersedes) : null;
+  const slugInvalid = editing === null && slug.length > 0 && !isValidSpecSlug(slug, layout);
+  const supersedesSlug =
+    supersedes.trim().length > 0 ? parseSpecSlugOrNull(supersedes, layout) : null;
   const supersedesInvalid = supersedes.trim().length > 0 && supersedesSlug === null;
   const canSave =
     !saving &&
     title.trim().length > 0 &&
     content.trim().length > 0 &&
-    (editing !== null || isValidSpecSlug(slug)) &&
+    (editing !== null || isValidSpecSlug(slug, layout)) &&
     !supersedesInvalid;
 
-  const onTitleChange = (value: string) => {
-    setTitle(value);
-    if (editing === null && !slugEdited) setSlug(slugifySpecTitle(value));
-    if (editing === null && !contentEdited) setContent(defaultSpecContent(value));
-  };
-
   const save = async () => {
-    const parsedSlug = editing ? editing.slug : parseSpecSlugOrNull(slug);
+    const parsedSlug = editing ? editing.slug : parseSpecSlugOrNull(slug, layout);
     if (parsedSlug === null) return;
     setSaving(true);
     setError(null);
@@ -117,7 +121,7 @@ export function SpecEditorDialog({
               <Input
                 id="spec-title"
                 value={title}
-                onChange={(event) => onTitleChange(event.target.value)}
+                onChange={(event) => setTitle(event.target.value)}
                 placeholder="What are we building?"
                 autoFocus
               />
@@ -130,14 +134,13 @@ export function SpecEditorDialog({
                 value={effectiveSlug}
                 disabled={editing !== null}
                 aria-invalid={slugInvalid || undefined}
-                onChange={(event) => {
-                  setSlugEdited(true);
-                  setSlug(event.target.value);
-                }}
+                onChange={(event) => setTypedSlug(event.target.value)}
               />
               {slugInvalid ? (
                 <p className="text-xs text-destructive-foreground">
-                  Use lowercase letters, numbers and single hyphens, up to 80 characters.
+                  {layout === "base"
+                    ? "Use a name like PROJ-123_short-kebab, or lowercase letters, numbers and single hyphens, up to 80 characters."
+                    : "Use lowercase letters, numbers and single hyphens, up to 80 characters."}
                 </p>
               ) : null}
             </div>
@@ -146,10 +149,7 @@ export function SpecEditorDialog({
               <Textarea
                 id="spec-content"
                 value={content}
-                onChange={(event) => {
-                  setContentEdited(true);
-                  setContent(event.target.value);
-                }}
+                onChange={(event) => setTypedContent(event.target.value)}
               />
             </div>
             {editing === null ? (

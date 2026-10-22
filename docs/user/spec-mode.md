@@ -19,11 +19,21 @@ Pushing a branch or opening a pull request is optional.
 
 ## Things to know
 
-- **Changing approved requirements revokes approval.** If `spec.md` or `specs/constitution.md` changes after approval, linked agents are stopped and can't continue until someone approves again. Updating tasks or evidence does not affect approval.
+- **Changing approved requirements revokes approval.** If `spec.md` (or `specs/constitution.md`, in projects that have one) changes after approval, linked agents are stopped and can't continue until someone approves again. Updating tasks or evidence does not affect approval.
 - **Approval belongs to one checkout.** A spec copied into another worktree or onto another machine arrives unapproved and needs its own review there.
-- **Status files are owned by Par3.** `status.json`, `tasks.json` and `approval.json` are written by the server so they can be reviewed in git. Editing them by hand doesn't grant approval; the spec shows an error until you choose **Reopen**.
-- **Criterion IDs are permanent.** Retire a criterion by striking it through (`~~AC-3~~`) instead of deleting or renumbering it.
+- **Status files are owned by Par3** (except in [BASE projects](#base-projects)). `status.json`, `tasks.json` and `approval.json` are written by the server so they can be reviewed in git. Editing them by hand doesn't grant approval; the spec shows an error until you choose **Reopen**.
+- **Criterion IDs are permanent.** Retire a criterion by striking it through (`~~AC-3~~`) instead of deleting or renumbering it. A criterion can be a plain list item or a checkbox item (`- [ ] AC-3: …`); ticking the box does not retire it.
 - **Leaving Spec mode** on a thread is a deliberate action in the thread's spec banner. It is refused while the thread is running.
+
+## BASE projects
+
+If the project's root has a `.base` file, Par3 treats its specs as BASE specs. The choice is made when a spec is first created or found, and the spec keeps it.
+
+- **Folders.** Specs live in `specs/KEY-123_short-name/` (or `specs/2026-short-name/`) as well as the usual lowercase names.
+- **Template.** The sections a spec must have are the `##` headings in the project's `specs/_template.md`, and new specs start from that file. Extra sections never block review. Without a template, a spec only needs acceptance criteria. An unticked open question marked `[HIGH]` blocks review until it is resolved (ticked).
+- **BASE's own files stay untouched.** Par3 doesn't write or check `status.json`, `tasks.json` or `approval.json` in these specs, and there is no constitution. Status, tasks and approvals are tracked by Par3 itself, not in those files.
+- **BASE files.** Agents can write `prd.md`, `tech-analysis.md` and `status.json` next to `spec.md`, including while the requirements are still being drafted. Approval and task files are never written this way.
+- **Status in the frontmatter.** When Par3 changes a spec's status, it updates the `status:` line in the spec's frontmatter and leaves the rest of the line, including any comment, alone. Changing only that line, or the `updated:` line, is not a requirements change and doesn't revoke approval. If someone edits it to a status the spec can move to without a person's approval (for example, from draft to review once the spec is ready), Par3 follows. It never treats an edited `approved` as an approval.
 
 ## Provider support
 

@@ -87,7 +87,7 @@ export const SpecsToolkit = Toolkit.make(
   ),
   mutation(
     "spec_write_artifact",
-    "Implementation/Test role: write test-plan.md, decisions.md, or evidence/<name>.md|txt|json inside your bound spec directory.",
+    "Implementation/Test role: write test-plan.md, decisions.md, or evidence/<name>.md|txt|json inside your bound spec directory. In a BASE project any writing role can also write prd.md, tech-analysis.md and status.json.",
     { path: TrimmedNonEmptyString, content: Schema.String },
   ),
 );

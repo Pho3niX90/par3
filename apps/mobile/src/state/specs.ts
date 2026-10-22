@@ -57,6 +57,7 @@ export function useProjectSpecs(environmentId: EnvironmentId | null, projectId: 
   const view = useSpecs(environmentId, projectId === null ? null : { projectId });
   return {
     specs: view.data?.specs ?? [],
+    layout: view.data?.layout ?? "par3",
     isPending: view.isPending,
     error: view.error,
     refresh: view.refresh,

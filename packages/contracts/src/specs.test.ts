@@ -7,6 +7,7 @@ import {
   SpecSlug,
   SpecStatus,
   specRoleSupported,
+  specSlugAllowed,
 } from "./specs.ts";
 import { ServerSettings } from "./settings.ts";
 
@@ -21,6 +22,30 @@ describe("Spec contracts", () => {
     expect(() => decode("Upper-case")).toThrow();
     expect(() => decode("two--hyphens")).toThrow();
     expect(() => decode("a".repeat(81))).toThrow();
+  });
+
+  it("also accepts BASE folder names and keeps them out of the par3 layout", () => {
+    const decode = Schema.decodeUnknownSync(SpecSlug);
+    for (const slug of ["PROJ-123_short-kebab", "AB1-7_x", "2026-short-kebab"]) {
+      expect(decode(slug)).toBe(slug);
+    }
+    for (const slug of [
+      "proj-123_short-kebab",
+      "PROJ_123_short-kebab",
+      "P-123_short-kebab",
+      "PROJ-123_Short",
+      "PROJ-123_two--hyphens",
+      "PROJ-123",
+      "PROJ-123_",
+      `PROJ-1_${"a".repeat(80)}`,
+    ]) {
+      expect(() => decode(slug)).toThrow();
+    }
+
+    expect(specSlugAllowed("PROJ-123_short-kebab", "base")).toBe(true);
+    expect(specSlugAllowed("PROJ-123_short-kebab", "par3")).toBe(false);
+    expect(specSlugAllowed("2026-short-kebab", "par3")).toBe(true);
+    expect(specSlugAllowed("Upper-case", "base")).toBe(false);
   });
 
   it("constrains query pagination and exposes all lifecycle states", () => {

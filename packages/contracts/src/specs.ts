@@ -29,9 +29,28 @@ export const SpecRole = Schema.Literals([
 ]);
 export type SpecRole = typeof SpecRole.Type;
 
+/**
+ * `par3` owns the status, task and approval files beside `spec.md`. `base` follows the project's
+ * external BASE workflow and leaves those files alone. A spec keeps the layout it was created with.
+ */
+export const SpecLayout = Schema.Literals(["par3", "base"]);
+export type SpecLayout = typeof SpecLayout.Type;
+
+const PAR3_SPEC_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const BASE_SPEC_SLUG = /^[A-Z][A-Z0-9]+-\d+_[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SPEC_SLUG_MAX_LENGTH = 80;
+
+/** What the contract accepts is the union; each layout then enforces its own subset. */
+export function specSlugAllowed(slug: string, layout: SpecLayout): boolean {
+  return (
+    slug.length <= SPEC_SLUG_MAX_LENGTH &&
+    (PAR3_SPEC_SLUG.test(slug) || (layout === "base" && BASE_SPEC_SLUG.test(slug)))
+  );
+}
+
 export const SpecSlug = TrimmedNonEmptyString.check(
-  Schema.isMaxLength(80),
-  Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  Schema.isMaxLength(SPEC_SLUG_MAX_LENGTH),
+  Schema.isPattern(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*|[A-Z][A-Z0-9]+-\d+_[a-z0-9]+(?:-[a-z0-9]+)*)$/),
 );
 export type SpecSlug = typeof SpecSlug.Type;
 
@@ -121,6 +140,8 @@ export const SpecSummary = Schema.Struct({
   updatedAt: Schema.String,
   approvalValid: Schema.Boolean,
   error: Schema.optionalKey(Schema.String),
+  /** Absent on specs stored before layouts existed, which are `par3`. */
+  layout: Schema.optionalKey(SpecLayout),
 });
 export type SpecSummary = typeof SpecSummary.Type;
 
@@ -133,6 +154,7 @@ export const SpecDocument = Schema.Struct({
   updatedAt: Schema.String,
   approvalValid: Schema.Boolean,
   error: Schema.optionalKey(Schema.String),
+  layout: Schema.optionalKey(SpecLayout),
   version: Schema.Literal(1),
   content: Schema.String,
   tasks: Schema.Array(SpecTask),
@@ -158,6 +180,8 @@ export const SpecQueryInput = Schema.Struct({
   slug: Schema.optionalKey(SpecSlug),
   offset: Schema.optionalKey(NonNegativeInt),
   limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
+  /** Ask for the checkout's `specs/_template.md`; sent only when a client will seed a new spec. */
+  includeTemplate: Schema.optionalKey(Schema.Boolean),
 });
 export type SpecQueryInput = typeof SpecQueryInput.Type;
 
@@ -165,6 +189,10 @@ export const SpecQueryResult = Schema.Struct({
   specs: Schema.Array(SpecSummary),
   detail: Schema.optionalKey(SpecDocument),
   nextOffset: Schema.optionalKey(NonNegativeInt),
+  /** The layout a new spec gets in this checkout. */
+  layout: Schema.optionalKey(SpecLayout),
+  /** The checkout's `specs/_template.md`, present only for `base` and when the query asked for it. */
+  template: Schema.optionalKey(Schema.String),
 });
 export type SpecQueryResult = typeof SpecQueryResult.Type;
 

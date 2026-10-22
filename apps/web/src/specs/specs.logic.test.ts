@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   defaultSpecContent,
   resolveSpecActions,
+  seedSpecContent,
   specModeCreateDisabledReason,
   specPageLimit,
   specRoleRefusal,
@@ -89,6 +90,12 @@ describe("spec content and paging", () => {
       expect(content).toContain(`## ${heading}`);
     }
     expect(content).toContain("- AC-1:");
+  });
+
+  it("seeds a BASE checkout's template verbatim and Par3's sections otherwise", () => {
+    const template = "## Context\n\n## Acceptance criteria\n";
+    expect(seedSpecContent("Dark mode", template)).toBe(template);
+    expect(seedSpecContent("Dark mode", undefined)).toBe(defaultSpecContent("Dark mode"));
   });
 
   it("caps the page limit at the server maximum", () => {

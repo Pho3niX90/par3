@@ -147,6 +147,11 @@ export function specPageLimit(pages: number): number {
   return Math.min(200, Math.max(1, pages) * SPEC_PAGE_SIZE);
 }
 
+/** A BASE checkout supplies its own template; otherwise new specs start from Par3's sections. */
+export function seedSpecContent(title: string, template: string | undefined): string {
+  return template ?? defaultSpecContent(title);
+}
+
 export function defaultSpecContent(title: string): string {
   const heading = title.trim().length > 0 ? title.trim() : "Untitled spec";
   return [

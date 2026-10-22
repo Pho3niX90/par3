@@ -3,9 +3,11 @@ import {
   CommandId,
   NonNegativeInt,
   SpecSlug,
+  specSlugAllowed,
   type EnvironmentId,
   type ProjectId,
   type SpecDocument,
+  type SpecLayout,
   type SpecMutationInput,
   type SpecQueryInput,
   type SpecQueryResult,
@@ -188,9 +190,11 @@ export function useRunSpecMutation() {
   };
 }
 
-export function slugifySpecTitle(raw: string): string {
-  const normalized = raw
-    .trim()
+export function slugifySpecTitle(raw: string, layout: SpecLayout = "par3"): string {
+  // A BASE folder name such as KEY-123_short-kebab is already a slug; lowercasing it would break it.
+  const typed = raw.trim();
+  if (layout === "base" && specSlugAllowed(typed, "base")) return typed;
+  const normalized = typed
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -200,13 +204,13 @@ export function slugifySpecTitle(raw: string): string {
   return normalized;
 }
 
-export function isValidSpecSlug(slug: string): boolean {
-  return slug.length > 0 && slug.length <= 80 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+export function isValidSpecSlug(slug: string, layout: SpecLayout = "par3"): boolean {
+  return slug.length > 0 && specSlugAllowed(slug, layout);
 }
 
-export function parseSpecSlugOrNull(raw: string): SpecSlug | null {
-  const candidate = slugifySpecTitle(raw);
-  if (!isValidSpecSlug(candidate)) {
+export function parseSpecSlugOrNull(raw: string, layout: SpecLayout = "par3"): SpecSlug | null {
+  const candidate = slugifySpecTitle(raw, layout);
+  if (!isValidSpecSlug(candidate, layout)) {
     return null;
   }
   return SpecSlug.make(candidate);

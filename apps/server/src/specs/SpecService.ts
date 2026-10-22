@@ -8,7 +8,9 @@ import {
   ThreadId,
   type ProjectId,
   type RunId,
+  type SpecLayout,
   specRoleSupported,
+  specSlugAllowed,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -32,11 +34,20 @@ import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
+  readFrontmatterLifecycleStatus,
+  setFrontmatterStatus,
+  withoutFrontmatter,
+  withoutVolatileFrontmatter,
+} from "./specFrontmatter.ts";
+import {
   acceptanceCriteria,
+  baseReadiness,
   checkCriterionHistory,
   checkReady,
   checkTasks,
-  evidenceComplete,
+  lifecycleProblem,
+  PAR3_READINESS,
+  statusAdoptable,
   taskDefinitions,
   transitionAllowed,
 } from "./specValidation.ts";
@@ -73,6 +84,10 @@ const decodeDocument = Schema.decodeUnknownEffect(Schema.fromJsonString(SpecDocu
 const decodeFiles = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
 );
+// Specs stored before layouts existed carry no layout and are par3 specs.
+const layoutOf = (document: { readonly layout?: SpecLayout }): SpecLayout =>
+  document.layout ?? "par3";
+const BASE_ARTIFACTS = /^(?:prd\.md|tech-analysis\.md|status\.json)$/;
 const readonlyRoles = new Set<SpecRole>(["requirements", "researcher", "verifier"]);
 export const isReadOnlyRole = (role: SpecRole) => readonlyRoles.has(role);
 
@@ -201,16 +216,44 @@ const make = Effect.gen(function* () {
     }
     return absolute;
   });
-  const hashes = Effect.fn("SpecService.hashes")(function* (workspace: string, slug: string) {
+  // A new spec follows BASE when the checkout opted in with a `.base` file; the choice is then recorded.
+  const detectLayout = Effect.fn("SpecService.detectLayout")(function* (workspace: string) {
+    const exists = yield* fs
+      .exists(yield* safePath(workspace, ".base"))
+      .pipe(Effect.mapError(() => failure("io", "Could not inspect the checkout.")));
+    return exists ? ("base" as const) : ("par3" as const);
+  });
+  const readTemplate = Effect.fn("SpecService.readTemplate")(function* (workspace: string) {
+    return yield* readOptional(yield* safePath(workspace, "specs/_template.md"));
+  });
+  const readiness = Effect.fn("SpecService.readiness")(function* (
+    workspace: string,
+    layout: SpecLayout,
+    content: string,
+  ) {
+    if (layout === "par3") return checkReady(content, PAR3_READINESS);
+    return checkReady(content, baseReadiness(yield* readTemplate(workspace)));
+  });
+  // BASE agents rewrite the frontmatter status and updated lines themselves; neither is a requirements change.
+  const hashSpec = (layout: SpecLayout, content: string) =>
+    hash(layout === "base" ? withoutVolatileFrontmatter(content) : content);
+  const hashes = Effect.fn("SpecService.hashes")(function* (
+    workspace: string,
+    slug: string,
+    layout: SpecLayout,
+  ) {
     const contentPath = yield* safePath(workspace, `specs/${slug}/spec.md`);
-    const constitutionPath = yield* safePath(workspace, "specs/constitution.md");
     const content = yield* readOptional(contentPath);
     if (content === null)
       return yield* failure("not-found", "The spec requirements file is missing.");
-    const constitution = yield* readOptional(constitutionPath);
+    // BASE has no constitution.
+    const constitution =
+      layout === "base"
+        ? null
+        : yield* readOptional(yield* safePath(workspace, "specs/constitution.md"));
     return {
       content,
-      specHash: yield* hash(content),
+      specHash: yield* hashSpec(layout, content),
       constitutionHash: constitution === null ? null : yield* hash(constitution),
     };
   });
@@ -252,6 +295,9 @@ const make = Effect.gen(function* () {
   });
   const filesFor = (document: SpecDocument) => {
     const prefix = `specs/${document.slug}/`;
+    // BASE keeps its own status, task and approval records, so Par3 owns spec.md only. Phase 2 adds
+    // BASE's approval file here.
+    if (layoutOf(document) === "base") return { [`${prefix}spec.md`]: document.content };
     return {
       [`${prefix}spec.md`]: document.content,
       [`${prefix}status.json`]:
@@ -307,7 +353,8 @@ const make = Effect.gen(function* () {
     const row = (yield* readRow(workspace, slug))[0];
     if (!row) return yield* failure("not-found", "Spec not found.");
     let document = yield* parse(row.document_json);
-    const current = yield* hashes(workspace, slug);
+    const layout = layoutOf(document);
+    const current = yield* hashes(workspace, slug, layout);
     if (
       document.specHash !== current.specHash ||
       document.constitutionHash !== current.constitutionHash
@@ -322,16 +369,43 @@ const make = Effect.gen(function* () {
         approval: null,
         evidence: [],
         status: document.status === "draft" ? "draft" : "review",
-        findings: checkReady(current.content),
+        findings: yield* readiness(workspace, layout, current.content),
         ...(history ? { error: history } : {}),
       };
+      if (layout === "base")
+        document = {
+          ...document,
+          content: setFrontmatterStatus(document.content, document.status),
+        };
       const affected = yield* hydrateBindings(document);
       yield* save(projectId, document);
       yield* PubSub.publish(
         invalidated,
         affected.bindings.map((item) => item.threadId),
       );
+    } else if (layout === "base") {
+      // The requirements are unchanged, so only the frontmatter status may differ on disk.
+      document = { ...document, findings: yield* readiness(workspace, layout, current.content) };
+      const onDisk = readFrontmatterLifecycleStatus(current.content);
+      if (!document.error && onDisk !== undefined && statusAdoptable(document, onDisk)) {
+        document = {
+          ...document,
+          content: current.content,
+          status: onDisk,
+          revision: document.revision + 1,
+          updatedAt: DateTime.formatIso(yield* DateTime.now),
+          // Draft and review mean the requirements are being (re)reviewed, so they carry no approval.
+          ...(onDisk === "draft" || onDisk === "review"
+            ? { approvalValid: false, approval: null, evidence: [] }
+            : {}),
+        };
+        yield* save(projectId, document);
+      } else if (current.content !== document.content) {
+        document = { ...document, content: current.content };
+        yield* save(projectId, document);
+      }
     }
+    // A BASE spec has no owned metadata files beyond spec.md, so there is nothing else to compare.
     for (const [relative, expected] of Object.entries(filesFor(document)).filter(
       ([relative]) => !relative.endsWith("spec.md"),
     )) {
@@ -361,9 +435,8 @@ const make = Effect.gen(function* () {
     const names = yield* fs
       .readDirectory(directory)
       .pipe(Effect.mapError(() => failure("io", "Could not list specs.")));
-    for (const slug of names.filter(
-      (name) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) && name.length <= 80,
-    )) {
+    const layout = yield* detectLayout(workspace);
+    for (const slug of names.filter((name) => specSlugAllowed(name, layout))) {
       if ((yield* readRow(workspace, slug)).length) continue;
       const specPath = yield* safePath(workspace, `specs/${slug}/spec.md`);
       if (
@@ -372,11 +445,15 @@ const make = Effect.gen(function* () {
           .pipe(Effect.mapError(() => failure("io", "Could not inspect spec files."))))
       )
         continue;
-      const current = yield* hashes(workspace, slug);
+      const current = yield* hashes(workspace, slug, layout);
+      const heading = (
+        layout === "base" ? withoutFrontmatter(current.content) : current.content
+      ).match(/^#\s+(.+)$/m)?.[1];
       const document: SpecDocument = {
         version: 1,
         slug,
-        title: current.content.match(/^#\s+(.+)$/m)?.[1] ?? slug,
+        layout,
+        title: heading ?? slug,
         status: "draft",
         revision: 0,
         workspacePath: workspace,
@@ -386,10 +463,13 @@ const make = Effect.gen(function* () {
         tasks: [],
         evidence: [],
         approval: null,
-        findings: checkReady(current.content),
+        findings: yield* readiness(workspace, layout, current.content),
         taskHash: yield* hash("[]"),
         bindings: [],
-        error: "Imported spec has no trusted approval. Reopen to initialize its metadata.",
+        // BASE keeps its own records, so there is no Par3 metadata to initialize.
+        ...(layout === "base"
+          ? {}
+          : { error: "Imported spec has no trusted approval. Reopen to initialize its metadata." }),
       };
       yield* db(
         sql`INSERT OR IGNORE INTO spec_documents (project_id, workspace_path, slug, document_json) VALUES (${projectId}, ${workspace}, ${slug}, ${json(document)})`,
@@ -436,9 +516,16 @@ const make = Effect.gen(function* () {
         const currentBinding = input.threadId ? yield* binding(input.threadId) : undefined;
         const selected = input.slug ?? currentBinding?.slug;
         const detail = selected ? yield* refresh(input.projectId, workspace, selected) : undefined;
+        const layout = yield* detectLayout(workspace);
+        const template =
+          layout === "base" && input.includeTemplate === true
+            ? yield* readTemplate(workspace)
+            : null;
         return {
           specs: summaries,
           ...(detail ? { detail } : {}),
+          layout,
+          ...(template === null ? {} : { template }),
           ...(rows.length > (input.limit ?? 50)
             ? { nextOffset: (input.offset ?? 0) + (input.limit ?? 50) }
             : {}),
@@ -500,7 +587,19 @@ const make = Effect.gen(function* () {
         }
         const existing = (yield* readRow(workspace, input.slug))[0];
         let document: SpecDocument;
+        let statusBefore: SpecDocument["status"] | undefined;
         if (input.action === "create") {
+          const layout = yield* detectLayout(workspace);
+          if (
+            !specSlugAllowed(input.slug, layout) ||
+            (input.supersedes !== undefined && !specSlugAllowed(input.supersedes, layout))
+          )
+            return yield* failure(
+              "invalid",
+              layout === "base"
+                ? "Use a folder name like PROJ-123_short-kebab, or lowercase words separated by single hyphens."
+                : "Use lowercase letters, numbers and single hyphens, up to 80 characters.",
+            );
           if (
             existing ||
             (yield* fs
@@ -518,12 +617,14 @@ const make = Effect.gen(function* () {
             return yield* failure("disabled", "Enable Spec mode in project Settings first.");
           if (input.expectedRevision !== 0)
             return yield* failure("conflict", "New specs start at revision zero.");
-          const constitution = yield* readOptional(
-            yield* safePath(workspace, "specs/constitution.md"),
-          );
+          const constitution =
+            layout === "base"
+              ? null
+              : yield* readOptional(yield* safePath(workspace, "specs/constitution.md"));
           document = {
             version: 1,
             slug: input.slug,
+            layout,
             title: input.title,
             status: "draft",
             revision: 1,
@@ -531,13 +632,13 @@ const make = Effect.gen(function* () {
             updatedAt: DateTime.formatIso(yield* DateTime.now),
             approvalValid: false,
             content: input.content,
-            specHash: yield* hash(input.content),
+            specHash: yield* hashSpec(layout, input.content),
             constitutionHash: constitution === null ? null : yield* hash(constitution),
             taskHash: yield* hash("[]"),
             tasks: [],
             evidence: [],
             approval: null,
-            findings: checkReady(input.content),
+            findings: yield* readiness(workspace, layout, input.content),
             bindings: [],
             ...(input.supersedes ? { supersedes: input.supersedes } : {}),
           };
@@ -547,6 +648,7 @@ const make = Effect.gen(function* () {
             input.action === "reopen"
               ? yield* parse(existing.document_json)
               : yield* refresh(input.projectId, workspace, input.slug);
+          statusBefore = document.status;
           if (document.revision !== input.expectedRevision)
             return yield* failure("conflict", "This spec changed. Reload before trying again.");
           if (
@@ -575,13 +677,19 @@ const make = Effect.gen(function* () {
                 );
               const invalid = checkCriterionHistory(document.content, input.content);
               if (invalid) return yield* failure("invalid", invalid);
-              const changed = input.content !== document.content;
+              const layout = layoutOf(document);
+              const specHash = yield* hashSpec(layout, input.content);
+              // For BASE a status or updated edit alone is not a requirements change.
+              const changed =
+                layout === "base"
+                  ? specHash !== document.specHash
+                  : input.content !== document.content;
               document = {
                 ...withoutError(document),
                 content: input.content,
                 title: input.title ?? document.title,
-                specHash: yield* hash(input.content),
-                findings: checkReady(input.content),
+                specHash,
+                findings: yield* readiness(workspace, layout, input.content),
                 ...(changed
                   ? {
                       approvalValid: false,
@@ -648,14 +756,15 @@ const make = Effect.gen(function* () {
               };
               break;
             case "reopen": {
-              const current = yield* hashes(workspace, input.slug);
+              const layout = layoutOf(document);
+              const current = yield* hashes(workspace, input.slug, layout);
               const unchanged =
                 current.specHash === document.specHash &&
                 current.constitutionHash === document.constitutionHash;
               document = {
                 ...withoutError(document),
                 ...current,
-                findings: checkReady(current.content),
+                findings: yield* readiness(workspace, layout, current.content),
                 status:
                   unchanged && document.approvalValid && document.approval
                     ? "in-progress"
@@ -675,20 +784,8 @@ const make = Effect.gen(function* () {
                   "approval-required",
                   "Approve the current requirements before implementation.",
                 );
-              if (["in-progress", "implemented", "done"].includes(input.status)) {
-                const problem = checkTasks(document.content, document.tasks);
-                if (problem) return yield* failure("invalid", problem);
-              }
-              if (
-                ["implemented", "done"].includes(input.status) &&
-                document.tasks.some((task) => task.status !== "passed")
-              )
-                return yield* failure("invalid", "Every task must pass its verification first.");
-              if (input.status === "done" && !evidenceComplete(document))
-                return yield* failure(
-                  "invalid",
-                  "Every active criterion needs current passing evidence, with human confirmation for manual checks.",
-                );
+              const problem = lifecycleProblem(document, input.status);
+              if (problem) return yield* failure("invalid", problem);
               document = { ...document, status: input.status };
               break;
             }
@@ -806,7 +903,15 @@ const make = Effect.gen(function* () {
                 return yield* failure("conflict", "Stop the thread before leaving Spec mode.");
               yield* db(sql`DELETE FROM spec_bindings WHERE thread_id = ${input.threadId}`);
               break;
-            case "artifact":
+            case "artifact": {
+              // BASE's requirements phase writes these beside spec.md before anyone approves, and a
+              // read-only requirements agent has no other way to write files. approval.json and
+              // tasks.json are deliberately absent: approval is human-only and tasks have their own tool.
+              if (layoutOf(document) === "base" && BASE_ARTIFACTS.test(input.path)) {
+                if (callerRole === "researcher" || callerRole === "verifier")
+                  return yield* failure("forbidden", "This role cannot write BASE files.");
+                break;
+              }
               if (
                 callerRole !== "human" &&
                 callerRole !== "implementation" &&
@@ -828,11 +933,26 @@ const make = Effect.gen(function* () {
               )
                 return yield* failure(
                   "invalid",
-                  "Choose test-plan.md, decisions.md, or an evidence file.",
+                  layoutOf(document) === "base"
+                    ? "Choose test-plan.md, decisions.md, prd.md, tech-analysis.md, status.json, or an evidence file."
+                    : "Choose test-plan.md, decisions.md, or an evidence file.",
                 );
               break;
+            }
           }
         }
+        // BASE readers see the lifecycle in the spec's frontmatter. An update always restores it, so
+        // requirements text cannot smuggle in a status.
+        if (
+          layoutOf(document) === "base" &&
+          (statusBefore === undefined ||
+            document.status !== statusBefore ||
+            input.action === "update")
+        )
+          document = {
+            ...document,
+            content: setFrontmatterStatus(document.content, document.status),
+          };
         document = yield* hydrateBindings(document);
         const files = {
           ...filesFor(document),

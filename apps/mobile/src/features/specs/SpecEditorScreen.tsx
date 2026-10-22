@@ -2,13 +2,13 @@ import React, { useState, useEffect } from "react";
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { specSlugAllowed, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
 
 import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { SelectableMarkdownText } from "../../native/SelectableMarkdownText";
 import { useMarkdownPreviewStyles } from "../files/FileMarkdownPreview";
-import { useSpecDetail, useSpecMutations } from "../../state/specs";
+import { useProjectSpecs, useSpecDetail, useSpecMutations } from "../../state/specs";
 
 export interface SpecEditorScreenProps {
   readonly environmentId: EnvironmentId;
@@ -17,10 +17,12 @@ export interface SpecEditorScreenProps {
   readonly mode: "create" | "edit";
 }
 
-function slugify(text: string): string {
-  return text
+function slugify(text: string, layout: "par3" | "base"): string {
+  // A BASE folder name such as KEY-123_short-kebab is already a slug; lowercasing it would break it.
+  const typed = text.trim();
+  if (layout === "base" && specSlugAllowed(typed, "base")) return typed;
+  return typed
     .toLowerCase()
-    .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
@@ -39,6 +41,7 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
     props.slug ?? null,
   );
   const { runMutation } = useSpecMutations(props.environmentId, props.projectId);
+  const { layout } = useProjectSpecs(props.environmentId, props.projectId);
 
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -60,8 +63,8 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle);
-    if (!isEditing && (!slug || slug === slugify(title))) {
-      setSlug(slugify(newTitle));
+    if (!isEditing && (!slug || slug === slugify(title, layout))) {
+      setSlug(slugify(newTitle, layout));
     }
   };
 

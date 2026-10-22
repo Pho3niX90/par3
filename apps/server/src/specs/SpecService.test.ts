@@ -48,6 +48,51 @@ None.
 Keep the setting project scoped.
 `;
 
+const STATUS_COMMENT = "# draft | review | approved | in-progress | blocked | implemented | done";
+const baseTemplate = `---
+id: <slug>
+status: draft            ${STATUS_COMMENT}
+---
+# <Title>
+
+## Context
+
+## Acceptance criteria
+
+## Open questions
+
+## Assumptions
+`;
+const baseSlug = "PROJ-123_short-kebab";
+const baseSpec = (status = "draft", extra = "") => `---
+id: ${baseSlug}
+status: ${status}            ${STATUS_COMMENT}
+updated: 2026-10-20
+epic:
+  status: done
+---
+# Example
+
+## Context
+Save and restore a setting. See [notes](https://example.test/notes).
+
+### Detail
+Sub-heading content stays inside Context.
+
+## Acceptance criteria
+- [ ] AC-1: The setting is saved.
+- [x] AC-2: The setting is restored.
+
+## Open questions
+- [ ] Q1 [MEDIUM] Which store holds it?
+- [x] Q2 [HIGH] Is a migration needed?
+
+## Assumptions
+- [x] The store exists.
+${extra}`;
+const withStatus = (spec: string, status: string) =>
+  spec.replace(/^status: \S+/m, `status: ${status}`);
+
 const threads = new Map<
   string,
   { projectId: ProjectId; workspacePath: string; activeRunId: string | null }
@@ -187,6 +232,19 @@ const scopedWorkspace = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   return yield* fs.makeTempDirectoryScoped({ prefix: "t3-spec-service-" });
 });
+
+const baseWorkspace = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const workspaceRoot = yield* scopedWorkspace;
+  yield* fs.writeFileString(`${workspaceRoot}/.base`, "");
+  yield* fs.makeDirectory(`${workspaceRoot}/specs/${baseSlug}`, { recursive: true });
+  yield* fs.writeFileString(`${workspaceRoot}/specs/_template.md`, baseTemplate);
+  yield* fs.writeFileString(`${workspaceRoot}/specs/constitution.md`, "# Unused constitution\n");
+  yield* fs.writeFileString(`${workspaceRoot}/specs/${baseSlug}/spec.md`, baseSpec());
+  return workspaceRoot;
+});
+
+const ownedFiles = ["status.json", "tasks.json", "approval.json"];
 
 it.layer(layerTest)("SpecService", (it) => {
   it.effect("creates, reviews, and approves a spec with a human decision", () =>
@@ -600,6 +658,475 @@ it.layer(layerTest)("SpecService", (it) => {
       assert.isNull(imported.detail?.approval);
       assert.match(imported.detail?.error ?? "", /no trusted approval/i);
       assert.equal(approved.status, "approved");
+    }),
+  );
+  it.effect("discovers a BASE spec without writing or checking Par3 metadata files", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:base-discover");
+      yield* createProject(projectId, workspaceRoot);
+      yield* fs.makeDirectory(`${workspaceRoot}/specs/Bad_Name`, { recursive: true });
+      yield* fs.writeFileString(`${workspaceRoot}/specs/Bad_Name/spec.md`, baseSpec());
+
+      const listed = yield* service.query({ projectId });
+      assert.deepEqual(
+        listed.specs.map((spec) => spec.slug),
+        [baseSlug],
+      );
+      assert.equal(listed.layout, "base");
+      assert.isUndefined(listed.template);
+      assert.equal(
+        (yield* service.query({ projectId, includeTemplate: true })).template,
+        baseTemplate,
+      );
+      assert.equal(listed.specs[0]?.layout, "base");
+
+      const detail = (yield* service.query({ projectId, slug: baseSlug })).detail;
+      assert.equal(detail?.layout, "base");
+      assert.equal(detail?.title, "Example");
+      assert.equal(detail?.status, "draft");
+      assert.isUndefined(detail?.error);
+      assert.deepEqual(detail?.findings, []);
+      assert.isNull(detail?.constitutionHash);
+      assert.isFalse(detail?.approvalValid);
+
+      for (const name of ownedFiles) {
+        assert.isFalse(yield* fs.exists(`${workspaceRoot}/specs/${baseSlug}/${name}`));
+      }
+      assert.equal(
+        yield* fs.readFileString(`${workspaceRoot}/specs/${baseSlug}/spec.md`),
+        baseSpec(),
+      );
+    }),
+  );
+
+  it.effect("reports readiness against the BASE template and ignores sections it lacks", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:base-readiness");
+      yield* createProject(projectId, workspaceRoot);
+
+      const slug = "PROJ-124_missing-section";
+      const created = yield* service.mutate(
+        createSpec(
+          projectId,
+          slug,
+          "command:base-readiness:create",
+          baseSpec().replace(
+            "## Assumptions\n- [x] The store exists.\n",
+            "## Epic checklist\n- [ ] Extra.\n",
+          ),
+        ),
+        human,
+      );
+      assert.deepEqual(
+        created.findings.map((finding) => finding.message),
+        ["Add the Assumptions section."],
+      );
+      const ready = yield* service.mutate(
+        mutation("update", projectId, slug, "command:base-readiness:fix", created.revision, {
+          content: baseSpec("draft", "\n## Epic checklist\n### Epic follow-ups\n- [ ] Extra.\n"),
+        }),
+        human,
+      );
+      assert.deepEqual(ready.findings, []);
+      assert.isFalse(yield* fs.exists(`${workspaceRoot}/specs/${slug}/status.json`));
+    }),
+  );
+
+  it.effect("keeps the frontmatter status in sync without revoking approval", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:base-sync");
+      const threadId = ThreadId.make("thread:base-sync");
+      yield* createProject(projectId, workspaceRoot);
+      threads.set(threadId, { projectId, workspacePath: workspaceRoot, activeRunId: null });
+      const specFile = `${workspaceRoot}/specs/${baseSlug}/spec.md`;
+      const query = () => service.query({ projectId, slug: baseSlug });
+
+      const discovered = (yield* query()).detail!;
+      const review = yield* service.mutate(
+        mutation(
+          "request-review",
+          projectId,
+          baseSlug,
+          "command:base-sync:review",
+          discovered.revision,
+        ),
+        human,
+      );
+      assert.equal(review.status, "review");
+      assert.equal(yield* fs.readFileString(specFile), baseSpec("review"));
+      assert.equal(review.specHash, discovered.specHash);
+
+      const approved = yield* service.mutate(
+        mutation("approve", projectId, baseSlug, "command:base-sync:approve", review.revision),
+        human,
+      );
+      assert.equal(approved.status, "approved");
+      assert.equal(approved.specHash, discovered.specHash);
+      assert.equal(yield* fs.readFileString(specFile), baseSpec("approved"));
+      const reread = (yield* query()).detail!;
+      assert.isTrue(reread.approvalValid);
+      assert.isUndefined(reread.error);
+      assert.equal(reread.revision, approved.revision);
+
+      const bound = yield* bind(
+        service,
+        projectId,
+        threadId,
+        baseSlug,
+        "implementation",
+        approved.revision,
+        "base-sync",
+      );
+      const agent = { kind: "agent" as const, threadId };
+      const tasks = [
+        {
+          id: "save",
+          title: "Save",
+          acs: ["AC-1", "AC-2"],
+          dependsOn: [],
+          verify: "Run checks",
+          status: "pending" as const,
+        },
+      ];
+      const planned = yield* service.mutate(
+        mutation("tasks", projectId, baseSlug, "command:base-sync:tasks", bound.revision, {
+          threadId,
+          tasks,
+        }),
+        agent,
+      );
+      const started = yield* service.mutate(
+        mutation("transition", projectId, baseSlug, "command:base-sync:start", planned.revision, {
+          threadId,
+          status: "in-progress",
+        }),
+        agent,
+      );
+      assert.equal(started.status, "in-progress");
+      assert.isTrue(started.approvalValid);
+      assert.equal(yield* fs.readFileString(specFile), baseSpec("in-progress"));
+
+      const rewritten = yield* service.mutate(
+        mutation("update", projectId, baseSlug, "command:base-sync:rewrite", started.revision, {
+          threadId: undefined,
+          content: withStatus(baseSpec("in-progress"), "done"),
+        }),
+        human,
+      );
+      assert.equal(rewritten.status, "in-progress");
+      assert.isTrue(rewritten.approvalValid);
+      assert.equal(yield* fs.readFileString(specFile), baseSpec("in-progress"));
+      for (const name of ownedFiles) {
+        assert.isFalse(yield* fs.exists(`${workspaceRoot}/specs/${baseSlug}/${name}`));
+      }
+    }),
+  );
+
+  it.effect("adopts only safe frontmatter status edits and never a requirements change", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:base-adopt");
+      yield* createProject(projectId, workspaceRoot);
+      const specFile = `${workspaceRoot}/specs/${baseSlug}/spec.md`;
+      const query = () =>
+        service.query({ projectId, slug: baseSlug }).pipe(Effect.map((result) => result.detail!));
+
+      const discovered = yield* query();
+      yield* fs.writeFileString(specFile, baseSpec("bogus"));
+      const ignored = yield* query();
+      assert.equal(ignored.status, "draft");
+      assert.equal(ignored.revision, discovered.revision);
+      assert.isUndefined(ignored.error);
+
+      yield* fs.writeFileString(specFile, baseSpec("approved"));
+      assert.equal((yield* query()).status, "draft");
+      yield* fs.writeFileString(specFile, baseSpec("done"));
+      assert.equal((yield* query()).status, "draft");
+
+      yield* fs.writeFileString(specFile, baseSpec("review"));
+      const review = yield* query();
+      assert.equal(review.status, "review");
+      assert.equal(review.revision, discovered.revision + 1);
+      assert.equal(review.specHash, discovered.specHash);
+      assert.isUndefined(review.error);
+
+      yield* fs.writeFileString(specFile, baseSpec("approved"));
+      assert.equal((yield* query()).status, "review");
+
+      const approved = yield* service.mutate(
+        mutation("approve", projectId, baseSlug, "command:base-adopt:approve", review.revision),
+        human,
+      );
+      yield* fs.writeFileString(specFile, baseSpec("draft"));
+      const stillApproved = yield* query();
+      assert.equal(stillApproved.status, "approved");
+      assert.isTrue(stillApproved.approvalValid);
+      assert.equal(stillApproved.revision, approved.revision);
+
+      yield* fs.writeFileString(
+        specFile,
+        baseSpec("approved").replace("The setting is saved.", "The setting is saved twice."),
+      );
+      const changed = yield* query();
+      assert.equal(changed.status, "review");
+      assert.isFalse(changed.approvalValid);
+      assert.isNull(changed.approval);
+      assert.equal(
+        yield* fs.readFileString(specFile),
+        baseSpec("review").replace("The setting is saved.", "The setting is saved twice."),
+      );
+    }),
+  );
+
+  it.effect("keeps approval when BASE tooling edits only the status and updated lines", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:base-volatile");
+      yield* createProject(projectId, workspaceRoot);
+      const specFile = `${workspaceRoot}/specs/${baseSlug}/spec.md`;
+      const query = () =>
+        service.query({ projectId, slug: baseSlug }).pipe(Effect.map((result) => result.detail!));
+      const touchUpdated = (spec: string) =>
+        spec.replace("updated: 2026-10-20", "updated: 2026-10-22T16:00:00+02:00");
+
+      const discovered = yield* query();
+      const review = yield* service.mutate(
+        mutation(
+          "request-review",
+          projectId,
+          baseSlug,
+          "command:base-volatile:review",
+          discovered.revision,
+        ),
+        human,
+      );
+      const approved = yield* service.mutate(
+        mutation("approve", projectId, baseSlug, "command:base-volatile:approve", review.revision),
+        human,
+      );
+      const onDisk = yield* fs.readFileString(specFile);
+
+      yield* fs.writeFileString(specFile, touchUpdated(onDisk));
+      const bumped = yield* query();
+      assert.isTrue(bumped.approvalValid);
+      assert.equal(bumped.status, "approved");
+      assert.equal(bumped.revision, approved.revision);
+      assert.equal(bumped.specHash, approved.specHash);
+      assert.isUndefined(bumped.error);
+
+      yield* fs.writeFileString(specFile, touchUpdated(withStatus(onDisk, "draft")));
+      const both = yield* query();
+      assert.isTrue(both.approvalValid);
+      assert.equal(both.status, "approved");
+      assert.equal(both.revision, approved.revision);
+
+      yield* fs.writeFileString(specFile, onDisk.replace("id: ", "title: Renamed\nid: "));
+      const retitled = yield* query();
+      assert.isFalse(retitled.approvalValid);
+      assert.isNull(retitled.approval);
+      assert.equal(retitled.status, "review");
+      assert.notEqual(retitled.specHash, approved.specHash);
+    }),
+  );
+
+  it.effect("lets BASE agents write BASE files through artifacts, never approval or tasks", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* baseWorkspace;
+      const projectId = ProjectId.make("project:base-artifacts");
+      const threadId = ThreadId.make("thread:base-artifacts");
+      yield* createProject(projectId, workspaceRoot);
+      threads.set(threadId, { projectId, workspacePath: workspaceRoot, activeRunId: null });
+      const folder = `${workspaceRoot}/specs/${baseSlug}`;
+      const agent = { kind: "agent" as const, threadId };
+      const write = (path: string, revision: number, suffix: string, body = `${path} body`) =>
+        service.mutate(
+          mutation("artifact", projectId, baseSlug, `command:base-artifacts:${suffix}`, revision, {
+            threadId,
+            path,
+            content: body,
+          }),
+          agent,
+        );
+
+      const discovered = (yield* service.query({ projectId, slug: baseSlug })).detail!;
+      let revision = (yield* bind(
+        service,
+        projectId,
+        threadId,
+        baseSlug,
+        "requirements",
+        discovered.revision,
+        "base-artifacts",
+      )).revision;
+      for (const path of ["prd.md", "tech-analysis.md", "status.json"]) {
+        revision = (yield* write(path, revision, path)).revision;
+        assert.equal(yield* fs.readFileString(`${folder}/${path}`), `${path} body`);
+      }
+      const unapproved = yield* Effect.flip(write("test-plan.md", revision, "plan-early"));
+      assert.equal(unapproved.reason, "forbidden");
+
+      const review = yield* service.mutate(
+        mutation("request-review", projectId, baseSlug, "command:base-artifacts:review", revision, {
+          threadId,
+        }),
+        agent,
+      );
+      const approved = yield* service.mutate(
+        mutation("approve", projectId, baseSlug, "command:base-artifacts:approve", review.revision),
+        human,
+      );
+      revision = (yield* bind(
+        service,
+        projectId,
+        threadId,
+        baseSlug,
+        "implementation",
+        approved.revision,
+        "base-artifacts-impl",
+      )).revision;
+      for (const path of ["approval.json", "tasks.json", "notes.md", "../escape.md"]) {
+        const refused = yield* Effect.flip(write(path, revision, `refuse:${path}`));
+        assert.equal(refused.reason, "invalid");
+        assert.isFalse(yield* fs.exists(`${folder}/${path}`));
+      }
+      revision = (yield* write("decisions.md", revision, "decisions")).revision;
+      assert.isTrue(yield* fs.exists(`${folder}/decisions.md`));
+      assert.isTrue((yield* service.query({ projectId, slug: baseSlug })).detail!.approvalValid);
+    }),
+  );
+
+  it.effect("keeps the Par3 artifact allow-list free of BASE files", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* scopedWorkspace;
+      const projectId = ProjectId.make("project:par3-artifacts");
+      const threadId = ThreadId.make("thread:par3-artifacts");
+      yield* createProject(projectId, workspaceRoot);
+      threads.set(threadId, { projectId, workspacePath: workspaceRoot, activeRunId: null });
+      const agent = { kind: "agent" as const, threadId };
+
+      const created = yield* service.mutate(
+        createSpec(projectId, "par3-artifacts", "command:par3-artifacts:create"),
+        human,
+      );
+      const approved = yield* reviewAndApprove(
+        service,
+        projectId,
+        created.slug,
+        created.revision,
+        "par3-artifacts",
+      );
+      let revision = (yield* bind(
+        service,
+        projectId,
+        threadId,
+        created.slug,
+        "implementation",
+        approved.revision,
+        "par3-artifacts",
+      )).revision;
+      for (const path of [
+        "prd.md",
+        "tech-analysis.md",
+        "status.json",
+        "approval.json",
+        "tasks.json",
+      ]) {
+        const refused = yield* Effect.flip(
+          service.mutate(
+            mutation(
+              "artifact",
+              projectId,
+              created.slug,
+              `command:par3-artifacts:${path}`,
+              revision,
+              {
+                threadId,
+                path,
+                content: "{}",
+              },
+            ),
+            agent,
+          ),
+        );
+        assert.equal(refused.reason, "invalid");
+        assert.include(refused.message, "Choose test-plan.md, decisions.md, or an evidence file.");
+      }
+      const written = yield* service.mutate(
+        mutation("artifact", projectId, created.slug, "command:par3-artifacts:plan", revision, {
+          threadId,
+          path: "test-plan.md",
+          content: "Plan.",
+        }),
+        agent,
+      );
+      revision = written.revision;
+      assert.equal(
+        yield* fs.readFileString(`${workspaceRoot}/specs/${created.slug}/test-plan.md`),
+        "Plan.",
+      );
+    }),
+  );
+
+  it.effect("accepts BASE folder names only in a BASE checkout", () =>
+    Effect.gen(function* () {
+      const service = yield* SpecService.SpecService;
+      const fs = yield* FileSystem.FileSystem;
+      const baseRoot = yield* baseWorkspace;
+      const par3Root = yield* scopedWorkspace;
+      const baseProject = ProjectId.make("project:base-slugs");
+      const par3Project = ProjectId.make("project:base-slugs-par3");
+      yield* createProject(baseProject, baseRoot);
+      yield* createProject(par3Project, par3Root);
+
+      const par3Attempt = yield* Effect.flip(
+        service.mutate(createSpec(par3Project, baseSlug, "command:slugs:par3"), human),
+      );
+      assert.equal(par3Attempt.reason, "invalid");
+      assert.equal((yield* service.query({ projectId: par3Project })).layout, "par3");
+      assert.isUndefined(
+        (yield* service.query({ projectId: par3Project, includeTemplate: true })).template,
+      );
+
+      const dated = yield* service.mutate(
+        createSpec(baseProject, "2026-short-kebab", "command:slugs:dated", baseSpec()),
+        human,
+      );
+      assert.equal(dated.layout, "base");
+      const keyed = yield* service.mutate(
+        createSpec(
+          baseProject,
+          "PROJ-125_new-thing",
+          "command:slugs:keyed",
+          "# No frontmatter\n\n- [ ] AC-1: Works.\n",
+        ),
+        human,
+      );
+      assert.equal(keyed.layout, "base");
+      assert.equal(
+        yield* fs.readFileString(`${baseRoot}/specs/PROJ-125_new-thing/spec.md`),
+        "# No frontmatter\n\n- [ ] AC-1: Works.\n",
+      );
+      const wrongCase = yield* Effect.flip(
+        service.mutate(createSpec(baseProject, "Proj-125_new-thing", "command:slugs:case"), human),
+      );
+      assert.equal(wrongCase.reason, "invalid");
     }),
   );
 });
