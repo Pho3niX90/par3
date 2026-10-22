@@ -74,6 +74,17 @@ describe("copilotModelsFromSessionSetup", () => {
     expect(models.map((model) => model.slug)).toEqual(["from-option"]);
   });
 
+  it("falls back to session model state when the model option has no choices", () => {
+    const models = copilotModelsFromSessionSetup({
+      ...modelOption([]),
+      models: {
+        currentModelId: "from-state",
+        availableModels: [{ modelId: "from-state", name: "From state" }],
+      },
+    });
+    expect(models.map((model) => model.slug)).toEqual(["from-state"]);
+  });
+
   it("never lists the product default sentinel, blanks, or duplicates", () => {
     const models = copilotModelsFromSessionSetup(
       modelOption([
