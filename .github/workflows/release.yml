@@ -1004,6 +1004,20 @@ jobs:
     secrets:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
 
+  # Stable only: a 40 minute build on every nightly would hold the nightly queue.
+  # Nothing waits on it, so a Play failure leaves the release published; retry it
+  # from the Fork mobile Android release workflow.
+  publish_android:
+    name: Publish Android to Google Play
+    needs: [preflight, release]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
+    uses: ./.github/workflows/fork-mobile-android.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.preflight.outputs.ref }}
+      upload: true
+      track: beta
+
   # Vercel builds the hosted web app while the desktop jobs run. `--skip-domain`
   # keeps the custom domains (the channel and router domains) on the previous
   # deployment until deploy_web aliases them, after the GitHub Release. It does

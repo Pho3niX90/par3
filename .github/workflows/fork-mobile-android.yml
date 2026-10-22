@@ -22,6 +22,20 @@ on:
           - internal
           - alpha
           - production
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to build (defaults to the triggering ref)
+        type: string
+        default: ""
+      upload:
+        description: Upload the bundle to Google Play
+        type: boolean
+        default: true
+      track:
+        description: Play track to upload to
+        type: string
+        default: beta
 
 concurrency:
   group: fork-mobile-android
@@ -48,14 +62,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref }}
           sparse-checkout: |
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
 
-      # Play needs a strictly increasing version code; expressions can't do arithmetic.
+      # Play needs a strictly increasing version code across manual and release runs, which
+      # have separate run counters, so use minutes since the epoch (about 30 million).
       - name: Set the Play version code
-        run: echo "T3CODE_ANDROID_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+        run: echo "T3CODE_ANDROID_VERSION_CODE=$(($(date +%s) / 60))" >> "$GITHUB_ENV"
 
       - name: Setup Java
         uses: actions/setup-java@v4
