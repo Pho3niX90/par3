@@ -219,7 +219,12 @@ function resolveRate(table: RateTable, model: string): ModelRate | null {
   const key = stripVariantSuffix(normalizeRateKey(model));
   const bareName = bareModelName(key);
   if (bareName.length === 0 || UNPRICEABLE_MODELS.has(bareName)) return null;
-  return table.get(key) ?? null;
+  const exact = table.get(key);
+  if (exact !== undefined) return exact;
+  // Copilot uses dotted Claude versions; older models may only have dashed rates.
+  return bareName.startsWith("claude-")
+    ? (table.get(key.replace(/(\d)\.(\d)/g, "$1-$2")) ?? null)
+    : null;
 }
 
 export type PricedRecord = Pick<

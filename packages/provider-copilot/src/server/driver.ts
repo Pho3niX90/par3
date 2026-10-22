@@ -47,6 +47,7 @@ import {
   type ProviderSnapshotSettings,
 } from "@t3tools/provider-core/server/snapshotSettings";
 import { copilotLaunchEnvironment } from "./enterpriseHost.ts";
+import { copilotUsageReader } from "./usage.ts";
 
 const decodeCopilotSettings = Schema.decodeSync(CopilotSettings);
 
@@ -69,12 +70,13 @@ export type CopilotDriverEnv =
   | Path.Path
   | ProviderEventLoggers.ProviderEventLoggers;
 
-export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = {
+export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv, Path.Path> = {
   driverKind: DRIVER_KIND,
   metadata: {
     displayName: "GitHub Copilot",
     supportsMultipleInstances: true,
   },
+  usage: copilotUsageReader,
   configSchema: CopilotSettings,
   defaultConfig: (): CopilotSettings => decodeCopilotSettings({}),
   create: Effect.fn("CopilotDriver.create")(function* ({
