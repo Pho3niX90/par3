@@ -213,6 +213,33 @@ const VcsStatusChangeRequest = Schema.Struct({
   updatedAt: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
+export const VcsOperationKind = Schema.Literals(["merge", "rebase", "cherry-pick", "revert"]);
+export type VcsOperationKind = typeof VcsOperationKind.Type;
+
+/**
+ * What an unmerged index entry means, from the porcelain XY code. "us" and "them" are git's
+ * stage 2 and stage 3, which swap relative to the user's branches during a rebase.
+ */
+export const VcsConflictKind = Schema.Literals([
+  "both-modified",
+  "both-added",
+  "both-deleted",
+  "added-by-us",
+  "added-by-them",
+  "deleted-by-us",
+  "deleted-by-them",
+]);
+export type VcsConflictKind = typeof VcsConflictKind.Type;
+
+export const VcsStatusConflict = Schema.Struct({
+  path: GitFilePath,
+  kind: VcsConflictKind,
+});
+export type VcsStatusConflict = typeof VcsStatusConflict.Type;
+
+/** Status is broadcast on every refresh; the full list is served by `vcs.conflicts.list`. */
+export const VCS_STATUS_CONFLICTS_MAX = 200;
+
 const VcsStatusLocalShape = {
   isRepo: Schema.Boolean,
   sourceControlProvider: Schema.optional(SourceControlProviderInfo),
@@ -241,6 +268,13 @@ const VcsStatusLocalShape = {
       deletions: NonNegativeInt,
     }),
   ),
+  /** Present only while a merge, rebase, cherry-pick or revert is in progress. */
+  operation: Schema.optional(Schema.Struct({ kind: VcsOperationKind })),
+  /** Unmerged paths, at most `VCS_STATUS_CONFLICTS_MAX`; `conflictCount` is the true total. */
+  conflicts: Schema.optional(
+    Schema.Array(VcsStatusConflict).check(Schema.isMaxLength(VCS_STATUS_CONFLICTS_MAX)),
+  ),
+  conflictCount: Schema.optional(NonNegativeInt),
 };
 
 const VcsStatusRemoteShape = {

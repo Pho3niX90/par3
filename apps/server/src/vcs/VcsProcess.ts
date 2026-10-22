@@ -66,6 +66,13 @@ const GITHUB_PROCESS_CONCURRENCY = 4;
 export const GIT_INDEX_LOCKED_DETAIL =
   "Git's index is locked. Wait for other Git operations to finish, then try again.";
 
+/**
+ * Rolling back mid-operation would check out the checkpoint tree but leave MERGE_HEAD and the
+ * conflicted index entries behind, so the half-finished merge would be silently kept.
+ */
+export const GIT_OPERATION_IN_PROGRESS_DETAIL =
+  "Finish or abort the merge first, then try the rollback again.";
+
 export const CHECKPOINT_CAPTURE_OPERATION = "GitVcsDriver.checkpoints.captureCheckpoint";
 
 /**

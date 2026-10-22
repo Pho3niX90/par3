@@ -206,6 +206,7 @@ import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import { refreshPushedPullRequests } from "./git/refreshPushedPullRequests.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as MergeConflictService from "./vcs/MergeConflictService.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
@@ -1248,6 +1249,7 @@ type WsRpcServices =
   | RemoteOpenTargets.RemoteOpenTargets
   | RepositoryIdentityResolver.RepositoryIdentityResolver
   | ResourceTelemetry.ResourceTelemetry
+  | MergeConflictService.MergeConflictService
   | ReviewService.ReviewService
   | ScheduledTasks.ScheduledTaskService
   | SecretRequests.SecretRequests
@@ -1372,6 +1374,7 @@ const makeLayerWsRpc = (
       const directEndpoints = yield* DirectEndpoints.DirectEndpoints;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
       const review = yield* ReviewService.ReviewService;
+      const mergeConflicts = yield* MergeConflictService.MergeConflictService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
@@ -3000,6 +3003,13 @@ const makeLayerWsRpc = (
           gitWorkflow.switchRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsInit]: (input) =>
           vcsProvisioning.initRepository(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+        [WS_METHODS.vcsConflictsList]: (input) => mergeConflicts.list(input),
+        [WS_METHODS.vcsConflictsRead]: (input) => mergeConflicts.read(input),
+        [WS_METHODS.vcsConflictsResolve]: (input) => mergeConflicts.resolve(input),
+        [WS_METHODS.vcsConflictsAutoResolve]: (input) => mergeConflicts.autoResolve(input),
+        [WS_METHODS.vcsConflictsReopen]: (input) => mergeConflicts.reopen(input),
+        [WS_METHODS.vcsOperationRun]: (input) => mergeConflicts.runOperation(input),
+        [WS_METHODS.vcsMergeBase]: (input) => mergeConflicts.startLocalMerge(input),
         [WS_METHODS.reviewGetDiffPreview]: (input) => review.getDiffPreview(input),
         [WS_METHODS.reviewGetDiffFileContents]: (input) => review.getDiffFileContents(input),
         [WS_METHODS.terminalOpen]: (input) => terminalManager.open(input),

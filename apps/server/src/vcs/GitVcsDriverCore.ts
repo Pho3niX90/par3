@@ -29,7 +29,9 @@ import {
   type ReviewDiffPreviewInput,
   type ReviewDiffFileStat,
   type ReviewDiffPreviewSource,
+  VCS_STATUS_CONFLICTS_MAX,
   type VcsRef,
+  type VcsStatusConflict,
 } from "@t3tools/contracts";
 import { dedupeRemoteBranchesWithLocalMatches, normalizeGitRemoteUrl } from "@t3tools/shared/git";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -40,6 +42,11 @@ import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import { resolveProjectFileBackedSetting } from "@t3tools/shared/projectSettings";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
+import {
+  conflictKindFromPorcelainCode,
+  detectGitOperation,
+  GIT_OPERATION_REV_PARSE_ARGS,
+} from "./gitOperation.ts";
 import { removeEmptyDirectory } from "./removeEmptyDirectory.ts";
 import { explicitBareRepositoryEnv, gitConfigEnv } from "./VcsProcess.ts";
 import { resolveWorktreesDirectory } from "../worktreesDirectory.ts";
@@ -2018,7 +2025,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const indexResult = yield* executeGitWithStableDiagnostics(
       "GitVcsDriver.statusDetails.indexPath",
       cwd,
-      ["rev-parse", "--git-path", "index"],
+      [...GIT_OPERATION_REV_PARSE_ARGS],
       { allowNonZeroExit: true },
     ).pipe(
       Effect.catchTags({
@@ -2028,7 +2035,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     );
     if (indexResult === null) return NON_REPOSITORY_STATUS_DETAILS;
     if (indexResult.exitCode === 0) {
-      const lockPath = `${path.resolve(cwd, indexResult.stdout.trim())}.lock`;
+      const lockPath = `${path.resolve(cwd, indexResult.stdout.trim().split("\n")[0] ?? "")}.lock`;
       const lockError = new GitCommandError({
         operation: "GitVcsDriver.statusDetails.indexPath",
         command: "git",
@@ -2156,6 +2163,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     let aheadOfDefaultCount = 0;
     let hasWorkingTreeChanges = false;
     const changedFilesWithoutNumstat = new Set<string>();
+    const conflicts: VcsStatusConflict[] = [];
 
     const statusRecords = statusStdout.split("\0");
     for (let index = 0; index < statusRecords.length; index++) {
@@ -2181,6 +2189,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         hasWorkingTreeChanges = true;
         const pathValue = parsePorcelainPath(line);
         if (pathValue) changedFilesWithoutNumstat.add(pathValue);
+        const conflictKind = line.startsWith("u ")
+          ? conflictKindFromPorcelainCode(line.slice(2, 4))
+          : null;
+        if (pathValue && conflictKind) conflicts.push({ path: pathValue, kind: conflictKind });
         // A rename record is followed by its original path as a separate record. Listing it
         // keeps the deletion selectable when committing only some files.
         if (line.startsWith("2 ")) {
@@ -2240,6 +2252,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           Effect.orElseSucceed(() => undefined),
         )
       : undefined;
+    const operation =
+      indexResult.exitCode === 0
+        ? yield* detectGitOperation({
+            fileSystem,
+            path,
+            cwd,
+            revParseStdout: indexResult.stdout,
+          })
+        : null;
 
     return {
       isRepo: true,
@@ -2255,6 +2276,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         deletions,
       },
       ...(branchChanges ? { branchChanges } : {}),
+      ...(operation ? { operation: { kind: operation.kind } } : {}),
+      ...(conflicts.length > 0
+        ? {
+            conflicts: conflicts
+              .toSorted((a, b) => a.path.localeCompare(b.path))
+              .slice(0, VCS_STATUS_CONFLICTS_MAX),
+            conflictCount: conflicts.length,
+          }
+        : {}),
       hasUpstream: upstreamRef !== null,
       aheadCount,
       behindCount,

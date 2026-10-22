@@ -37,6 +37,14 @@ import {
 } from "./GitVcsDriverCore.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 import { gitConfigEnv } from "./VcsProcess.ts";
+import {
+  buildConflictBranches,
+  commitAll,
+  initConflictRepo,
+  runGit,
+  startConflictingMerge,
+  writeRepoFile,
+} from "./testing/mergeConflictFixture.ts";
 
 const encodeGitCommandError = Schema.encodeEffect(Schema.fromJsonString(GitCommandError));
 const decodeVcsRef = Schema.decodeUnknownSync(VcsRef);
@@ -4282,4 +4290,120 @@ describe("Windows long path configuration", () => {
       );
     }
   });
+});
+
+describe("unmerged status", () => {
+  it.effect("reports every conflict kind with the operation that produced it", () =>
+    Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const cwd = yield* makeTmpDir();
+      yield* startConflictingMerge(cwd);
+
+      const status = yield* driver.statusDetailsLocal(cwd);
+      assert.deepStrictEqual(status.operation, { kind: "merge" });
+      assert.deepStrictEqual(status.conflicts, [
+        { path: "both.txt", kind: "both-added" },
+        { path: "del-them.txt", kind: "deleted-by-them" },
+        { path: "del-us.txt", kind: "deleted-by-us" },
+        { path: "f.txt", kind: "both-modified" },
+        { path: "rr-ours.txt", kind: "added-by-us" },
+        { path: "rr-theirs.txt", kind: "added-by-them" },
+        { path: "rr.txt", kind: "both-deleted" },
+        { path: "w.txt", kind: "both-modified" },
+      ]);
+      assert.strictEqual(status.conflictCount, 8);
+      assert.isTrue(status.hasWorkingTreeChanges);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("omits operation and conflicts when nothing is in progress", () =>
+    Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const cwd = yield* makeTmpDir();
+      yield* initRepoWithCommit(cwd);
+
+      const status = yield* driver.statusDetailsLocal(cwd);
+      assert.isUndefined(status.operation);
+      assert.isUndefined(status.conflicts);
+      assert.isUndefined(status.conflictCount);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("detects a merge with every conflict resolved but not yet committed", () =>
+    Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const cwd = yield* makeTmpDir();
+      yield* buildConflictBranches(cwd);
+      yield* runGit(cwd, ["merge", "--no-edit", "--no-commit", "theirs"]);
+      yield* runGit(cwd, ["checkout", "--ours", "--", "f.txt", "w.txt", "both.txt"]);
+      yield* runGit(cwd, ["add", "f.txt", "w.txt", "both.txt"]);
+      yield* runGit(cwd, ["rm", "-q", "-f", "del-us.txt", "del-them.txt", "rr.txt"]);
+      yield* runGit(cwd, ["add", "rr-ours.txt", "rr-theirs.txt"]);
+
+      const status = yield* driver.statusDetailsLocal(cwd);
+      assert.deepStrictEqual(status.operation, { kind: "merge" });
+      assert.isUndefined(status.conflicts);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect.each(["rebase", "cherry-pick", "revert"] as const)(
+    "detects a %s stopped on a conflict",
+    (kind) =>
+      Effect.gen(function* () {
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const cwd = yield* makeTmpDir();
+        yield* initConflictRepo(cwd);
+        yield* writeRepoFile(cwd, "f.txt", "one\ntwo\nthree\n");
+        yield* commitAll(cwd, "base");
+        const base = (yield* runGit(cwd, ["branch", "--show-current"])).stdout.trim();
+        yield* runGit(cwd, ["checkout", "-b", "feature"]);
+        yield* writeRepoFile(cwd, "f.txt", "one\nfeature\nthree\n");
+        yield* commitAll(cwd, "feature change");
+        yield* runGit(cwd, ["checkout", base]);
+        yield* writeRepoFile(cwd, "f.txt", "one\nmain\nthree\n");
+        yield* commitAll(cwd, "main change");
+
+        if (kind === "rebase") {
+          yield* runGit(cwd, ["checkout", "feature"]);
+          yield* runGit(cwd, ["rebase", base]);
+        } else if (kind === "cherry-pick") {
+          yield* runGit(cwd, ["cherry-pick", "feature"]);
+        } else {
+          yield* writeRepoFile(cwd, "f.txt", "one\nmain again\nthree\n");
+          yield* commitAll(cwd, "main change again");
+          yield* runGit(cwd, ["revert", "--no-edit", "HEAD~1"]);
+        }
+
+        const status = yield* driver.statusDetailsLocal(cwd);
+        assert.deepStrictEqual(status.operation, { kind });
+        assert.deepStrictEqual(status.conflicts, [{ path: "f.txt", kind: "both-modified" }]);
+      }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("caps the reported conflicts while counting every one", () =>
+    Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const cwd = yield* makeTmpDir();
+      yield* initConflictRepo(cwd);
+      const paths = Array.from(
+        { length: 205 },
+        (_, index) => `many/f${String(index).padStart(3, "0")}.txt`,
+      );
+      for (const filePath of paths) yield* writeRepoFile(cwd, filePath, "base\n");
+      yield* commitAll(cwd, "base");
+      const base = (yield* runGit(cwd, ["branch", "--show-current"])).stdout.trim();
+      yield* runGit(cwd, ["checkout", "-b", "theirs"]);
+      for (const filePath of paths) yield* writeRepoFile(cwd, filePath, "theirs\n");
+      yield* commitAll(cwd, "theirs");
+      yield* runGit(cwd, ["checkout", base]);
+      for (const filePath of paths) yield* writeRepoFile(cwd, filePath, "ours\n");
+      yield* commitAll(cwd, "ours");
+      yield* runGit(cwd, ["merge", "--no-edit", "theirs"]);
+
+      const status = yield* driver.statusDetailsLocal(cwd);
+      assert.strictEqual(status.conflictCount, 205);
+      assert.strictEqual(status.conflicts?.length, 200);
+      assert.strictEqual(status.conflicts?.[0]?.path, "many/f000.txt");
+    }).pipe(Effect.provide(layerTest)),
+  );
 });

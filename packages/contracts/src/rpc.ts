@@ -146,6 +146,22 @@ import {
   VcsThreadRepositoriesResult,
 } from "./git.ts";
 import {
+  MergeConflictAutoResolveInput,
+  MergeConflictAutoResolveResult,
+  MergeConflictListInput,
+  MergeConflictListResult,
+  MergeConflictMutationResult,
+  MergeConflictOperationRunInput,
+  MergeConflictOperationRunResult,
+  MergeConflictReadInput,
+  MergeConflictReadResult,
+  MergeConflictReopenInput,
+  MergeConflictResolveInput,
+  MergeConflictRpcError,
+  MergeConflictStartLocalMergeInput,
+  MergeConflictStartLocalMergeResult,
+} from "./mergeConflicts.ts";
+import {
   ReviewDiffFileContentsInput,
   ReviewDiffFileContentsResult,
   ReviewDiffPreviewError,
@@ -450,6 +466,13 @@ export const WS_METHODS = {
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
+  vcsConflictsList: "vcs.conflicts.list",
+  vcsConflictsRead: "vcs.conflicts.read",
+  vcsConflictsResolve: "vcs.conflicts.resolve",
+  vcsConflictsAutoResolve: "vcs.conflicts.autoResolve",
+  vcsConflictsReopen: "vcs.conflicts.reopen",
+  vcsOperationRun: "vcs.operation.run",
+  vcsMergeBase: "vcs.mergeBase",
 
   gitRunStackedAction: "git.runStackedAction",
   gitResolvePullRequest: "git.resolvePullRequest",
@@ -1500,6 +1523,48 @@ const WsVcsInitRpc = Rpc.make(WS_METHODS.vcsInit, {
   error: Schema.Union([VcsError, EnvironmentAuthorizationError]),
 });
 
+const WsVcsConflictsListRpc = Rpc.make(WS_METHODS.vcsConflictsList, {
+  payload: MergeConflictListInput,
+  success: MergeConflictListResult,
+  error: Schema.Union([MergeConflictRpcError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsConflictsReadRpc = Rpc.make(WS_METHODS.vcsConflictsRead, {
+  payload: MergeConflictReadInput,
+  success: MergeConflictReadResult,
+  error: Schema.Union([MergeConflictRpcError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsConflictsResolveRpc = Rpc.make(WS_METHODS.vcsConflictsResolve, {
+  payload: MergeConflictResolveInput,
+  success: MergeConflictMutationResult,
+  error: Schema.Union([MergeConflictRpcError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsConflictsAutoResolveRpc = Rpc.make(WS_METHODS.vcsConflictsAutoResolve, {
+  payload: MergeConflictAutoResolveInput,
+  success: MergeConflictAutoResolveResult,
+  error: Schema.Union([MergeConflictRpcError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsConflictsReopenRpc = Rpc.make(WS_METHODS.vcsConflictsReopen, {
+  payload: MergeConflictReopenInput,
+  success: MergeConflictMutationResult,
+  error: Schema.Union([MergeConflictRpcError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsOperationRunRpc = Rpc.make(WS_METHODS.vcsOperationRun, {
+  payload: MergeConflictOperationRunInput,
+  success: MergeConflictOperationRunResult,
+  error: Schema.Union([MergeConflictRpcError, EnvironmentAuthorizationError]),
+});
+
+const WsVcsMergeBaseRpc = Rpc.make(WS_METHODS.vcsMergeBase, {
+  payload: MergeConflictStartLocalMergeInput,
+  success: MergeConflictStartLocalMergeResult,
+  error: Schema.Union([MergeConflictRpcError, EnvironmentAuthorizationError]),
+});
+
 const WsReviewGetDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetDiffPreview, {
   payload: ReviewDiffPreviewInput,
   success: ReviewDiffPreviewResult,
@@ -2098,6 +2163,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
+  WsVcsConflictsListRpc,
+  WsVcsConflictsReadRpc,
+  WsVcsConflictsResolveRpc,
+  WsVcsConflictsAutoResolveRpc,
+  WsVcsConflictsReopenRpc,
+  WsVcsOperationRunRpc,
+  WsVcsMergeBaseRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
   WsTerminalOpenRpc,

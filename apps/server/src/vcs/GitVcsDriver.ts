@@ -41,6 +41,7 @@ import {
   splitNullSeparatedGitStdoutPaths,
 } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
+import { detectGitOperation, GIT_OPERATION_REV_PARSE_ARGS } from "./gitOperation.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
 export interface ExecuteGitInput {
@@ -81,6 +82,9 @@ export interface GitStatusDetails {
   hasWorkingTreeChanges: boolean;
   workingTree: VcsStatusResult["workingTree"];
   branchChanges?: VcsStatusResult["branchChanges"];
+  operation?: VcsStatusResult["operation"];
+  conflicts?: VcsStatusResult["conflicts"];
+  conflictCount?: VcsStatusResult["conflictCount"];
   hasUpstream: boolean;
   aheadCount: number;
   behindCount: number;
@@ -1173,6 +1177,30 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
 
     restoreCheckpoint: Effect.fn("GitVcsDriver.checkpoints.restoreCheckpoint")(function* (input) {
       const operation = "GitVcsDriver.checkpoints.restoreCheckpoint";
+
+      const operationPaths = yield* execute({
+        operation,
+        cwd: input.cwd,
+        args: [...GIT_OPERATION_REV_PARSE_ARGS],
+        allowNonZeroExit: true,
+      });
+      if (
+        operationPaths.exitCode === 0 &&
+        (yield* detectGitOperation({
+          fileSystem,
+          path,
+          cwd: input.cwd,
+          revParseStdout: operationPaths.stdout,
+        })) !== null
+      ) {
+        return yield* new VcsProcessExitError({
+          operation,
+          command: "git restore",
+          cwd: input.cwd,
+          exitCode: 0,
+          detail: VcsProcess.GIT_OPERATION_IN_PROGRESS_DETAIL,
+        });
+      }
 
       let commitOid = yield* resolveCheckpointCommit(input.cwd, input.checkpointRef);
 
