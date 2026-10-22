@@ -147,6 +147,48 @@ function planSignature(opsByEnvironment: ReadonlyMap<EnvironmentId, ReadonlyArra
   );
 }
 
+interface RunnerState {
+  running: boolean;
+  again: boolean;
+  lastSignature: string | null;
+}
+
+// Outside the hook: the React Compiler cannot compile `try`/`finally` without `catch`.
+async function runSyncPasses(registry: AtomRegistry.AtomRegistry, state: RunnerState) {
+  if (state.running) {
+    state.again = true;
+    return;
+  }
+  state.running = true;
+  useSyncRunnerStore.setState({ running: true });
+  try {
+    do {
+      state.again = false;
+      // Read at each pass, since snapshots keep arriving while a run awaits the servers.
+      const current = registry.get(syncViewsAtom);
+      if (current.filter(isSyncParticipating).length < 2) continue;
+      const plan = planSync(current);
+      if (plan.opsByEnvironment.size === 0) {
+        state.lastSignature = null;
+        continue;
+      }
+      // Ops a server refuses come back in the next plan unchanged; retrying them on every
+      // snapshot would loop, so an identical plan waits for a change or an explicit retry.
+      const signature = planSignature(plan.opsByEnvironment);
+      if (signature === state.lastSignature) continue;
+      state.lastSignature = signature;
+      await runWithTransport(
+        registry,
+        plan.opsByEnvironment,
+        current.map((view) => view.environmentId),
+      );
+    } while (state.again);
+  } finally {
+    state.running = false;
+    useSyncRunnerStore.setState({ running: false });
+  }
+}
+
 /**
  * Carries changes between connected environments whenever one of them reports a new snapshot.
  * Servers never talk to each other, so this only runs while the client is connected to both.
@@ -155,43 +197,9 @@ export function useSyncRunner() {
   const registry = useContext(RegistryContext);
   const views = useAtomValue(syncViewsAtom);
   const retryNonce = useSyncRunnerStore((state) => state.retryNonce);
-  const runner = useRef({ running: false, again: false, lastSignature: null as string | null });
+  const runner = useRef<RunnerState>({ running: false, again: false, lastSignature: null });
 
-  const run = useEffectEvent(async () => {
-    const state = runner.current;
-    if (state.running) {
-      state.again = true;
-      return;
-    }
-    state.running = true;
-    useSyncRunnerStore.setState({ running: true });
-    try {
-      do {
-        state.again = false;
-        // Read at each pass, since snapshots keep arriving while a run awaits the servers.
-        const current = registry.get(syncViewsAtom);
-        if (current.filter(isSyncParticipating).length < 2) continue;
-        const plan = planSync(current);
-        if (plan.opsByEnvironment.size === 0) {
-          state.lastSignature = null;
-          continue;
-        }
-        // Ops a server refuses come back in the next plan unchanged; retrying them on every
-        // snapshot would loop, so an identical plan waits for a change or an explicit retry.
-        const signature = planSignature(plan.opsByEnvironment);
-        if (signature === state.lastSignature) continue;
-        state.lastSignature = signature;
-        await runWithTransport(
-          registry,
-          plan.opsByEnvironment,
-          current.map((view) => view.environmentId),
-        );
-      } while (state.again);
-    } finally {
-      state.running = false;
-      useSyncRunnerStore.setState({ running: false });
-    }
-  });
+  const run = useEffectEvent(() => runSyncPasses(registry, runner.current));
 
   const seqKey = views.map((view) => `${view.environmentId}:${view.snapshot.seq}`).join(",");
   useEffect(() => {
