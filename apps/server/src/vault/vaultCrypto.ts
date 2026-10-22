@@ -5,6 +5,7 @@ const RECIPIENT_CONTEXT = "par3-vault-recipient-v1";
 const WRAP_INFO = "par3-vault-wrap-v1";
 const ENTRY_AAD_PREFIX = "par3-vault-entry-v1:";
 const VAULT_ID_CONTEXT = "par3-vault-id-v1";
+const TAG_BYTES = 16;
 
 export interface X25519KeyPair {
   /** Base64url raw keys, as in a JWK. */
@@ -88,7 +89,7 @@ export function verifyRecipient(input: {
 
 function seal(key: Uint8Array, plaintext: Uint8Array, aad: Uint8Array): SealedValue {
   const iv = NodeCrypto.randomBytes(12);
-  const cipher = NodeCrypto.createCipheriv("aes-256-gcm", key, iv);
+  const cipher = NodeCrypto.createCipheriv("aes-256-gcm", key, iv, { authTagLength: TAG_BYTES });
   cipher.setAAD(aad);
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   return { iv: b64(iv), ciphertext: b64(ciphertext), tag: b64(cipher.getAuthTag()) };
@@ -96,7 +97,11 @@ function seal(key: Uint8Array, plaintext: Uint8Array, aad: Uint8Array): SealedVa
 
 /** Throws when the key, AAD, or any byte of the sealed value is wrong. */
 function open(key: Uint8Array, sealed: SealedValue, aad: Uint8Array): Buffer {
-  const decipher = NodeCrypto.createDecipheriv("aes-256-gcm", key, fromB64(sealed.iv));
+  // Without a pinned length Node accepts any tag of 4 bytes or more, so a truncated tag from
+  // another machine would still decrypt.
+  const decipher = NodeCrypto.createDecipheriv("aes-256-gcm", key, fromB64(sealed.iv), {
+    authTagLength: TAG_BYTES,
+  });
   decipher.setAAD(aad);
   decipher.setAuthTag(fromB64(sealed.tag));
   return Buffer.concat([decipher.update(fromB64(sealed.ciphertext)), decipher.final()]);

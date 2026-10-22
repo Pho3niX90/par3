@@ -37,6 +37,16 @@ describe("vault entries", () => {
     const tampered = { ...original, ciphertext: Buffer.from("xxxxxx").toString("base64") };
     expect(() => decryptEntry(key, "API_TOKEN", tampered)).toThrow();
   });
+
+  it("refuses a truncated authentication tag", () => {
+    const key = generateVaultKey();
+    const sealed = encryptEntry(key, "API_TOKEN", "s3cret");
+    const truncated = {
+      ...sealed,
+      tag: Buffer.from(sealed.tag, "base64").subarray(0, 4).toString("base64"),
+    };
+    expect(() => decryptEntry(key, "API_TOKEN", truncated)).toThrow();
+  });
 });
 
 describe("vault key sharing", () => {

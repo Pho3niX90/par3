@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { AuthAccessWriteScope, AuthProvidersManageScope, AuthSettingsWriteScope } from "./auth.ts";
 import { clientRpcRequiredScopes } from "./clientRpcPermissions.ts";
 import { WS_METHODS } from "./rpc.ts";
+import { syncItemKey } from "./sync.ts";
 import { parseVaultReference, vaultReference } from "./vault.ts";
 
 describe("vault references", () => {
@@ -32,9 +33,58 @@ describe("vault and sync permissions", () => {
     ]);
   });
 
-  it("treats writing synced items as provider administration", () => {
+  it("treats writing synced files as provider administration", () => {
+    const op = (key: string) => ({
+      key,
+      expectedHash: null,
+      action: { _tag: "delete" },
+      baseline: { hash: null, rev: 1 },
+    });
     expect(clientRpcRequiredScopes(WS_METHODS.syncApply, { ops: [] })).toEqual([
       AuthProvidersManageScope,
     ]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.syncApply, {
+        ops: [op(syncItemKey("claude.agents", "agents/a.md"))],
+      }),
+    ).toEqual([AuthProvidersManageScope]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.syncSetParticipation, {
+        enabled: true,
+        categories: ["claude.agents"],
+        excluded: [],
+      }),
+    ).toEqual([AuthProvidersManageScope]);
+  });
+
+  it("also asks for settings access when a sync touches settings or the vault", () => {
+    const both = [AuthProvidersManageScope, AuthSettingsWriteScope];
+    for (const key of [syncItemKey("vault", "API_TOKEN"), syncItemKey("mcpServers", "linear")]) {
+      expect(
+        clientRpcRequiredScopes(WS_METHODS.syncApply, {
+          ops: [
+            {
+              key: syncItemKey("claude.agents", "agents/a.md"),
+              expectedHash: null,
+              action: { _tag: "delete" },
+              baseline: { hash: null, rev: 1 },
+            },
+            {
+              key,
+              expectedHash: null,
+              action: { _tag: "delete" },
+              baseline: { hash: null, rev: 1 },
+            },
+          ],
+        }),
+      ).toEqual(both);
+    }
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.syncSetParticipation, {
+        enabled: true,
+        categories: ["claude.agents", "vault"],
+        excluded: [],
+      }),
+    ).toEqual(both);
   });
 });

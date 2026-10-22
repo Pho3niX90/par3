@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import type * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
@@ -338,7 +339,9 @@ export const resolveProviderHome = Effect.fn("sync.resolveProviderHome")(functio
   if (target === "agents") return path.join(home, ".agents");
   if (target === "claudeAgent") {
     const decoded = decodeClaude(defaultInstance(settings, target)?.config ?? {});
-    return Option.isSome(decoded) ? yield* resolveClaudeHomePath(decoded.value, process.env) : null;
+    return Option.isSome(decoded)
+      ? yield* resolveClaudeHomePath(decoded.value, yield* HostProcess.Environment)
+      : null;
   }
   if (target === "codex") {
     const decoded = decodeCodex(defaultInstance(settings, target)?.config ?? {});
@@ -454,6 +457,21 @@ export function makeFileCategory(input: {
     return target;
   });
 
+  /** Null only when the path is gone; any other failure must not look like an absent file. */
+  const orAbsent = <A>(
+    effect: Effect.Effect<A, PlatformError.PlatformError>,
+    failure: string,
+  ): Effect.Effect<A | null, SyncError> =>
+    effect.pipe(
+      Effect.catch((cause) =>
+        cause.reason._tag === "NotFound"
+          ? Effect.succeed(null)
+          : Effect.logWarning(failure, { cause }).pipe(
+              Effect.andThen(Effect.fail(syncFailure("io", failure))),
+            ),
+      ),
+    );
+
   const scanFile = Effect.fn("sync.fileCategory.scanFile")(function* (home: string, name: string) {
     const target = path.join(home, ...name.split("/"));
     // Measured against the home's real location: a home that is itself a link (a dotfiles
@@ -463,9 +481,10 @@ export function makeFileCategory(input: {
       Effect.map((real) => real !== path.join(realHome, ...name.split("/"))),
       Effect.orElseSucceed(() => false),
     );
-    const info = yield* fs.stat(target).pipe(Effect.option);
-    if (Option.isNone(info) || info.value.type !== "File") return null;
-    const size = Number(info.value.size);
+    const failure = `Could not read ${spec.label}.`;
+    const info = yield* orAbsent(fs.stat(target), failure);
+    if (info === null || info.type !== "File") return null;
+    const size = Number(info.size);
     const skipped = (reason: SyncSkipReason): ScannedSyncItem => ({
       name,
       hash: "",
@@ -474,13 +493,15 @@ export function makeFileCategory(input: {
     });
     if (linked) return skipped("symlink");
     if (size > SYNC_FILE_MAX_BYTES) return skipped("too-large");
-    const bytes = yield* fs.readFile(target).pipe(Effect.option);
-    if (Option.isNone(bytes)) return null;
-    const text = decodeText(bytes.value);
+    const bytes = yield* orAbsent(fs.readFile(target), failure);
+    if (bytes === null) return null;
+    const text = decodeText(bytes);
     if (text === null) return skipped("binary");
     return { name, hash: hashContents(text), byteLength: size } satisfies ScannedSyncItem;
   });
 
+  // The planner reads an item missing from a scan as deleted, so a scan that could not see
+  // everything is reported unavailable rather than returned short.
   const scan = Effect.gen(function* () {
     const home = yield* existingHome;
     if (home === null) return unavailable();
@@ -490,32 +511,54 @@ export function makeFileCategory(input: {
       const names =
         root.kind === "file"
           ? [root.path]
-          : (yield* fs
-              .readDirectory(path.join(home, root.path), { recursive: true })
-              .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => [])))
-              .map((entry) => `${root.path}/${entry.split(path.sep).join("/")}`)
+          : ((yield* orAbsent(
+              fs.readDirectory(path.join(home, root.path), { recursive: true }),
+              `Could not read ${spec.label}.`,
+            ))
+              ?.map((entry) => `${root.path}/${entry.split(path.sep).join("/")}`)
               .filter((name) => isAllowedSyncPath(spec, name))
-              .sort();
+              .sort() ?? []);
       for (const name of names) {
-        if (items.length >= SCAN_MAX_FILES || bytes >= SCAN_MAX_BYTES) break;
+        if (items.length >= SCAN_MAX_FILES) {
+          return yield* syncFailure(
+            "too-large",
+            `Too many files in ${spec.label} to sync (over ${SCAN_MAX_FILES.toLocaleString("en-US")}).`,
+          );
+        }
+        if (bytes >= SCAN_MAX_BYTES) {
+          return yield* syncFailure(
+            "too-large",
+            `${spec.label} is too large to sync (over ${SCAN_MAX_BYTES / (1024 * 1024)} MB).`,
+          );
+        }
         const item = yield* scanFile(home, name);
         if (item === null) continue;
-        bytes += item.byteLength;
+        // Skipped files are never read, so they cost nothing against the budget.
+        if (item.skipped === undefined) bytes += item.byteLength;
         items.push(item);
       }
     }
     return { available: true, location: home, items } satisfies CategoryScan;
-  }).pipe(Effect.withSpan("sync.fileCategory.scan", { attributes: { category: spec.id } }));
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.succeed<CategoryScan>({
+        available: false,
+        unavailableReason: error.message,
+        items: [],
+      }),
+    ),
+    Effect.withSpan("sync.fileCategory.scan", { attributes: { category: spec.id } }),
+  );
 
   const read = Effect.fn("sync.fileCategory.read")(function* (name: string) {
     const home = yield* requireHome;
     const target = yield* guardedPath(home, name);
-    const bytes = yield* fs.readFile(target).pipe(Effect.option);
-    if (Option.isNone(bytes)) return null;
-    if (bytes.value.byteLength > SYNC_FILE_MAX_BYTES) {
+    const bytes = yield* orAbsent(fs.readFile(target), `${name} could not be read.`);
+    if (bytes === null) return null;
+    if (bytes.byteLength > SYNC_FILE_MAX_BYTES) {
       return yield* syncFailure("too-large", `${name} is larger than 1 MB.`);
     }
-    const text = decodeText(bytes.value);
+    const text = decodeText(bytes);
     if (text === null) return yield* syncFailure("not-allowed", `${name} is not a text file.`);
     return text;
   });

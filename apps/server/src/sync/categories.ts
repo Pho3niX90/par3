@@ -59,30 +59,41 @@ const ioFailure = (message: string) => (cause: unknown) =>
 export function makeVaultCategory(
   vault: VaultServiceModule.VaultService["Service"],
 ): SyncCategoryProvider {
-  const entries = vault.syncEntries.pipe(Effect.orElseSucceed(() => []));
   const toSyncError = (error: { readonly reason: string; readonly message: string }) =>
     syncFailure(error.reason === "not-member" ? "category-unavailable" : "io", error.message);
+  // A vault that cannot be read is not an empty one: an empty scan would delete every secret
+  // on the other machines, and a null read would let a write overwrite whatever is there.
+  const entries = vault.syncEntries.pipe(Effect.mapError(toSyncError));
   return {
     id: "vault",
     label: "Vault secrets",
     scan: Effect.gen(function* () {
-      const member = yield* vault.isMember.pipe(Effect.orElseSucceed(() => false));
-      if (!member) {
+      if (!(yield* vault.isMember)) {
         return {
           available: false,
           unavailableReason: "This machine has not joined the vault.",
           items: [],
-        };
+        } satisfies CategoryScan;
       }
       return {
         available: true,
-        items: (yield* entries).map((entry) => ({
+        items: (yield* vault.syncEntries).map((entry) => ({
           name: entry.name,
           hash: hashContents(entry.contents),
           byteLength: entry.contents.length,
         })),
-      };
-    }),
+      } satisfies CategoryScan;
+    }).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("The vault could not be read for sync.", { cause }).pipe(
+          Effect.as<CategoryScan>({
+            available: false,
+            unavailableReason: "The vault could not be read.",
+            items: [],
+          }),
+        ),
+      ),
+    ),
     read: (name) =>
       entries.pipe(Effect.map((all) => all.find((entry) => entry.name === name)?.contents ?? null)),
     write: (name, contents) => vault.syncWrite(name, contents).pipe(Effect.mapError(toSyncError)),
@@ -174,7 +185,23 @@ export function makeMcpServersCategory(input: {
         );
       }
       const list = yield* serversOrFail;
-      const exists = list.some((server) => server.id === name);
+      // The gateway resolves a server by name and takes the first match.
+      if (list.some((server) => server.id !== name && server.name === decoded.value.name)) {
+        return yield* syncFailure(
+          "not-allowed",
+          `Another MCP server here is already named ${decoded.value.name}.`,
+        );
+      }
+      // `read` reports a server holding a local secret as absent, so an op that expected it to
+      // be absent has to be refused here or it would replace the secret.
+      const existing = list.find((server) => server.id === name);
+      if (existing !== undefined && holdsLocalSecret(existing)) {
+        return yield* syncFailure(
+          "not-allowed",
+          `${existing.name} holds a secret value here and is not replaced by sync.`,
+        );
+      }
+      const exists = existing !== undefined;
       yield* save(
         exists
           ? list.map((server) => (server.id === name ? decoded.value : server))

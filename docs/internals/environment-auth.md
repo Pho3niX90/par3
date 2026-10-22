@@ -137,9 +137,12 @@ items, using the sync store's compare-and-swap writes so concurrent clients cann
 other ([plan](../../packages/client-runtime/src/sync/plan.ts),
 [store](../../apps/server/src/sync/SyncStore.ts)). Vault entries cross that path only as
 ciphertext sealed with the vault key, which never leaves a member server except wrapped for
-another server's X25519 key. A client therefore never holds a secret, but a client with
-`access:write` on a member can add a machine to the vault, so owner access on any member is
-owner access to every secret. The recipient key is signed by the joining environment's signing
+another server's X25519 key. Vault sync and settings therefore never hand a client a secret,
+but a client with `access:write` on a member can add a machine to the vault, so owner access on
+any member is owner access to every secret. A secret an agent reads through `secret_get` does
+enter that agent's conversation, and the provider keeps it in its own transcript. Par3 stores
+that tool call with the value withheld ([redaction](../../apps/server/src/orchestration-v2/secretToolOutput.ts)),
+so thread history and the MCP timeline show that a read happened, not what it returned. The recipient key is signed by the joining environment's signing
 key and shown as a fingerprint for a person to compare; neither stops an owner who controls both
 ends, and they are not meant to.
 

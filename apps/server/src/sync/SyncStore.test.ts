@@ -5,6 +5,7 @@ import {
   ProviderInstanceId,
   type SyncApplyOp,
   syncItemKey,
+  VaultError,
   vaultReference,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
@@ -15,6 +16,7 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -25,7 +27,8 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettingsModule from "../serverSettings.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as VaultService from "../vault/VaultService.ts";
-import { hashContents } from "./categories.ts";
+import { hashContents, makeVaultCategory } from "./categories.ts";
+import { FILE_CATEGORIES, makeFileCategory } from "./fileCategories.ts";
 import * as SyncStore from "./SyncStore.ts";
 
 const storeLayer = SyncStore.layer.pipe(
@@ -338,6 +341,171 @@ it.effect("leaves a provider alone when its default instance moves the home", ()
       );
       assert.equal(grok?.available, false);
       assert.equal(grok?.unavailableReason, "Grok is not set up on this machine.");
+    }),
+  ),
+);
+
+/** A file category over `home`, on a filesystem where the given operations fail. */
+const brokenFileCategory = (
+  id: string,
+  home: string,
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  broken: { readonly readDirectory?: true; readonly readFile?: true },
+) => {
+  const denied = (method: string) =>
+    Effect.fail(
+      PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method }),
+    );
+  return makeFileCategory({
+    spec: FILE_CATEGORIES.find((spec) => spec.id === id)!,
+    fs: {
+      ...fs,
+      readDirectory: ((...args: Parameters<FileSystem.FileSystem["readDirectory"]>) =>
+        broken.readDirectory
+          ? denied("readDirectory")
+          : fs.readDirectory(...args)) as FileSystem.FileSystem["readDirectory"],
+      readFile: ((...args: Parameters<FileSystem.FileSystem["readFile"]>) =>
+        broken.readFile
+          ? denied("readFile")
+          : fs.readFile(...args)) as FileSystem.FileSystem["readFile"],
+    },
+    path,
+    home: Effect.succeed(home),
+  });
+};
+
+// The planner reads an item missing from a snapshot as a deletion, so a scan that cannot see
+// everything has to say so instead of returning what it managed to find.
+it.effect("reports a category unavailable when its folder cannot be listed", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { fs, path, home } = yield* setup({ "agents/reviewer.md": "# Reviewer" });
+      const missing = yield* brokenFileCategory("claude.commands", home, fs, path, {}).scan;
+      assert.equal(missing.available, true);
+      assert.deepEqual(missing.items, []);
+
+      const scan = yield* brokenFileCategory("claude.agents", home, fs, path, {
+        readDirectory: true,
+      }).scan;
+      assert.equal(scan.available, false);
+      assert.include(scan.unavailableReason, "Could not read");
+    }),
+  ),
+);
+
+it.effect("reports a category unavailable when it has more files than a scan covers", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const files: Record<string, string> = {};
+      for (let index = 0; index <= 2_000; index++) files[`agents/a${index}.md`] = "#";
+      const { fs, path, home } = yield* setup(files);
+      const scan = yield* brokenFileCategory("claude.agents", home, fs, path, {}).scan;
+      assert.equal(scan.available, false);
+      assert.include(scan.unavailableReason, "Too many files");
+    }),
+  ),
+);
+
+it.effect("reports a category unavailable when a file in it cannot be read", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { fs, path, home } = yield* setup({ "agents/reviewer.md": "# Reviewer" });
+      const category = brokenFileCategory("claude.agents", home, fs, path, { readFile: true });
+      const scan = yield* category.scan;
+      assert.equal(scan.available, false);
+      assert.include(scan.unavailableReason, "Could not read");
+      const failure = yield* Effect.flip(category.read("agents/reviewer.md"));
+      assert.equal(failure.reason, "io");
+    }),
+  ),
+);
+
+it.effect("never reads a vault it could not open as an empty one", () =>
+  Effect.gen(function* () {
+    const category = makeVaultCategory({
+      isMember: Effect.succeed(true),
+      syncEntries: Effect.fail(new VaultError({ reason: "io", message: "storage unreadable" })),
+      changes: Stream.empty,
+    } as unknown as Parameters<typeof makeVaultCategory>[0]);
+    const scan = yield* category.scan;
+    assert.equal(scan.available, false);
+    assert.deepEqual(scan.items, []);
+    const failure = yield* Effect.flip(category.read("API_TOKEN"));
+    assert.equal(failure.reason, "io");
+  }),
+);
+
+it.effect("refuses a synced MCP server whose name another local server already uses", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { store, settings } = yield* setup({});
+      const server = (id: string) => ({
+        id,
+        name: "linear",
+        enabled: true,
+        transport: { type: "http" as const, url: "https://mcp.linear.app/mcp" },
+        environment: [],
+        headers: [],
+        toolPolicy: {
+          mode: "all" as const,
+          tools: [],
+          readOnlyClientsMayCall: "readOnlyHint" as const,
+        },
+      });
+      yield* settings.updateSettings({ mcpServers: [server("local")] });
+      const contents = (yield* store.read(syncItemKey("mcpServers", "local"))).contents;
+
+      const duplicate = yield* store.apply({
+        ops: [
+          writeOp(
+            syncItemKey("mcpServers", "remote"),
+            contents.replace('"local"', '"remote"'),
+            null,
+          ),
+        ],
+      });
+      assert.equal(duplicate.results[0]?.status, "rejected");
+      assert.include(duplicate.results[0]?.message, "linear");
+
+      const update = yield* store.apply({
+        ops: [writeOp(syncItemKey("mcpServers", "local"), contents, hashContents(contents))],
+      });
+      assert.equal(update.results[0]?.status, "applied");
+      assert.deepEqual(
+        (yield* settings.getSettings).mcpServers.map((entry) => entry.id),
+        ["local"],
+      );
+    }),
+  ),
+);
+
+it.effect("does not replace a local MCP server that holds a secret value", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { store, settings } = yield* setup({});
+      const server = (value: string) => ({
+        id: "linear",
+        name: "linear",
+        enabled: true,
+        transport: { type: "http" as const, url: "https://mcp.linear.app/mcp" },
+        environment: [],
+        headers: [{ name: "Authorization", value, sensitive: true }],
+        toolPolicy: {
+          mode: "all" as const,
+          tools: [],
+          readOnlyClientsMayCall: "readOnlyHint" as const,
+        },
+      });
+      yield* settings.updateSettings({ mcpServers: [server("Bearer plain")] });
+      // `read` reports the server as absent so its secret never leaves, which must not let a
+      // write that expected it to be absent replace it.
+      const contents = JSON.stringify(server(vaultReference("LINEAR_TOKEN")));
+      const replaced = yield* store.apply({
+        ops: [writeOp(syncItemKey("mcpServers", "linear"), contents, null)],
+      });
+      assert.equal(replaced.results[0]?.status, "rejected");
+      assert.equal((yield* settings.getSettings).mcpServers[0]?.headers[0]?.value, "Bearer plain");
     }),
   ),
 );
