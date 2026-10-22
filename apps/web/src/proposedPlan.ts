@@ -1,4 +1,4 @@
-import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import type { ThreadStructure } from "@t3tools/client-runtime/state/models";
 import {
   splitProposedPlanSections,
   proposedPlanReferenceDefinitions,
@@ -186,10 +186,7 @@ export function planSectionsWithDefinitions(markdown: string) {
   }));
 }
 
-export function proposedPlanItemId(
-  projection: OrchestrationV2ThreadProjection | null,
-  planId: string,
-) {
+export function proposedPlanItemId(projection: ThreadStructure | null, planId: string) {
   return projection?.turnItems.find(
     (item) => item.type === "proposed_plan" && item.planId === planId,
   )?.id;

@@ -1,3 +1,4 @@
+import type { ThreadStructure } from "@t3tools/client-runtime/state/models";
 import { MessageSquarePlus } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { randomUUID } from "../../lib/utils";
@@ -5,7 +6,6 @@ import { memo, useDeferredValue, useEffect, useRef, useState } from "react";
 import {
   AuthOrchestrationOperateScope,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
-  type OrchestrationV2ThreadProjection,
   type ScopedThreadRef,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -46,7 +46,7 @@ export interface PlanAction {
   images: ComposerImageAttachment[];
 }
 export interface PlanPanelActions {
-  projection: OrchestrationV2ThreadProjection | null;
+  projection: ThreadStructure | null;
   workspaceRoot: string | undefined;
   currentPlanId: string | null;
   busy: boolean;
@@ -112,7 +112,7 @@ export default function PlanPanel({
       ? {
           ...threadRef,
           itemId: row?.id ?? TurnItemId.make(itemId!),
-          revision: row ? String(row.updatedAt) : planId,
+          revision: loaded ? String(loaded.updatedAt) : planId,
         }
       : null,
   );
