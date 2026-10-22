@@ -255,6 +255,12 @@ export interface AcpAdapterV2Flavor {
       }
     | undefined;
   readonly withRuntimeStartup?: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+  /**
+   * Identifies the launch settings `makeRuntime` derives from a policy. Agents that fix settings
+   * at spawn (such as Copilot's tool list) cannot change them per session, so a turn whose key
+   * differs from the running process's restarts the runtime before the session is reactivated.
+   */
+  readonly runtimeLaunchKey?: (policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) => string;
   readonly makeRuntime: (
     input: AcpAdapterV2RuntimeInput,
   ) => Effect.Effect<
@@ -1562,6 +1568,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         const clientPolicyGrants = makeAcpClientPolicyGrants();
         let latestRuntimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy =
           input.runtimePolicy;
+        let runtimeLaunchPolicy = input.runtimePolicy;
         const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
         const activeTurn = yield* Ref.make<ActiveAcpTurn | null>(null);
         let pendingStopCloseTurn: ActiveAcpTurn | null = null;
@@ -2017,7 +2024,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         ): AcpAdapterV2RuntimeInput => {
           return {
             cwd: input.runtimePolicy.cwd ?? process.cwd(),
-            runtimePolicy: input.runtimePolicy,
+            runtimePolicy: latestRuntimePolicy,
             mcpServers: mcpContext.servers,
             acpMcpServers: mcpContext.acpServers,
             ...(mcpContext.processEnvironment === undefined
@@ -6376,8 +6383,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const mcpContext = yield* readMcpContext(threadId);
           runtimeMcpBridge = yield* makeRuntimeMcpBridge(mcpContext, runtimeScope);
           const runtimeGeneration = yield* Ref.get(runtimeCallbackGeneration);
+          const runtimeInput = makeRuntimeInput(runtimeGeneration, mcpContext, resumeSessionId);
           runtime = yield* flavor
-            .makeRuntime(makeRuntimeInput(runtimeGeneration, mcpContext, resumeSessionId))
+            .makeRuntime(runtimeInput)
             .pipe(
               Effect.provideService(Scope.Scope, runtimeScope),
               Effect.provideService(Crypto.Crypto, crypto),
@@ -6385,6 +6393,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               Effect.provideService(AgentScope, agentScope),
               Effect.provideService(AgentScopeThreadId, threadId ?? undefined),
             );
+          runtimeLaunchPolicy = runtimeInput.runtimePolicy;
         });
 
         const startAcpRuntime = Effect.fnUntraced(function* (
@@ -6447,18 +6456,19 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               stagedSessionUpdates.push(notification);
             });
           let replacementMcpBridge: AcpMcpOverAcpBridge | undefined;
+          let replacementLaunchPolicy = latestRuntimePolicy;
           const startup = Effect.gen(function* () {
             const mcpContext = yield* readMcpContext(threadId);
             replacementMcpBridge = yield* makeRuntimeMcpBridge(mcpContext, replacementScope);
+            const replacementInput = makeRuntimeInput(
+              replacementGeneration,
+              mcpContext,
+              undefined,
+              handleCandidateTermination,
+            );
+            replacementLaunchPolicy = replacementInput.runtimePolicy;
             const replacementRuntime = yield* flavor
-              .makeRuntime(
-                makeRuntimeInput(
-                  replacementGeneration,
-                  mcpContext,
-                  undefined,
-                  handleCandidateTermination,
-                ),
-              )
+              .makeRuntime(replacementInput)
               .pipe(
                 Effect.provideService(Scope.Scope, replacementScope),
                 Effect.provideService(Crypto.Crypto, crypto),
@@ -6511,6 +6521,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   yield* quarantineNativeTransportAtGeneration(previousGeneration);
                   runtime = replacementExit.value.replacementRuntime;
                   runtimeScope = replacementScope;
+                  runtimeLaunchPolicy = replacementLaunchPolicy;
                   runtimeMcpBridge = replacementMcpBridge;
                   yield* Ref.set(runtimeCallbackGeneration, replacementGeneration);
                   prepareTerminalEnvironment(
@@ -7272,6 +7283,24 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             // Install the incoming thread policy before load/resume so those
             // requests can never inherit the previously active thread's policy.
             latestRuntimePolicy = turnInput.runtimePolicy;
+            if (
+              flavor.runtimeLaunchKey !== undefined &&
+              flavor.runtimeLaunchKey(runtimeLaunchPolicy) !==
+                flavor.runtimeLaunchKey(turnInput.runtimePolicy)
+            ) {
+              // Retire the running process's callbacks first so its exit cannot flag a second
+              // restart once the replacement is live.
+              yield* runtimeCallbackPermit.withPermit(
+                Effect.gen(function* () {
+                  yield* awaitAdmittedNativeResponses;
+                  yield* quarantineNativeTransportAtGeneration(
+                    yield* Ref.get(runtimeCallbackGeneration),
+                  );
+                  yield* advanceRuntimeCallbackGeneration;
+                  yield* Ref.set(runtimeRestartRequired, true);
+                }),
+              );
+            }
             const requestedSessionId = yield* nativeThreadId(driver, turnInput.providerThread);
             const restartAfterInterrupt = yield* restartRuntimeAfterTeardownIfRequired(
               turnInput.threadId,

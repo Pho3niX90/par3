@@ -117,6 +117,7 @@ export function nextSpecStepHint(status: SpecStatus): string {
 const DRIVER_LABELS: Record<string, string> = {
   codex: "Codex",
   claudeAgent: "Claude",
+  copilot: "GitHub Copilot",
   cursor: "Cursor",
   grok: "Grok",
   opencode: "OpenCode",
@@ -127,7 +128,7 @@ export function specRoleRefusal(driver: string | null, role: SpecRole): string |
   if (driver === null) return "Choose a provider before binding this thread to a spec.";
   if (specRoleSupported(driver, role)) return null;
   const label = DRIVER_LABELS[driver] ?? driver;
-  return `The ${role} role needs Codex or Claude. ${label} supports the implementation and test roles only.`;
+  return `The ${role} role needs Codex, Claude or GitHub Copilot. ${label} supports the implementation and test roles only.`;
 }
 
 export function specModeCreateDisabledReason(input: {

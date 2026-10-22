@@ -19,6 +19,7 @@ import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeL
 import {
   applyCopilotAcpModelSelection,
   copilotApprovalOptions,
+  isCopilotReadOnlyPolicy,
   makeCopilotAcpRuntime,
   resolveCopilotAcpBaseModelId,
 } from "./acpSupport.ts";
@@ -131,12 +132,14 @@ function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapt
       advertiseModels(copilotModelsFromSessionSetup({ configOptions })),
     makeRuntime:
       options.makeRuntime ??
-      ((input) =>
+      (({ runtimePolicy, ...input }) =>
         makeCopilotAcpRuntime({
           ...input,
           copilotSettings: options.settings,
           environment: options.environment,
+          readOnly: isCopilotReadOnlyPolicy(runtimePolicy),
         })),
+    runtimeLaunchKey: (policy) => (isCopilotReadOnlyPolicy(policy) ? "read-only" : "default"),
     ...(options.assertComplete === undefined ? {} : { assertComplete: options.assertComplete }),
   };
 }

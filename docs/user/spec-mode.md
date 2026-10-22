@@ -27,4 +27,4 @@ Pushing a branch or opening a pull request is optional.
 
 ## Provider support
 
-Writing requirements, research and read-only review need a provider Par3 can restrict to read-only tools: **Codex** or **Claude**. Implementation and testing work with every provider. If the thread's provider can't run the chosen role, Par3 explains why and asks you to pick another model.
+Writing requirements, research and read-only review need a provider Par3 can restrict to read-only tools: **Codex**, **Claude** or **GitHub Copilot**. Implementation and testing work with every provider. If the thread's provider can't run the chosen role, Par3 explains why and asks you to pick another model.

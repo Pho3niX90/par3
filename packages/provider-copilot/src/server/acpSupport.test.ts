@@ -3,7 +3,11 @@ import * as Effect from "effect/Effect";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 
-import { applyCopilotAcpModelSelection } from "./acpSupport.ts";
+import {
+  applyCopilotAcpModelSelection,
+  copilotAcpSpawnArgs,
+  isCopilotReadOnlyPolicy,
+} from "./acpSupport.ts";
 
 type SessionSetupResult = AcpSessionRuntime.AcpSessionRuntimeStartResult["sessionSetupResult"];
 
@@ -150,4 +154,24 @@ describe("applyCopilotAcpModelSelection", () => {
       expect(calls).toEqual([{ method: "setSessionModel", model: "gpt-5.4" }]);
     }),
   );
+});
+
+describe("copilotAcpSpawnArgs", () => {
+  it("hides every writing, shell and subagent tool from a read-only session", () => {
+    const readOnly = isCopilotReadOnlyPolicy({ sandboxPolicy: { type: "readOnly" } });
+    const toolsArg = copilotAcpSpawnArgs(readOnly).find((arg) =>
+      arg.startsWith("--available-tools="),
+    );
+    const tools = toolsArg?.slice("--available-tools=".length).split(",") ?? [];
+    expect(tools).toContain("t3-code");
+    for (const tool of ["bash", "powershell", "create", "edit", "apply_patch", "task", "skill"]) {
+      expect(tools).not.toContain(tool);
+    }
+  });
+
+  it("leaves the tool set alone outside a read-only sandbox", () => {
+    for (const sandboxPolicy of [undefined, { type: "workspaceWrite" }]) {
+      expect(copilotAcpSpawnArgs(isCopilotReadOnlyPolicy({ sandboxPolicy }))).toEqual(["--acp"]);
+    }
+  });
 });

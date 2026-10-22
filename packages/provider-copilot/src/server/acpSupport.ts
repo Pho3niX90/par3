@@ -30,6 +30,7 @@ export interface CopilotAcpRuntimeInput extends Omit<
   readonly copilotSettings: CopilotAcpRuntimeSettings | null | undefined;
   readonly environment?: NodeJS.ProcessEnv;
   readonly runtimeMode?: RuntimeMode;
+  readonly readOnly?: boolean;
 }
 
 export const COPILOT_SUPPORTED_RUNTIME_MODES = [
@@ -37,18 +38,36 @@ export const COPILOT_SUPPORTED_RUNTIME_MODES = [
   "full-access",
 ] as const satisfies ReadonlyArray<RuntimeMode>;
 
-function copilotAcpSpawnArgs(): ReadonlyArray<string> {
-  return ["--acp"];
+/**
+ * Copilot asks before writes but runs commands it judges read-only without asking, so permission
+ * replies alone cannot keep a session read-only. Its tool allow-list is fixed when the ACP server
+ * starts and hides every other tool from the model. `task` is left out because its subagents get
+ * the shell; `t3-code` keeps T3's MCP tools, which the server scopes by role.
+ */
+const COPILOT_READ_ONLY_TOOLS = ["view", "grep", "rg", "glob", "ask_user", "t3-code"];
+
+export function copilotAcpSpawnArgs(readOnly = false): ReadonlyArray<string> {
+  return readOnly ? ["--acp", `--available-tools=${COPILOT_READ_ONLY_TOOLS.join(",")}`] : ["--acp"];
+}
+
+export function isCopilotReadOnlyPolicy(policy: { readonly sandboxPolicy?: unknown }): boolean {
+  const sandboxPolicy = policy.sandboxPolicy;
+  return (
+    typeof sandboxPolicy === "object" &&
+    sandboxPolicy !== null &&
+    (sandboxPolicy as { readonly type?: unknown }).type === "readOnly"
+  );
 }
 
 function buildCopilotAcpSpawnInput(
   copilotSettings: CopilotAcpRuntimeSettings | null | undefined,
   cwd: string,
   environment?: NodeJS.ProcessEnv,
+  readOnly?: boolean,
 ): AcpSessionRuntime.AcpSpawnInput {
   return {
     command: copilotSettings?.binaryPath || "copilot",
-    args: [...copilotAcpSpawnArgs()],
+    args: [...copilotAcpSpawnArgs(readOnly)],
     cwd,
     ...(environment !== undefined ? { env: environment } : {}),
   };
@@ -134,6 +153,7 @@ export const makeCopilotAcpRuntime = Effect.fn("makeCopilotAcpRuntime")(function
         input.copilotSettings,
         input.cwd ?? process.cwd(),
         input.environment,
+        input.readOnly,
       ),
     }),
   );

@@ -249,11 +249,11 @@ export class SpecError extends Schema.TaggedError<SpecError>()("SpecError", {
 }) {}
 
 const SPEC_ROLE_SUPPORT: Readonly<Record<SpecRole, readonly string[]>> = {
-  requirements: ["codex", "claudeAgent"],
-  implementation: ["codex", "claudeAgent", "cursor", "grok", "opencode", "antigravity"],
-  test: ["codex", "claudeAgent", "cursor", "grok", "opencode", "antigravity"],
-  researcher: ["codex", "claudeAgent"],
-  verifier: ["codex", "claudeAgent"],
+  requirements: ["codex", "claudeAgent", "copilot"],
+  implementation: ["codex", "claudeAgent", "copilot", "cursor", "grok", "opencode", "antigravity"],
+  test: ["codex", "claudeAgent", "copilot", "cursor", "grok", "opencode", "antigravity"],
+  researcher: ["codex", "claudeAgent", "copilot"],
+  verifier: ["codex", "claudeAgent", "copilot"],
 };
 
 export function specRoleSupported(driver: string, role: SpecRole): boolean {

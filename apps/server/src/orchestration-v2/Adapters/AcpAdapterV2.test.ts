@@ -2395,6 +2395,81 @@ describe("AcpAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.live("respawns the ACP runtime once when a turn needs different launch settings", () =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const path = yield* Path.Path;
+      const selfInvocation = yield* resolveSelfInvocation();
+      const mockAgentPath = yield* path.fromFileUrl(
+        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+      );
+      const runtimeInputs: AcpAdapterV2RuntimeInput[] = [];
+      const baseMakeRuntime = makeMockRuntime({ childProcessSpawner, mockAgentPath });
+      const instanceId = ProviderInstanceId.make("acp-test-launch-key");
+      const adapter = yield* makeAcpAdapterV2({
+        instanceId,
+        flavor: {
+          driver: ACP_TEST_DRIVER,
+          capabilities: AcpProviderCapabilitiesV2,
+          runtimeLaunchKey: (policy) =>
+            (policy.sandboxPolicy as { readonly type?: string } | undefined)?.type ?? "default",
+          makeRuntime: (runtimeInput) =>
+            Effect.sync(() => {
+              runtimeInputs.push(runtimeInput);
+            }).pipe(Effect.andThen(baseMakeRuntime(runtimeInput))),
+        },
+        selfInvocation,
+      });
+      const threadId = ThreadId.make("thread-acp-launch-key");
+      const fullAccess = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const readOnly = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        ...fullAccess,
+        approvalPolicy: "never",
+        sandboxPolicy: { type: "readOnly" },
+      });
+      const modelSelection = { instanceId, model: "default" } as const;
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-acp-launch-key"),
+        modelSelection,
+        runtimePolicy: fullAccess,
+      });
+      const providerThread = yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy: fullAccess,
+      });
+      const runTurn = (runtimePolicy: typeof fullAccess) =>
+        Effect.gen(function* () {
+          yield* runtime.startTurn(
+            makeTurnInput({
+              threadId,
+              providerThread,
+              instanceId,
+              runtimePolicy,
+              now: yield* DateTime.now,
+            }),
+          );
+          yield* runtime.events.pipe(
+            Stream.filter((event) => event.type === "turn.terminal"),
+            Stream.runHead,
+          );
+        });
+
+      yield* runTurn(fullAccess);
+      assert.lengthOf(runtimeInputs, 1);
+      yield* runTurn(readOnly);
+      assert.lengthOf(runtimeInputs, 2);
+      assert.deepEqual(runtimeInputs[1]!.runtimePolicy.sandboxPolicy, { type: "readOnly" });
+      yield* runTurn(readOnly);
+      assert.lengthOf(runtimeInputs, 2);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.effect("negotiates and executes optional native session forks through the ACP runtime", () =>
     Effect.gen(function* () {
       const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;

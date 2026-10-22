@@ -30,7 +30,7 @@ export function explainSpecRoleSupport(
   if (isSpecRoleSupported(driver, role)) return null;
   const provider = driver || "This provider";
   return role === "requirements" || role === "researcher" || role === "verifier"
-    ? `${provider} can't run the ${role} role. It needs Codex or Claude.`
+    ? `${provider} can't run the ${role} role. It needs Codex, Claude or GitHub Copilot.`
     : `${provider} can't run the ${role} role in Spec mode.`;
 }
 
