@@ -84,6 +84,7 @@ import {
 import { PreviewControlsToolkit } from "../../mcp/toolkits/previewControls/tools.ts";
 import { HtmlToolkit } from "../../mcp/toolkits/html/tools.ts";
 import { GatewayToolkit } from "../../mcp/toolkits/gateway/tools.ts";
+import { VaultToolkit } from "../../mcp/toolkits/vault/tools.ts";
 import { EnvironmentToolkit } from "../../mcp/toolkits/environment/tools.ts";
 import { ProjectToolkit } from "../../mcp/toolkits/project/tools.ts";
 import { WorktreeToolkit } from "../../mcp/toolkits/worktree/tools.ts";
@@ -253,6 +254,28 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.equal(options.permissionMode, expected);
     assert.isUndefined(options.extraArgs?.["permission-mode"]);
     assert.isUndefined(options.extraArgs?.["dangerously-skip-permissions"]);
+  });
+
+  it("gives delegated children Claude's subagent prompt cache TTL", () => {
+    const lineage = (relationshipToParent: "fork" | "subagent" | null) => ({
+      lineage: {
+        parentThreadId: null,
+        relationshipToParent,
+        rootThreadId: ThreadId.make("thread-root"),
+      },
+    });
+    const env = { PATH: "/bin" };
+    const ttl = (environment: NodeJS.ProcessEnv, ...args: Parameters<typeof lineage>) =>
+      ClaudeAdapterV2.claudeQueryEnvironment(environment, lineage(...args), "5m")
+        .CLAUDE_CODE_PROMPT_CACHE_TTL;
+    assert.equal(ttl(env, "subagent"), "5m");
+    assert.isUndefined(ttl(env, null));
+    assert.isUndefined(ttl(env, "fork"));
+    assert.equal(ttl({ ...env, CLAUDE_CODE_PROMPT_CACHE_TTL: "1h" }, "subagent"), "1h");
+    assert.strictEqual(
+      ClaudeAdapterV2.claudeQueryEnvironment(env, lineage("subagent"), undefined),
+      env,
+    );
   });
 
   it("projects AskUserQuestion input with question text as the answer key", () => {
@@ -500,6 +523,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
       ...Object.values(PreviewControlsToolkit.tools),
       ...Object.values(HtmlToolkit.tools),
       ...Object.values(GatewayToolkit.tools),
+      ...Object.values(VaultToolkit.tools),
     ]
       .filter((tool) => Context.get(tool.annotations, Tool.Readonly))
       .map((tool) => `mcp__t3-code__${tool.name}`)
@@ -585,6 +609,47 @@ describe("ClaudeAdapterV2 context usage", () => {
       DateTime.makeUnsafe("2026-08-29T00:00:00.000Z"),
     );
     assert.strictEqual(usage.promptCacheExpiresAt, "2026-08-29T00:05:00.000Z");
+  });
+});
+
+describe("ClaudeAdapterV2 approval presentation", () => {
+  it("marks asks that full access could not auto-allow and keeps the CLI's reason", () => {
+    const presentation = ClaudeAdapterV2.claudeApprovalPresentation({
+      permissionMode: "bypassPermissions",
+      prompt: 'Claude wants to run rm -r -- "$rr/$h"',
+      callbackOptions: {
+        decisionReason: "\u001b[33mDangerous rm on a path built from a variable\u001b[39m",
+        suppressAlwaysAllowRule: true,
+      },
+    });
+    assert.deepEqual(presentation, {
+      reason: "Dangerous rm on a path built from a variable",
+      fullAccessOverride: "provider_check",
+      options: [
+        { decision: "decline", label: "Decline" },
+        { decision: "accept", label: "Approve" },
+      ],
+    });
+  });
+
+  it("attributes a bypass ask to the user's ask rule when one matched", () => {
+    const presentation = ClaudeAdapterV2.claudeApprovalPresentation({
+      permissionMode: "bypassPermissions",
+      prompt: "Claude wants to run git push",
+      callbackOptions: {
+        matchedAskRule: { source: "userSettings", toolName: "Bash", ruleContent: "git push:*" },
+      },
+    });
+    assert.deepEqual(presentation, { fullAccessOverride: "ask_rule" });
+  });
+
+  it("adds nothing to ordinary approvals outside full access", () => {
+    const presentation = ClaudeAdapterV2.claudeApprovalPresentation({
+      permissionMode: "default",
+      prompt: "Run make?",
+      callbackOptions: { decisionReason: "Run make?" },
+    });
+    assert.deepEqual(presentation, {});
   });
 });
 

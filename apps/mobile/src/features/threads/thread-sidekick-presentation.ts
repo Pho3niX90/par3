@@ -62,7 +62,7 @@ export function resolveSidekickRow(
   if (!input.supported) return null;
   const lead = leadProblem(input);
   const sidekick = input.sidekick;
-  if (sidekick === null) return lead === null ? { value: "None", problem: null } : null;
+  if (sidekick === null) return lead === null ? { value: "Off", problem: null } : null;
   const provider = input.providers.find(
     (candidate) => candidate.instanceId === sidekick.instanceId,
   );

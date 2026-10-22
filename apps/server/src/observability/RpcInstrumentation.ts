@@ -226,6 +226,14 @@ const RPC_AGGREGATES = {
   [WS_METHODS.specsQuery]: "specs",
   [WS_METHODS.specsMutate]: "specs",
   [WS_METHODS.specsSubscribe]: "specs",
+  [WS_METHODS.syncSubscribe]: "sync",
+  [WS_METHODS.syncRead]: "sync",
+  [WS_METHODS.syncApply]: "sync",
+  [WS_METHODS.syncSetParticipation]: "sync",
+  [WS_METHODS.vaultList]: "vault",
+  [WS_METHODS.vaultMutate]: "vault",
+  [WS_METHODS.vaultWrapKeyFor]: "vault",
+  [WS_METHODS.vaultImportCandidates]: "vault",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 
 const RPC_SPAN_PREFIX = "ws.rpc";

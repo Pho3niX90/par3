@@ -98,7 +98,9 @@ const screenshot = await getImage({
         <p>
           Plan mode is a first-class setting in Par3. The agent proposes what it
           will change, you review and approve it, and only then does it write
-          code. Your team stays in charge of what lands.
+          code. For bigger changes, Spec mode has agents write requirements
+          that a person approves before any implementation starts. Your team
+          stays in charge of what lands.
         </p>
       </div>
       <div class="harness-footer">
@@ -278,8 +280,8 @@ const screenshot = await getImage({
           <p>Follow threads, reply to your agents and review pull requests natively on iOS and Android.</p>
         </div>
         <div class="feature tile">
-          <div class="feature-name">Agents delegate to agents</div>
-          <p>A thread can hand a task to another provider or model, in its own worktree, and pick up the result when it lands.</p>
+          <div class="feature-name">A lead and a sidekick</div>
+          <p>Pair a frontier model with a cheaper one: the lead plans and reviews, the sidekick does the work. Inspired by Cognition's Devin Fusion. Threads can also hand tasks to any provider in their own worktree.</p>
         </div>
         <div class="feature tile">
           <div class="feature-name">Schedules and webhooks</div>

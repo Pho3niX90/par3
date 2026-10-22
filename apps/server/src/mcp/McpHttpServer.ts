@@ -76,6 +76,8 @@ import {
 } from "./toolkits/device/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import * as GatewayHandlers from "./toolkits/gateway/handlers.ts";
+import * as VaultHandlers from "./toolkits/vault/handlers.ts";
+import { VaultToolkit } from "./toolkits/vault/tools.ts";
 import * as SpecsHandlers from "./toolkits/specs/handlers.ts";
 import { SpecsToolkit } from "./toolkits/specs/tools.ts";
 import { McpCallTool, McpCallToolkit, McpServersToolkit } from "./toolkits/gateway/tools.ts";
@@ -1178,4 +1180,5 @@ export const layer = Layer.mergeAll(
   layerDeviceToolkit,
   layerHtmlToolkit,
   layerGatewayToolkit,
+  toolkitRegistration(VaultToolkit, VaultHandlers.layer),
 ).pipe(Layer.provideMerge(layerMcpTransport));

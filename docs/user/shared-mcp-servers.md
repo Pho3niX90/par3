@@ -21,7 +21,8 @@ In **Settings → Integrations → Shared MCP servers**, choose **Add server**:
 Mark tokens and keys as **Secret**. Secret values stay in the environment's
 secret store and are never sent back to clients. Put tokens in a secret
 environment variable or header, not in the arguments or the URL's query string,
-which are stored and shown as plain text.
+which are stored and shown as plain text. A value of `vault:NAME` uses a secret from the
+[vault](./vault-and-sync.md), which lets the server sync to your other machines.
 
 Choose **Test connection** from a server's menu to start it and list its tools.
 Untick a tool to stop agents calling it. Turn a server off with its switch;

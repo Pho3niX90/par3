@@ -109,7 +109,7 @@ function resultLineCount(editor: MergeEditor): number {
 }
 
 export function ThreeWayMergeView(props: ThreeWayMergeViewProps) {
-  const [session] = useState(() => createMergeSession(props.cwd, props.file));
+  const [session] = useState(() => createMergeSession(props.environmentId, props.cwd, props.file));
   return <MergeViewBody key={session.editStateKey} session={session} {...props} />;
 }
 

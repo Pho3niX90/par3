@@ -1,5 +1,5 @@
 import { EditStateManager } from "@pierre/diffs/edit";
-import type { MergeConflictReadResult } from "@t3tools/contracts";
+import type { EnvironmentId, MergeConflictReadResult } from "@t3tools/contracts";
 import {
   computeMerge3,
   splitLines,
@@ -20,10 +20,15 @@ const retainedTimelines = new Map<string, MergeTimeline<object>>();
 let nextInstance = 0;
 
 /** Identifies one file at one state of the conflict; a draft is only resumed for the same one. */
-function mergeEditStateKey(cwd: string, file: MergeConflictReadResult): string {
+function mergeEditStateKey(
+  environmentId: EnvironmentId,
+  cwd: string,
+  file: MergeConflictReadResult,
+): string {
   const { base, ours, theirs } = file.expected.stages;
   return [
     "merge",
+    environmentId,
     cwd,
     file.path,
     base ?? "-",
@@ -42,8 +47,12 @@ export interface MergeSession {
 }
 
 /** One merge computation per load: the three-way merge, its chunk timeline, and the pane controller. */
-export function createMergeSession(cwd: string, file: MergeConflictReadResult): MergeSession {
-  const editStateKey = mergeEditStateKey(cwd, file);
+export function createMergeSession(
+  environmentId: EnvironmentId,
+  cwd: string,
+  file: MergeConflictReadResult,
+): MergeSession {
+  const editStateKey = mergeEditStateKey(environmentId, cwd, file);
   const input = {
     base: file.base ?? "",
     ours: file.ours ?? "",

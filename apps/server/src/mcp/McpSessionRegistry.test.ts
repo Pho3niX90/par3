@@ -49,7 +49,7 @@ it.effect("stores only a token hash, resolves the bearer token, and revokes by t
     const resolved = yield* registry.resolve(token);
     expect(resolved?.thread.threadId).toBe(threadId);
     expect(resolved?.capabilities).toEqual(
-      new Set(["preview", "orchestration", "worktree", "pull-requests", "mcp-gateway"]),
+      new Set(["preview", "orchestration", "worktree", "pull-requests", "mcp-gateway", "vault"]),
     );
 
     yield* registry.revokeThread(threadId);
@@ -87,12 +87,14 @@ it.effect("always grants pull-requests and gates browser and device access indep
       "orchestration",
       "preview",
       "pull-requests",
+      "vault",
       "worktree",
     ]);
     expect(yield* capabilitiesOf(withoutPreview)).toEqual([
       "mcp-gateway",
       "orchestration",
       "pull-requests",
+      "vault",
       "worktree",
     ]);
     expect(yield* capabilitiesOf(withDevice)).toEqual([
@@ -100,6 +102,7 @@ it.effect("always grants pull-requests and gates browser and device access indep
       "mcp-gateway",
       "orchestration",
       "pull-requests",
+      "vault",
       "worktree",
     ]);
   }),

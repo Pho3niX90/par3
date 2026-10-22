@@ -121,3 +121,18 @@ describe("closedViewStore", () => {
     expect(saved).not.toContain("Private page");
   });
 });
+
+it("remembers distinct plan tabs", () => {
+  const store = useClosedViewStore.getState();
+  store.remember({
+    kind: "panel-tab",
+    threadRef: refA,
+    surface: { kind: "plan", id: "plan:one", planId: "one" },
+  });
+  store.remember({
+    kind: "panel-tab",
+    threadRef: refA,
+    surface: { kind: "plan", id: "plan:two", planId: "two" },
+  });
+  expect(useClosedViewStore.getState().entries).toHaveLength(2);
+});

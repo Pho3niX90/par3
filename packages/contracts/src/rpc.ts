@@ -409,6 +409,23 @@ import {
   SpecQueryInput,
   SpecQueryResult,
 } from "./specs.ts";
+import {
+  SyncApplyInput,
+  SyncApplyResult,
+  SyncError,
+  SyncReadInput,
+  SyncReadResult,
+  SyncSetParticipationInput,
+  SyncSnapshot,
+} from "./sync.ts";
+import {
+  VaultError,
+  VaultImportCandidates,
+  VaultListResult,
+  VaultMutation,
+  VaultWrapKeyInput,
+  VaultWrappedKey,
+} from "./vault.ts";
 
 export const WS_METHODS = {
   projectsList: "projects.list",
@@ -579,6 +596,14 @@ export const WS_METHODS = {
   specsQuery: "specs.query",
   specsMutate: "specs.mutate",
   specsSubscribe: "specs.subscribe",
+  syncSubscribe: "sync.subscribe",
+  syncRead: "sync.read",
+  syncApply: "sync.apply",
+  syncSetParticipation: "sync.setParticipation",
+  vaultList: "vault.list",
+  vaultMutate: "vault.mutate",
+  vaultWrapKeyFor: "vault.wrapKeyFor",
+  vaultImportCandidates: "vault.importCandidates",
   pullRequestsPreview: "pullRequests.preview",
   pullRequestsChecks: "pullRequests.checks",
   pullRequestsActivity: "pullRequests.activity",
@@ -1076,6 +1101,60 @@ const WsSpecsSubscribeRpc = Rpc.make(WS_METHODS.specsSubscribe, {
   success: SpecQueryResult,
   error: SpecError,
   stream: true,
+});
+
+const SyncRpcError = SyncError;
+const VaultRpcError = VaultError;
+
+/** Metadata only: item contents are read one at a time, and only for items a client copies. */
+const WsSyncSubscribeRpc = Rpc.make(WS_METHODS.syncSubscribe, {
+  payload: Schema.Struct({}),
+  success: SyncSnapshot,
+  error: SyncRpcError,
+  stream: true,
+});
+
+const WsSyncReadRpc = Rpc.make(WS_METHODS.syncRead, {
+  payload: SyncReadInput,
+  success: SyncReadResult,
+  error: SyncRpcError,
+});
+
+const WsSyncApplyRpc = Rpc.make(WS_METHODS.syncApply, {
+  payload: SyncApplyInput,
+  success: SyncApplyResult,
+  error: SyncRpcError,
+});
+
+const WsSyncSetParticipationRpc = Rpc.make(WS_METHODS.syncSetParticipation, {
+  payload: SyncSetParticipationInput,
+  success: SyncSnapshot,
+  error: SyncRpcError,
+});
+
+const WsVaultListRpc = Rpc.make(WS_METHODS.vaultList, {
+  payload: Schema.Struct({}),
+  success: VaultListResult,
+  error: VaultRpcError,
+});
+
+/** A secret's value travels one way; the result lists metadata only. */
+const WsVaultMutateRpc = Rpc.make(WS_METHODS.vaultMutate, {
+  payload: VaultMutation,
+  success: VaultListResult,
+  error: VaultRpcError,
+});
+
+const WsVaultWrapKeyForRpc = Rpc.make(WS_METHODS.vaultWrapKeyFor, {
+  payload: VaultWrapKeyInput,
+  success: VaultWrappedKey,
+  error: VaultRpcError,
+});
+
+const WsVaultImportCandidatesRpc = Rpc.make(WS_METHODS.vaultImportCandidates, {
+  payload: Schema.Struct({}),
+  success: VaultImportCandidates,
+  error: VaultRpcError,
 });
 
 const WsJiraIssueRpc = Rpc.make(WS_METHODS.jiraIssue, {
@@ -2093,6 +2172,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsSpecsQueryRpc,
   WsSpecsMutateRpc,
   WsSpecsSubscribeRpc,
+  WsSyncSubscribeRpc,
+  WsSyncReadRpc,
+  WsSyncApplyRpc,
+  WsSyncSetParticipationRpc,
+  WsVaultListRpc,
+  WsVaultMutateRpc,
+  WsVaultWrapKeyForRpc,
+  WsVaultImportCandidatesRpc,
   WsPullRequestsPreviewRpc,
   WsPullRequestsChecksRpc,
   WsPullRequestsActivityRpc,

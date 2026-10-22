@@ -1,15 +1,20 @@
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
+  AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
+  AuthProvidersManageScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS } from "./rpc.ts";
+import { SyncApplyInput, SyncSetParticipationInput, splitSyncItemKey } from "./sync.ts";
+import { VaultMutation, vaultMutationNeedsOwner } from "./vault.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
@@ -20,6 +25,13 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   // Testing starts the server's command on the host, like saving it would.
   [WS_METHODS.mcpGatewayTest]: AuthSettingsWriteScope,
   [WS_METHODS.specsMutate]: AuthOrchestrationOperateScope,
+  // Sync writes into provider homes and settings on the host.
+  [WS_METHODS.syncApply]: AuthProvidersManageScope,
+  [WS_METHODS.syncSetParticipation]: AuthProvidersManageScope,
+  // Owner-only mutations are raised to access:write below.
+  [WS_METHODS.vaultMutate]: AuthSettingsWriteScope,
+  // Holding the vault key opens every secret, so handing it out is an owner decision.
+  [WS_METHODS.vaultWrapKeyFor]: AuthAccessWriteScope,
   [WS_METHODS.pullRequestsRunAction]: AuthSourceControlWriteScope,
   [WS_METHODS.pullRequestsUpdate]: AuthSourceControlWriteScope,
   [WS_METHODS.pullRequestsComment]: AuthSourceControlWriteScope,
@@ -62,7 +74,20 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
 export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
 
 const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
+const decodeVaultMutation = Schema.decodeUnknownSync(VaultMutation);
 const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
+const decodeSyncApply = Schema.decodeUnknownOption(SyncApplyInput);
+const decodeSyncParticipation = Schema.decodeUnknownOption(SyncSetParticipationInput);
+
+/** These categories live in settings and the vault, not in a provider's home folder. */
+const SETTINGS_BACKED_SYNC_CATEGORIES: ReadonlySet<string> = new Set(["vault", "mcpServers"]);
+
+/** Syncing files needs provider administration; syncing settings-backed items also writes settings. */
+function syncScopes(touchesSettings: boolean): readonly AuthEnvironmentScope[] {
+  return touchesSettings
+    ? [AuthProvidersManageScope, AuthSettingsWriteScope]
+    : [AuthProvidersManageScope];
+}
 
 export function clientRpcRequiredScopes(
   method: string,
@@ -77,6 +102,29 @@ export function clientRpcRequiredScopes(
       input.type === "thread.sidekick.set"
       ? [AuthOrchestrationOperateScope]
       : [];
+  }
+  if (method === WS_METHODS.vaultMutate && input !== undefined) {
+    return vaultMutationNeedsOwner(decodeVaultMutation(input))
+      ? [AuthAccessWriteScope]
+      : [AuthSettingsWriteScope];
+  }
+  // An undecodable payload is rejected by the handler anyway; until then, assume the stricter set.
+  if (method === WS_METHODS.syncApply && input !== undefined) {
+    const payload = decodeSyncApply(input);
+    return syncScopes(
+      Option.isNone(payload) ||
+        payload.value.ops.some((op) => {
+          const category = splitSyncItemKey(op.key)?.categoryId;
+          return category === undefined || SETTINGS_BACKED_SYNC_CATEGORIES.has(category);
+        }),
+    );
+  }
+  if (method === WS_METHODS.syncSetParticipation && input !== undefined) {
+    const payload = decodeSyncParticipation(input);
+    return syncScopes(
+      Option.isNone(payload) ||
+        payload.value.categories.some((category) => SETTINGS_BACKED_SYNC_CATEGORIES.has(category)),
+    );
   }
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);

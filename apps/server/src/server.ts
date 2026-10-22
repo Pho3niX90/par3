@@ -95,6 +95,8 @@ import * as ProviderUsageLimitsIngestion from "./provider/ProviderUsageLimitsIng
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as JiraIssues from "./jira/JiraIssues.ts";
 import * as McpGateway from "./mcpGateway/McpGateway.ts";
+import * as SyncStore from "./sync/SyncStore.ts";
+import * as VaultService from "./vault/VaultService.ts";
 import * as ThreadRepositories from "./vcs/ThreadRepositories.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
@@ -635,6 +637,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
       UsageLimitSources.layer,
       JiraIssues.layer,
       McpGateway.layer,
+      SyncStore.layer.pipe(Layer.provideMerge(VaultService.layer)),
     ),
   ),
   Layer.provideMerge(ProviderRegistry.layer),

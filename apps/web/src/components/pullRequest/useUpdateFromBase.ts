@@ -1,5 +1,4 @@
 import { useAtomValue } from "@effect/atom-react";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -17,6 +16,7 @@ import { vcsEnvironment } from "~/state/vcs";
 import { toastManager } from "../ui/toast";
 import { updateFromBaseFailureTitle, updateFromBaseToast } from "./updateFromBase.logic";
 import type { PreparedPullRequestCheckout } from "./usePullRequestActions";
+import { OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST } from "./pullRequestCheckoutToast";
 
 type UpdateFromBaseDetail = Pick<PullRequestDetail, "headBranch" | "baseBranch">;
 
@@ -66,10 +66,12 @@ export function useUpdateFromBase(input: {
     if (detail === null || pendingRef.current) return;
     pendingRef.current = true;
     setPending(true);
-    const outcome = await updateFromBase(detail);
-    pendingRef.current = false;
-    setPending(false);
-    return outcome;
+    try {
+      return await updateFromBase(detail);
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
   };
 
   const updateFromBase = async (pr: UpdateFromBaseDetail) => {
@@ -77,7 +79,10 @@ export function useUpdateFromBase(input: {
     if (target === null) {
       const prepared = await input.prepareCheckout();
       if (prepared === null) return;
-      // A checkout that keeps local work is still on the head branch, which is all this needs.
+      if (!prepared.isOnPullRequestHead) {
+        toastManager.add(OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST);
+        return;
+      }
       if (prepared.cwd === null) return;
       target = { cwd: prepared.cwd, threadRef: prepared.threadRef };
     }

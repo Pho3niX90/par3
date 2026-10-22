@@ -13,6 +13,7 @@ import type { ThreadPanelPresentation } from "./rightPanelLayout";
 import type { ChatFileAttachment } from "./types";
 
 const RIGHT_PANEL_KINDS = [
+  "plan",
   "diff",
   "files",
   "file",
@@ -35,6 +36,7 @@ export interface DeviceTabTarget {
 }
 
 export type RightPanelSurface =
+  | { id: `plan:${string}`; kind: "plan"; planId: string; itemId?: string }
   | { id: `browser:${string}`; kind: "preview"; resourceId: string }
   | { id: "browser:new"; kind: "preview"; resourceId: null }
   | { id: "device" | `device:${string}`; kind: "device"; target?: DeviceTabTarget; title?: string }
@@ -85,7 +87,7 @@ export type RightPanelSurface =
   | { id: "merge"; kind: "merge" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
-const RIGHT_PANEL_STORAGE_VERSION = 14;
+const RIGHT_PANEL_STORAGE_VERSION = 15;
 
 export const PULL_REQUESTS_PANEL_REF = scopeThreadRef(
   EnvironmentId.make("pull-requests-panel"),
@@ -124,15 +126,16 @@ interface RightPanelStoreState {
   openProactive: (
     ref: ScopedThreadRef,
     request:
-      | Extract<RightPanelSurface, { kind: "pull-request" | "pull-requests" }>
+      | Extract<RightPanelSurface, { kind: "plan" | "pull-request" | "pull-requests" }>
       | { kind: "diff"; turnId: RunId },
     expectedUserActionRevision: number,
     activateExisting?: boolean,
   ) => boolean;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
+    kind: Exclude<RightPanelKind, "plan" | "file" | "terminal" | "pull-request">,
   ) => void;
+  openPlan: (ref: ScopedThreadRef, planId: string, itemId?: string) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
@@ -195,7 +198,7 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
+    kind: Exclude<RightPanelKind, "plan" | "file" | "terminal" | "pull-request">,
   ) => void;
   setThreadPanelOpen: (
     ref: ScopedThreadRef,
@@ -218,7 +221,7 @@ const DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
 };
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request">,
+  kind: Exclude<RightPanelKind, "plan" | "file" | "preview" | "terminal" | "pull-request">,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -309,14 +312,22 @@ const upsertSurface = (
   current: ThreadRightPanelState,
   surface: RightPanelSurface,
   activate = true,
-): ThreadRightPanelState => ({
-  ...current,
-  isOpen: true,
-  surfaces: current.surfaces.some((entry) => entry.id === surface.id)
-    ? current.surfaces
-    : [...current.surfaces, surface],
-  activeSurfaceId: activate ? surface.id : current.activeSurfaceId,
-});
+): ThreadRightPanelState => {
+  const existing = current.surfaces.find((entry) => entry.id === surface.id);
+  const next = { ...existing, ...surface } as RightPanelSurface;
+  const surfaces =
+    surface.kind === "plan"
+      ? [...current.surfaces.filter((entry) => entry.kind !== "plan"), next]
+      : existing
+        ? current.surfaces
+        : [...current.surfaces, surface];
+  return {
+    ...current,
+    isOpen: true,
+    surfaces,
+    activeSurfaceId: activate ? surface.id : current.activeSurfaceId,
+  };
+};
 
 const updateThreadStateMap = (
   byThreadKey: Record<string, ThreadRightPanelState>,
@@ -468,7 +479,14 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
               const surfaces = Array.isArray(validThreadState?.surfaces)
                 ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
                     const kind = (surface as { kind?: string }).kind;
-                    if (kind === "plan" || kind === "agents") return [];
+                    if (kind === "agents") return [];
+                    if (
+                      surface.kind === "plan" &&
+                      (typeof surface.planId !== "string" ||
+                        !surface.planId ||
+                        surface.id !== `plan:${surface.planId}`)
+                    )
+                      return [];
                     if (
                       (surface.kind === "file" || surface.kind === "files") &&
                       "folderTrail" in surface &&
@@ -665,6 +683,17 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             }
             return upsertSurface(current, singletonSurface(kind));
           }),
+        ),
+      openPlan: (ref, planId, itemId) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, {
+              id: `plan:${planId}`,
+              kind: "plan",
+              planId,
+              ...(itemId ? { itemId } : {}),
+            }),
+          ),
         ),
       openDevice: (ref, target, automatic = false) =>
         set((state) =>

@@ -99,6 +99,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   mcpGateway: Schema.optionalKey(Schema.Boolean),
   /** Server exposes the project-local Spec workspace RPCs. */
   specMode: Schema.optionalKey(Schema.Boolean),
+  /** Server holds a vault and resolves `vault:NAME` references in settings. */
+  vault: Schema.optionalKey(Schema.Boolean),
+  /** Server exposes the sync store that clients reconcile across environments. */
+  sync: Schema.optionalKey(Schema.Boolean),
   projectWorktreeCleanup: Schema.optionalKey(Schema.Boolean),
   settledWorktreeCleanup: Schema.optionalKey(Schema.Boolean),
   worktreesDirectory: Schema.optionalKey(Schema.Boolean),
@@ -183,6 +187,7 @@ export type RepositoryIdentityLocator = typeof RepositoryIdentityLocator.Type;
 
 export const RepositoryOrigin = Schema.Struct({
   canonicalKey: TrimmedNonEmptyString,
+  remoteUrl: Schema.optionalKey(TrimmedNonEmptyString),
   displayName: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type RepositoryOrigin = typeof RepositoryOrigin.Type;

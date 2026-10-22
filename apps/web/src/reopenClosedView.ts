@@ -117,6 +117,9 @@ export async function reopenClosedView(
   )
     return false;
   switch (surface.kind) {
+    case "plan":
+      panels.openPlan(ref, surface.planId, surface.itemId);
+      break;
     case "preview":
       if (surface.resourceId !== null) return false;
       panels.openBrowser(ref, null);

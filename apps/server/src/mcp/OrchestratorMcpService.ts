@@ -14,7 +14,9 @@ import {
   type OrchestrationV2ThreadLaunchWorkspaceStrategy,
   type OrchestrationV2TurnItem,
   OrchestratorMcpFailure,
+  type OrchestratorMcpCapabilitiesInput,
   type OrchestratorMcpCapabilitiesResult,
+  type OrchestratorMcpModelOption,
   type OrchestratorMcpCreateThreadsInput,
   type OrchestratorMcpCreateThreadsResult,
   type OrchestratorMcpCreatedThread,
@@ -53,16 +55,19 @@ import {
   type OrchestratorMcpThreadWaitResult,
   type ProviderInteractionMode,
   type ProviderInstanceId,
+  type ProviderOptionDescriptor,
   ProviderRequestKind,
   type RuntimeMode,
   type ScheduledTask,
   type ScheduledTaskUpsertInput,
   type ServerProvider,
+  type ServerProviderModel,
   ThreadId,
   sameModelSelection,
   isOrchestrationV2WorkActive,
 } from "@t3tools/contracts";
 import { SIDEKICK_CHILD_PREAMBLE } from "@t3tools/provider-core/server/orchestrationInstructions";
+import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import {
   normalizeThreadPullRequestKey,
@@ -139,6 +144,7 @@ type TerminalTaskStatus = Extract<
 export interface OrchestratorMcpServiceShape {
   readonly capabilities: (
     scope: McpInvocationScope,
+    input?: OrchestratorMcpCapabilitiesInput,
   ) => Effect.Effect<OrchestratorMcpCapabilitiesResult, OrchestratorMcpFailure>;
   readonly delegateTask: (
     scope: McpInvocationScope,
@@ -235,6 +241,26 @@ export const isLiveCallerShell = (
     ) ??
       false));
 
+/**
+ * Threads an agent starts over MCP are `mcp:<uuid>`, and agents often paste the
+ * bare uuid. The id is never rewritten, so permission checks keyed on it still
+ * hold; the miss only names a live thread the caller could read by its full id.
+ */
+export const threadNotFound = Effect.fn("OrchestratorMcpService.threadNotFound")(function* (
+  threads: Pick<ThreadManagementService.ThreadManagementService["Service"], "getThreadShell">,
+  threadId: ThreadId,
+  message: string,
+) {
+  const prefixed = ThreadId.make(`mcp:${threadId}`);
+  const shell = yield* threads.getThreadShell(prefixed).pipe(Effect.orElseSucceed(() => null));
+  return yield* failure(
+    "thread_not_found",
+    shell === null || shell.deletedAt !== null
+      ? message
+      : `${message} Did you mean \`${prefixed}\`?`,
+  );
+});
+
 function threadManagementFailure(error: unknown): OrchestratorMcpFailure {
   if (!isThreadManagementError(error)) return failure("orchestration_error", errorMessage(error));
   switch (error._tag) {
@@ -293,6 +319,80 @@ function isModelVisible(
   model: { readonly slug: string; readonly isCustom: boolean },
 ): boolean {
   return model.isCustom || !(hiddenModels?.includes(model.slug) ?? false);
+}
+
+/**
+ * Not a constraint: a window can cover only some of the provider's models (Antigravity
+ * reports Gemini and Claude/GPT buckets separately), so the caller decides. Windows whose
+ * reset has passed are stale until the next probe and are skipped.
+ */
+function exhaustedUsageWindows(provider: ServerProvider, now: number) {
+  return (provider.usageLimits?.windows ?? []).flatMap((window) => {
+    if (window.usedPercent < 100) return [];
+    const resetsAt = window.resetsAt === undefined ? undefined : Date.parse(window.resetsAt);
+    if (resetsAt !== undefined && resetsAt <= now) return [];
+    return [
+      {
+        label: window.label,
+        ...(window.resetsAt === undefined ? {} : { resetsAt: window.resetsAt }),
+      },
+    ];
+  });
+}
+
+/**
+ * Large catalogs (OpenCode, Cursor, Pi) can list hundreds of models, so agents
+ * get a short list by default and search for the rest. These providers have
+ * small official catalogs, so all their current models are listed.
+ */
+const FULL_CATALOG_DRIVERS: ReadonlySet<string> = new Set(["codex", "claudeAgent", "muse", "grok"]);
+const LISTED_MODEL_LIMIT = 8;
+
+/**
+ * Picks the models orchestrator_capabilities shows for one provider. Hidden
+ * models never appear. With search terms, lists matches; otherwise lists pinned
+ * models (custom, favorite, the caller's own) plus the provider's non-legacy
+ * models, or only the first few in the user's model order for large catalogs.
+ */
+function listCapabilityModels(input: {
+  readonly provider: ServerProvider;
+  readonly preferences:
+    | { readonly hiddenModels: ReadonlyArray<string>; readonly modelOrder: ReadonlyArray<string> }
+    | undefined;
+  readonly isPinned: (model: ServerProviderModel) => boolean;
+  readonly searchTerms: ReadonlyArray<string>;
+}) {
+  const rank = new Map(input.preferences?.modelOrder.map((slug, index) => [slug, index]));
+  const visible = input.provider.models
+    .filter((model) => model.isCustom || !input.preferences?.hiddenModels.includes(model.slug))
+    .toSorted((a, b) => (rank.get(a.slug) ?? rank.size) - (rank.get(b.slug) ?? rank.size));
+  if (input.searchTerms.length > 0) {
+    const matches = visible.filter((model) => {
+      const text = `${model.slug} ${model.name} ${model.subProvider ?? ""}`.toLowerCase();
+      return input.searchTerms.every((term) => text.includes(term));
+    });
+    const listed = matches.slice(0, LISTED_MODEL_LIMIT);
+    return { listed, omitted: matches.length - listed.length };
+  }
+  const current = visible.filter((model) => !model.isLegacy);
+  const shown = new Set(
+    FULL_CATALOG_DRIVERS.has(input.provider.driver)
+      ? current
+      : current.slice(0, LISTED_MODEL_LIMIT),
+  );
+  const listed = visible.filter((model) => input.isPinned(model) || shown.has(model));
+  return { listed, omitted: visible.length - listed.length };
+}
+
+/** Option ids and allowed values are all a delegating agent needs; labels are UI copy. */
+function capabilityModelOption(descriptor: ProviderOptionDescriptor): OrchestratorMcpModelOption {
+  const defaultValue = getProviderOptionCurrentValue(descriptor);
+  return {
+    id: descriptor.id,
+    values:
+      descriptor.type === "boolean" ? [false, true] : descriptor.options.map((choice) => choice.id),
+    ...(defaultValue === undefined ? {} : { default: defaultValue }),
+  };
 }
 
 function providerConstraints(
@@ -912,7 +1012,9 @@ function turnItemText(item: OrchestrationV2TurnItem): string | null {
     case "web_search":
       return jsonText({ patterns: item.patterns, results: item.results });
     case "approval_request":
-      return item.prompt ?? item.requestKind;
+      return [item.prompt ?? item.requestKind, item.reason]
+        .filter((line): line is string => line !== undefined)
+        .join("\n");
     case "checkpoint":
       return jsonText(item.files);
     case "run_interrupt_request":
@@ -1129,7 +1231,7 @@ const make = Effect.gen(function* () {
       .getThreadShell(threadId)
       .pipe(Effect.mapError(threadManagementFailure));
     if (shell === null || shell.deletedAt !== null) {
-      return yield* failure("thread_not_found", `Thread ${threadId} was not found.`);
+      return yield* threadNotFound(threadManagement, threadId, `Thread ${threadId} was not found.`);
     }
     return yield* loadProjectThread(shell.projectId, threadId);
   });
@@ -1204,7 +1306,11 @@ const make = Effect.gen(function* () {
       .getThreadShell(threadId)
       .pipe(Effect.mapError(threadManagementFailure));
     if (shell === null || shell.deletedAt !== null) {
-      return yield* failure("thread_not_found", `Thread ${threadId} is no longer available.`);
+      return yield* threadNotFound(
+        threadManagement,
+        threadId,
+        `Thread ${threadId} is no longer available.`,
+      );
     }
     const target = yield* threadManagement
       .getProjectThreadRecords({ projectId: shell.projectId, threadId }, [
@@ -2150,23 +2256,28 @@ const make = Effect.gen(function* () {
       return { status, secretRef: secretRef.value };
     }),
 
-    capabilities: Effect.fn("OrchestratorMcpService.capabilities")(function* (scope) {
+    capabilities: Effect.fn("OrchestratorMcpService.capabilities")(function* (scope, input = {}) {
       const { parent, limits } = yield* loadCaller(scope);
       const providers = yield* loadProviders;
       const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
-      const modelPreferences = yield* loadModelPreferences;
+      const settings = yield* serverSettings.getSettings.pipe(
+        Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
+      );
+      const inherited = parent?.thread.modelSelection;
+      const searchTerms = input.search?.toLowerCase().split(/\s+/) ?? [];
       const sidekick =
         parent === undefined || Option.isNone(threadSidekick)
           ? null
           : yield* threadSidekick.value.status(parent.thread);
       // Mirrors delegateTask, which routes on the stored selection whatever its status.
       const storedSidekick = parent?.thread.sidekickModelSelection ?? null;
-      const defaultSelection = storedSidekick ?? parent?.thread.modelSelection;
+      const defaultSelection = storedSidekick ?? inherited;
+      const now = yield* Clock.currentTimeMillis;
       return {
         parentThreadId: parent?.thread.id ?? null,
-        inheritedProviderInstanceId: parent?.thread.modelSelection.instanceId ?? null,
-        inheritedModel: parent?.thread.modelSelection.model ?? null,
-        inheritedOptions: parent?.thread.modelSelection.options ?? [],
+        inheritedProviderInstanceId: inherited?.instanceId ?? null,
+        inheritedModel: inherited?.model ?? null,
+        inheritedOptions: inherited?.options ?? [],
         runtimeMode: limits.runtimeMode,
         interactionMode: limits.interactionMode,
         sidekick:
@@ -2200,22 +2311,36 @@ const make = Effect.gen(function* () {
             provider,
             orchestrationCapableInstanceIds.has(provider.instanceId),
           );
+          const exhaustedUsageLimits = exhaustedUsageWindows(provider, now);
+          const { listed, omitted } = listCapabilityModels({
+            provider,
+            preferences: settings.providerModelPreferences?.[provider.instanceId],
+            searchTerms,
+            isPinned: (model) =>
+              model.isCustom ||
+              (inherited?.instanceId === provider.instanceId && inherited.model === model.slug) ||
+              (defaultSelection?.instanceId === provider.instanceId &&
+                defaultSelection.model === model.slug) ||
+              (settings.favorites ?? []).some(
+                (favorite) =>
+                  favorite.provider === provider.instanceId && favorite.model === model.slug,
+              ),
+          });
           return {
             providerInstanceId: provider.instanceId,
             driverKind: provider.driver,
-            displayName: provider?.displayName ?? null,
-            models:
-              provider?.models
-                .filter((model) =>
-                  isModelVisible(modelPreferences[provider.instanceId]?.hiddenModels, model),
-                )
-                .map((model) => ({
-                  id: model.slug,
-                  label: model.name ?? null,
-                  ...(model.capabilities?.optionDescriptors === undefined
-                    ? {}
-                    : { options: model.capabilities.optionDescriptors }),
-                })) ?? [],
+            displayName: provider.displayName ?? null,
+            models: listed.map((model) => {
+              const options = model.capabilities?.optionDescriptors ?? [];
+              return {
+                id: model.slug,
+                ...(model.name.toLowerCase() === model.slug.toLowerCase()
+                  ? {}
+                  : { label: model.name }),
+                ...(options.length === 0 ? {} : { options: options.map(capabilityModelOption) }),
+              };
+            }),
+            ...(omitted === 0 ? {} : { omittedModels: omitted }),
             ...(provider.supportedRuntimeModes === undefined ||
             provider.supportedRuntimeModes.length === 0
               ? {}
@@ -2223,6 +2348,7 @@ const make = Effect.gen(function* () {
             canRunChildTask: constraints.length === 0,
             canRunCrossProviderChildTask: constraints.length === 0,
             constraints: [...constraints],
+            ...(exhaustedUsageLimits.length === 0 ? {} : { exhaustedUsageLimits }),
           };
         }),
         features: {
@@ -2525,8 +2651,7 @@ const make = Effect.gen(function* () {
         ),
       );
       // A follow-up that lost its child run (#19002) stays running on the parent, while its
-      // status here comes from the child's last run. The parent cancels it, and any other
-      // orphan of the same child, when that child is idle.
+      // status here comes from the child's last run. Stop on the parent cancels that task.
       const cancelOrphan = Effect.gen(function* () {
         if (parentTask?.runId == null || !isOrchestrationV2WorkActive(parentTask.status))
           return false;
@@ -2549,12 +2674,13 @@ const make = Effect.gen(function* () {
         return subagents.some((task) => task.id === input.taskId && task.status === "cancelled");
       });
       if (isTerminalTaskStatus(current.status)) {
-        if (yield* cancelOrphan) return { taskId: input.taskId, status: "cancelled" };
+        // The child can still run work for another turn, so it is stopped either way.
         yield* stopWithinLimit;
+        const cancelled = yield* cancelOrphan;
         yield* disposeCompletionDelivery;
         return {
           taskId: input.taskId,
-          status: current.status,
+          status: cancelled ? "cancelled" : current.status,
         } satisfies OrchestratorMcpTaskCancelResult;
       }
       const child = yield* loadProjection(current.childThreadId);

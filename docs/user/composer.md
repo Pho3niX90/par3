@@ -119,11 +119,13 @@ Give a thread a sidekick to pair its model with a cheaper one. The thread's own
 model becomes the lead: it plans, writes briefs, reviews the result and commits.
 The sidekick explores, implements and runs tests as delegated work, which you can
 follow under **Agents**. Most of the tokens are then spent by the cheaper model,
-and the lead never reads the sidekick's intermediate output.
+and the lead never reads the sidekick's intermediate output. The idea comes from
+Cognition's [Devin Fusion](https://cognition.com/blog/fusion-in-devin-cli), which
+pairs a frontier lead with a cheaper model in the same way.
 
 Choose a model from **Sidekick** next to the model picker, from the compact
 composer menu, with **Set sidekick…** in the command palette, or from a thread's
-settings on mobile. Choose **None** to turn it off. The sidekick must be a
+settings on mobile. Choose **Off** to turn it off. The sidekick must be a
 different model from the lead, and providers that can't lead a sidekick don't
 show the control.
 
@@ -224,10 +226,11 @@ transcription or cancellation; only the message text is sent when you submit.
 ## Queued messages
 
 On web and desktop, the composer shows **Interrupt** while the agent is working and the draft is
-empty. Adding text or attachments replaces it with a steer arrow. Click it to send a message into
-the active turn, or press `Enter` on desktop. Hold `Cmd` on macOS or `Ctrl` on Windows and Linux to
-switch the button to a queue icon. Click while holding that key, or press `Cmd+Enter` or
-`Ctrl+Enter` on desktop, to queue the message for after the active turn.
+empty. Adding text or attachments replaces it with a send button that shows your
+[Follow-up behavior](#send-while-the-agent-is-working): a queue icon for Queue or a steer arrow for
+Steer. Click it or press your send shortcut to use that action. Hold `Cmd` on macOS or `Ctrl` on
+Windows and Linux to switch the button to the opposite action, then click, or use the opposite-action
+shortcut described above.
 
 Queued messages appear above the composer. Rows show a thumbnail of any attached image alongside
 the text. Drag a row by its handle to reorder it, use the handle's arrow keys, promote the message
@@ -258,6 +261,10 @@ it in build mode, or type feedback to **Refine** it. The arrow next to Implement
 starts the work in a new thread instead. Claude sometimes plans without being
 asked; its plan offers the same actions.
 
+Choose **Open plan** in the chat card, **Open** in the composer, or **Open plan** in the command palette to review the plan in the document panel. Use its outline to jump between sections. Choose **Edit** to revise the plan, or comment on individual sections and send the collected feedback. You can paste or attach screenshots in the editor and comments. **Implement** uses your edited plan; **Implement in new thread** starts the work in a separate thread. The export menu lets you copy, download, or save the plan to the workspace.
+
+Draft edits and comments stay on this device until you send them. Images are held only while the app is open; after reloading, attach them again.
+
 Turn plan mode off in **Settings → General → Plan mode** (on mobile, **Settings →
 Thread behavior → Composer**) to hide the control and send every turn in build mode.
 
@@ -280,11 +287,8 @@ Provider commands must start the message to run. Par3 commands such as
 Send `/compact` in an existing conversation to reduce context usage when the
 provider supports it. Web and desktop also offer compaction from the context meter.
 
-Enable **Compact idle Claude threads (beta)** in **Settings > General** to compact
-an idle Claude thread with at least 200,000 tokens of context shortly before its
-prompt cache expires, so coming back does not reprocess the whole conversation.
-The cache lasts 1 hour on Claude subscriptions and 5 minutes with an API key. The
-compaction appears in the thread as a `/compact` turn sent by T3 Code.
+Claude instances can also compact idle threads for you. See
+[compact long conversations](./providers-claude.md#compact-long-conversations).
 
 ## Goals
 

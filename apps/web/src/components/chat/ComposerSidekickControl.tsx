@@ -46,11 +46,16 @@ export interface SidekickMenuInput {
 }
 
 function sidekickTriggerTooltip(pairing: SidekickPairing | null): string {
-  if (pairing === null) return "No sidekick. Delegated tasks use the lead's model.";
+  if (pairing === null) return "Sidekick off. Delegated tasks use the lead's model.";
   if (pairing.problem !== null) return `Sidekick inactive: ${pairing.problem}`;
   return pairing.perRequest
-    ? `Sidekick: ${pairing.label}. ${SIDEKICK_PER_REQUEST_HINT}`
-    : `Sidekick: ${pairing.label}`;
+    ? `Sidekick on: ${pairing.label}. ${SIDEKICK_PER_REQUEST_HINT}`
+    : `Sidekick on: ${pairing.label}`;
+}
+
+function sidekickStatusLabel(pairing: SidekickPairing | null): string {
+  if (pairing === null) return "Off";
+  return pairing.problem === null ? "On" : "Inactive";
 }
 
 /**
@@ -71,7 +76,12 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
   );
   return (
     <>
-      <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Sidekick</div>
+      <div className="flex items-center justify-between gap-3 px-2 py-1.5 text-xs">
+        <span className="font-medium text-muted-foreground">Sidekick</span>
+        <span className={props.pairing?.problem ? "text-warning" : "text-muted-foreground"}>
+          {sidekickStatusLabel(props.pairing)}
+        </span>
+      </div>
       {props.pairing?.problem ? (
         <div className="flex max-w-72 items-start gap-1.5 px-2 pb-1.5 text-warning text-xs">
           <CircleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
@@ -86,48 +96,58 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
           if (value === NONE_VALUE && selectedKey !== NONE_VALUE) props.onChange(null);
         }}
       >
-        <MenuRadioItem value={NONE_VALUE}>None</MenuRadioItem>
+        <MenuRadioItem value={NONE_VALUE}>Off</MenuRadioItem>
       </MenuRadioGroup>
       {groups.length > 0 ? <MenuSeparator /> : null}
-      {groups.map((group) => (
-        <MenuSub key={group.entry.instanceId}>
-          <MenuSubTrigger>
-            <ProviderInstanceIcon
-              driverKind={group.entry.driverKind}
-              displayName={group.entry.displayName}
-              accentColor={group.entry.accentColor}
-              acpRegistryAgentId={group.entry.acpRegistryAgentId}
-              acpRegistryIconUrl={group.entry.acpRegistryIconUrl}
-              size="compact"
-            />
-            {group.entry.displayName}
-          </MenuSubTrigger>
-          <MenuSubPopup>
-            {group.perRequest ? (
-              <div className="max-w-64 px-2 py-1.5 text-muted-foreground text-xs">
-                {SIDEKICK_PER_REQUEST_HINT}
-              </div>
-            ) : null}
-            <MenuRadioGroup
-              value={selectedKey}
-              onValueChange={(value) => {
-                const option = group.options.find(
-                  (candidate) => sidekickOptionKey(candidate) === value,
-                );
-                if (option && value !== selectedKey) {
-                  props.onChange({ instanceId: option.instanceId, model: option.model });
-                }
-              }}
-            >
-              {group.options.map((option) => (
-                <MenuRadioItem key={option.model} value={sidekickOptionKey(option)}>
-                  {option.name}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuSubPopup>
-        </MenuSub>
-      ))}
+      {groups.map((group) => {
+        const selectedOption = group.options.find(
+          (option) => sidekickOptionKey(option) === selectedKey,
+        );
+        return (
+          <MenuSub key={group.entry.instanceId}>
+            <MenuSubTrigger>
+              <ProviderInstanceIcon
+                driverKind={group.entry.driverKind}
+                displayName={group.entry.displayName}
+                accentColor={group.entry.accentColor}
+                acpRegistryAgentId={group.entry.acpRegistryAgentId}
+                acpRegistryIconUrl={group.entry.acpRegistryIconUrl}
+                size="compact"
+              />
+              {group.entry.displayName}
+              {selectedOption ? (
+                <span className="ms-auto max-w-32 truncate text-muted-foreground text-xs">
+                  {selectedOption.name}
+                </span>
+              ) : null}
+            </MenuSubTrigger>
+            <MenuSubPopup>
+              {group.perRequest ? (
+                <div className="max-w-64 px-2 py-1.5 text-muted-foreground text-xs">
+                  {SIDEKICK_PER_REQUEST_HINT}
+                </div>
+              ) : null}
+              <MenuRadioGroup
+                value={selectedKey}
+                onValueChange={(value) => {
+                  const option = group.options.find(
+                    (candidate) => sidekickOptionKey(candidate) === value,
+                  );
+                  if (option && value !== selectedKey) {
+                    props.onChange({ instanceId: option.instanceId, model: option.model });
+                  }
+                }}
+              >
+                {group.options.map((option) => (
+                  <MenuRadioItem key={option.model} value={sidekickOptionKey(option)}>
+                    {option.name}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+        );
+      })}
       {selection &&
       selectedProvider &&
       shouldRenderTraitsControls({
@@ -135,7 +155,6 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
         models: selectedProvider.models,
         model: selection.model,
         modelOptions: selection.options,
-        prompt: "",
         allowPromptInjectedEffort: false,
         planModeEnabled: false,
       }) ? (
@@ -150,8 +169,6 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
                 models={selectedProvider.models}
                 model={selection.model}
                 modelOptions={selection.options}
-                prompt=""
-                onPromptChange={() => {}}
                 allowPromptInjectedEffort={false}
                 planModeEnabled={false}
                 onModelOptionsChange={(options) =>
@@ -176,6 +193,7 @@ export const ComposerSidekickControl = memo(function ComposerSidekickControl(
   const composerFloatingLayerProps = useComposerMenuProps();
   const [open, setOpen] = useComposerMenuState(props.hidden);
   const inactive = props.pairing?.problem != null;
+  const active = props.pairing !== null && !inactive;
   const tooltip = sidekickTriggerTooltip(props.pairing);
   return (
     <>
@@ -189,6 +207,7 @@ export const ComposerSidekickControl = memo(function ComposerSidekickControl(
                   <ComposerControl
                     size={size}
                     className="shrink-0 whitespace-nowrap"
+                    aria-pressed={active}
                     aria-label="Sidekick"
                     aria-description={tooltip}
                     data-composer-shortcut="composer.sidekick"
@@ -203,7 +222,7 @@ export const ComposerSidekickControl = memo(function ComposerSidekickControl(
               {...(inactive ? { className: "text-warning" } : {})}
             />
             <span data-composer-control-label className="max-w-40 truncate">
-              {props.pairing ? props.pairing.label : "No sidekick"}
+              {props.pairing ? props.pairing.label : "Sidekick"}
             </span>
             <ComposerControlChevron size={size} />
           </TooltipTrigger>

@@ -66,7 +66,7 @@ describe("resolveSidekickRow", () => {
 
   it("shows None, or the pairing label", () => {
     expect(resolveSidekickRow({ ...input, sidekick: null })).toEqual({
-      value: "None",
+      value: "Off",
       problem: null,
     });
     expect(

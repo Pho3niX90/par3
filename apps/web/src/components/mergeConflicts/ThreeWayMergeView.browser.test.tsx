@@ -1,5 +1,8 @@
 import { EnvironmentId, type MergeConflictReadResult } from "@t3tools/contracts";
-import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import {
+  DEFAULT_RESOLVED_KEYBINDINGS,
+  compileResolvedKeybindingsConfig,
+} from "@t3tools/shared/keybindings";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent, page } from "vite-plus/test/browser";
 
@@ -44,10 +47,8 @@ function sizedContainer() {
 
 // A draft is kept per file state so it survives closing the view, which would carry one test's
 // edits into the next; every test therefore opens its own path.
-let fileCounter = 0;
 function uniqueFile(file: MergeConflictReadResult = read): MergeConflictReadResult {
-  fileCounter += 1;
-  return { ...file, path: `src/example-${fileCounter}.txt` };
+  return { ...file, path: `src/example-${expect.getState().currentTestName}.txt` };
 }
 
 function renderView(
@@ -55,18 +56,21 @@ function renderView(
     status: "applied" as const,
   })),
   fileOverride: MergeConflictReadResult = uniqueFile(),
+  keybindings = DEFAULT_RESOLVED_KEYBINDINGS,
+  environmentId = EnvironmentId.make("env-merge-test"),
 ) {
   return render(
     <ThreeWayMergeView
-      environmentId={EnvironmentId.make("env-merge-test")}
+      environmentId={environmentId}
       cwd="/repo"
       file={fileOverride}
-      keybindings={DEFAULT_RESOLVED_KEYBINDINGS}
+      keybindings={keybindings}
       hasNextFile={false}
       onApply={onApply}
       onCancel={vi.fn()}
       onReload={vi.fn()}
     />,
+    // The merge editor has no route dependencies.
     { router: false, container: sizedContainer() },
   );
 }
@@ -79,6 +83,23 @@ const numbered = (prefix: string, count: number) =>
   Array.from({ length: count }, (_, index) => `${prefix} ${index}\n`).join("");
 
 describe("ThreeWayMergeView", () => {
+  it("keeps drafts separate across environments with the same repository and file state", async () => {
+    const file = uniqueFile();
+    {
+      await using screen = await renderView(undefined, file);
+      await page.getByRole("button", { name: "Accept ours for change 1" }).click();
+      await expect.element(screen.getByTestId("merge-counter")).toHaveTextContent("0 conflicts");
+    }
+    await using screen = await renderView(
+      undefined,
+      file,
+      undefined,
+      EnvironmentId.make("other-environment"),
+    );
+    await expect.element(screen.getByTestId("merge-counter")).toHaveTextContent("1 conflict");
+    await vi.waitFor(() => expect(resultText(screen.container)).toContain("two"));
+  });
+
   it("accepts a side into the result, counts it, and undoes both together", async () => {
     await using screen = await renderView();
     const counter = screen.getByTestId("merge-counter");
@@ -176,6 +197,7 @@ describe("ThreeWayMergeView", () => {
         onCancel={vi.fn()}
         onReload={onReload}
       />,
+      // The merge editor has no route dependencies.
       { router: false, container: sizedContainer() },
     );
     await page.getByRole("button", { name: "Accept ours for change 1" }).click();
@@ -186,8 +208,14 @@ describe("ThreeWayMergeView", () => {
     expect(screen.container.querySelector("[role=alert]")).not.toBeNull();
   });
 
-  it("takes theirs at the caret with the keyboard shortcut", async () => {
-    await using screen = await renderView();
+  it("takes theirs at the caret with a configured keyboard shortcut", async () => {
+    await using screen = await renderView(
+      undefined,
+      uniqueFile(),
+      compileResolvedKeybindingsConfig([
+        { key: "ctrl+alt+right", command: "merge.acceptTheirs", when: "mergeViewFocus" },
+      ]),
+    );
     await vi.waitFor(() => expect(resultText(screen.container)).toContain("two"));
     const row = shadowOf(screen.container, 1)?.querySelector<HTMLElement>(
       "[data-line][data-line-index='1']",

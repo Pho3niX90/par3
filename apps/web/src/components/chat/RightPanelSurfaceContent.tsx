@@ -24,6 +24,9 @@ import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
 import { ThreadPullRequestsPanel } from "../pullRequest/ThreadPullRequestsPanel";
 
+import type { PlanPanelActions } from "../plan/PlanPanel";
+
+const PlanPanel = lazy(() => import("../plan/PlanPanel"));
 const PreviewPanel = lazy(() =>
   import("../preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
 );
@@ -80,10 +83,22 @@ export function RightPanelSurfaceContent(props: {
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
   readonly files: RightPanelFileProps;
+  readonly plan: PlanPanelActions;
 }) {
   const { surface, threadRef, visible } = props;
   if (surface === null) return null;
   switch (surface.kind) {
+    case "plan":
+      return (
+        <Suspense fallback={null}>
+          <PlanPanel
+            {...props.plan}
+            threadRef={threadRef}
+            planId={surface.planId}
+            {...(surface.itemId ? { itemId: surface.itemId } : {})}
+          />
+        </Suspense>
+      );
     case "preview":
       return (
         <Suspense fallback={null}>

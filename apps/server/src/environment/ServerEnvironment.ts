@@ -233,6 +233,8 @@ export const make = Effect.gen(function* () {
       otlpEndpointCheck: true,
       mcpGateway: true,
       specMode: true,
+      vault: true,
+      sync: true,
       projectWorktreeCleanup: true,
       settledWorktreeCleanup: true,
       worktreesDirectory: true,
