@@ -407,7 +407,7 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {isServerThread ? <ThreadConflictChip threadRef={activeThreadRef} /> : null}
+      <ThreadConflictChip threadRef={activeThreadRef} />
     </div>
   );
 });

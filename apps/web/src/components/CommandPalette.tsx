@@ -567,7 +567,8 @@ function OpenCommandPaletteDialog(props: {
   const planProjection = useThreadProjection(planThreadRef)?.projection ?? null;
   const latestProposedPlan = findLatestProposedPlan(planProjection, activeThread?.latestRun?.runId);
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
-  const activeThreadServerConfig = useServerConfigs().get(
+  const serverConfigs = useServerConfigs();
+  const activeThreadServerConfig = serverConfigs.get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
   const activeThreadReferenceCopyTarget =
@@ -1561,10 +1562,17 @@ function OpenCommandPaletteDialog(props: {
   }
 
   // Older servers have no resolver, and the panel would only fail to load.
-  if (activeThreadServerConfig?.environment.capabilities.mergeConflicts === true) {
+  const conflictThread = activeThread ?? activeDraftThread;
+  if (
+    conflictThread &&
+    serverConfigs.get(conflictThread.environmentId)?.environment.capabilities.mergeConflicts ===
+      true
+  ) {
     const threadRef = activeThread
       ? scopeThreadRef(activeThread.environmentId, activeThread.id)
-      : null;
+      : activeDraftThread
+        ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
+        : null;
     if (threadRef !== null) {
       actionItems.push({
         kind: "action",

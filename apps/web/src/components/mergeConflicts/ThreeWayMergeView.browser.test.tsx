@@ -88,7 +88,9 @@ describe("ThreeWayMergeView", () => {
     {
       await using screen = await renderView(undefined, file);
       await page.getByRole("button", { name: "Accept ours for change 1" }).click();
-      await expect.element(screen.getByTestId("merge-counter")).toHaveTextContent("0 conflicts");
+      await expect
+        .element(screen.getByTestId("merge-counter"))
+        .toHaveTextContent("2 changes · 0 conflicts");
     }
     await using screen = await renderView(
       undefined,
@@ -96,7 +98,9 @@ describe("ThreeWayMergeView", () => {
       undefined,
       EnvironmentId.make("other-environment"),
     );
-    await expect.element(screen.getByTestId("merge-counter")).toHaveTextContent("1 conflict");
+    await expect
+      .element(screen.getByTestId("merge-counter"))
+      .toHaveTextContent("2 changes · 1 conflict");
     await vi.waitFor(() => expect(resultText(screen.container)).toContain("two"));
   });
 
@@ -213,7 +217,7 @@ describe("ThreeWayMergeView", () => {
       undefined,
       uniqueFile(),
       compileResolvedKeybindingsConfig([
-        { key: "ctrl+alt+right", command: "merge.acceptTheirs", when: "mergeViewFocus" },
+        { key: "ctrl+alt+arrowright", command: "merge.acceptTheirs", when: "mergeViewFocus" },
       ]),
     );
     await vi.waitFor(() => expect(resultText(screen.container)).toContain("two"));

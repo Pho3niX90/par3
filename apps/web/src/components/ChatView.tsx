@@ -3187,7 +3187,7 @@ export default function ChatView(props: ChatViewProps) {
       getShortcutContext={getShortcutContextStable}
       onSendAnnotation={sendPreviewAnnotationStable}
       onCloseSurface={closeRightPanelSurface}
-      onAskAgentToResolveConflicts={askAgentToResolveConflictsStable}
+      onAskAgentToResolveConflicts={isServerThread ? askAgentToResolveConflictsStable : undefined}
       terminal={{
         launchContext: activeTerminalLaunchContext ?? null,
         focusRequestId: terminalFocusRequestId,

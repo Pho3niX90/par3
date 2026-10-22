@@ -4529,6 +4529,10 @@ describe("unmerged status", () => {
       ]);
       assert.strictEqual(status.conflictCount, 8);
       assert.isTrue(status.hasWorkingTreeChanges);
+      const publicStatus = yield* driver.status({ cwd });
+      assert.deepStrictEqual(publicStatus.operation, status.operation);
+      assert.deepStrictEqual(publicStatus.conflicts, status.conflicts);
+      assert.strictEqual(publicStatus.conflictCount, status.conflictCount);
     }).pipe(Effect.provide(layerTest)),
   );
 
