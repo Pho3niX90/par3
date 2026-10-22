@@ -1,8 +1,10 @@
-import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
+import type { RuntimeMode } from "@t3tools/contracts";
+import type { ComposerMode } from "@t3tools/shared/specComposer";
 import { memo, type ReactNode } from "react";
 import { EllipsisIcon } from "lucide-react";
 import {
   Menu,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -10,17 +12,23 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
+import {
+  COMPOSER_MODE_LABELS,
+  type ComposerModeControlModel,
+  composerModeControlVisible,
+} from "./ComposerModeControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
-  interactionMode: ProviderInteractionMode;
+  modeControl: ComposerModeControlModel;
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<{
     readonly mode: RuntimeMode;
     readonly label: string;
   }>;
-  showInteractionModeToggle: boolean;
+  /** The mode choice has no room in the strip, so it moves into this menu. */
+  showModeChoice: boolean;
   traitsMenuContent?: ReactNode;
   sidekickMenuContent?: ReactNode;
   size?: "sm" | "xs";
@@ -30,7 +38,6 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
    * open menu closes when its trigger hides.
    */
   hidden?: boolean;
-  onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();
@@ -62,19 +69,38 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             <MenuDivider />
           </>
         ) : null}
-        {props.showInteractionModeToggle ? (
+        {props.showModeChoice && composerModeControlVisible(props.modeControl) ? (
           <>
             <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Mode</div>
             <MenuRadioGroup
-              value={props.interactionMode}
+              value={props.modeControl.mode}
               onValueChange={(value) => {
-                if (!value || value === props.interactionMode) return;
-                props.onToggleInteractionMode();
+                if (!value || value === props.modeControl.mode) return;
+                props.modeControl.onSelectMode(value as ComposerMode);
               }}
             >
-              <MenuRadioItem value="default">Build</MenuRadioItem>
-              <MenuRadioItem value="plan">Plan</MenuRadioItem>
+              <MenuRadioItem value="build">{COMPOSER_MODE_LABELS.build}</MenuRadioItem>
+              {props.modeControl.showPlan ? (
+                <MenuRadioItem value="plan">{COMPOSER_MODE_LABELS.plan}</MenuRadioItem>
+              ) : null}
+              {props.modeControl.spec.kind === "hidden" ? null : (
+                <MenuRadioItem value="spec" disabled={props.modeControl.spec.kind === "disabled"}>
+                  <span className="grid gap-0.5">
+                    {COMPOSER_MODE_LABELS.spec}
+                    {props.modeControl.spec.kind === "disabled" ? (
+                      <span className="text-muted-foreground text-xs">
+                        {props.modeControl.spec.reason}
+                      </span>
+                    ) : null}
+                  </span>
+                </MenuRadioItem>
+              )}
             </MenuRadioGroup>
+            {props.modeControl.spec.kind !== "hidden" && props.modeControl.onUseExistingSpec ? (
+              <MenuItem onClick={props.modeControl.onUseExistingSpec}>
+                {props.modeControl.useExistingSpecLabel}
+              </MenuItem>
+            ) : null}
             <MenuDivider />
           </>
         ) : null}

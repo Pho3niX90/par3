@@ -192,7 +192,7 @@ export function useComposerMenuItems({
                 type: "slash-command",
                 command: "spec",
                 label: "/spec",
-                description: "Bind this thread to a spec",
+                description: "Draft a spec from your next message",
               },
             ] as const)
           : []),

@@ -57,6 +57,7 @@ export const QueuedThreadMessageSchema = Schema.Struct({
   dispatchMode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
   runtimeMode: Schema.optional(RuntimeMode),
   interactionMode: Schema.optional(ProviderInteractionMode),
+  specIntake: Schema.optional(Schema.Literal(true)),
   creation: Schema.optional(QueuedThreadCreationSchema),
   createdAt: IsoDateTime,
 });
@@ -86,6 +87,8 @@ export interface QueuedThreadMessage {
   readonly modelSelection?: ModelSelectionType;
   readonly runtimeMode?: RuntimeModeType;
   readonly interactionMode?: ProviderInteractionModeType;
+  /** The message starts a spec: the thread waits for its agent to draft one. */
+  readonly specIntake?: true;
   /**
    * Captured at enqueue time because the drain can fire long after the tap.
    */

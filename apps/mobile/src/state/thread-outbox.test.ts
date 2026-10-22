@@ -137,6 +137,25 @@ describe("thread outbox", () => {
       decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
     ).toEqual(message);
   });
+  it("keeps a spec request through a persisted offline queue round trip", () => {
+    const message: QueuedThreadMessage = {
+      ...queuedMessage({ messageId: "spec-message", createdAt: "2026-09-06T12:00:00.000Z" }),
+      specIntake: true,
+    };
+    const stored = JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)));
+    expect(decodeQueuedThreadMessage(stored).specIntake).toBe(true);
+    expect(
+      decodeQueuedThreadMessage(
+        JSON.parse(
+          JSON.stringify(
+            encodeQueuedThreadMessage(
+              queuedMessage({ messageId: "plain", createdAt: "2026-09-06T12:00:00.000Z" }),
+            ),
+          ),
+        ),
+      ).specIntake,
+    ).toBeUndefined();
+  });
   it.each(["read", "json", "schema"] as const)(
     "recovers usable messages without permitting cleanup after a record %s failure",
     async (failure) => {

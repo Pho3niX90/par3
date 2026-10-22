@@ -46,6 +46,7 @@ export const environmentUpdateStatesAtom = environmentAtomList(
 export const specsQuery = serverEnvironment.specsQuery;
 export const specsLive = serverEnvironment.specsLive;
 export const specsMutate = serverEnvironment.specsMutate;
+export const specsIntake = serverEnvironment.specsIntake;
 export const updateOutdatedServer = createOutdatedServerUpdateCommand(connectionAtomRuntime);
 export const environmentServerConfigsAtom = createEnvironmentServerConfigsAtom({
   catalogValueAtom: environmentCatalog.catalogValueAtom,

@@ -252,9 +252,11 @@ composer when it is empty, and is discarded otherwise.
 ## Plan mode
 
 Switch the composer from **Build** to **Plan** to have the agent propose a plan
-before it changes anything. Use the Build/Plan control, `/plan` and `/default`,
-or **Shift+Tab** while the composer is focused. The mode belongs to the thread.
-Providers that cannot plan don't show the control.
+before it changes anything. Use the Build / Plan / Spec choice, `/plan` and
+`/default`, or **Shift+Tab** while the composer is focused. The mode belongs to the
+thread. Providers that cannot plan don't show Plan. **Spec** starts a
+[spec](./spec-mode.md) from your next message instead; it excludes Plan, and the
+composer returns to Build once you send.
 
 On web and desktop, when a plan is ready, send an empty message to **Implement**
 it in build mode, or type feedback to **Refine** it. The arrow next to Implement

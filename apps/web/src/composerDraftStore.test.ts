@@ -1334,6 +1334,22 @@ describe("composerDraftStore modelSelection", () => {
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
   });
 
+  it("keeps the Spec choice beside the draft until it is turned off", () => {
+    const store = useComposerDraftStore.getState();
+    store.setSpecIntake(threadRef, true);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.specIntake).toBe(true);
+
+    // The choice is a mode, not content, so clearing what was typed leaves it on.
+    store.setPrompt(threadRef, "Add dark mode");
+    store.clearComposerContent(threadRef);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.specIntake).toBe(true);
+
+    store.setSpecIntake(threadRef, false);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+    store.setSpecIntake(threadRef, false);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+
   it("releases an inactive thread pick only after its queued model becomes durable", () => {
     const store = useComposerDraftStore.getState();
     const pick = modelSelection(CODEX_DRIVER, "gpt-5.5", { fastMode: false });

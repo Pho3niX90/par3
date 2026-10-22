@@ -91,15 +91,20 @@ describe("mobile slash commands", () => {
     ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
   });
 
-  it("offers /spec command and never sets provider interactionMode to spec", () => {
+  it("offers /spec to start a spec and /specs to open them, never as a provider mode", () => {
     const items = buildComposerSlashCommandItems({
       query: "spec",
       atMessageStart: true,
       hasThread: true,
       offersSpecs: true,
+      offersSpecMode: true,
       allowInteractionMode: true,
       selectedProviderStatus: null,
     });
+    expect(items.flatMap((item) => (item.type === "slash-command" ? [item.label] : []))).toEqual([
+      "/spec",
+      "/specs",
+    ]);
     const specItem = items.find(
       (i): i is typeof i & { command: string } =>
         i.type === "slash-command" && i.command === "spec",

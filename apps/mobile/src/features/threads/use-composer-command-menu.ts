@@ -67,6 +67,8 @@ export function buildComposerSlashCommandItems(input: {
   readonly hasCompactableConversation?: boolean;
   readonly offersUsageLimits?: boolean;
   readonly offersSpecs?: boolean;
+  /** `/spec` makes the next message start a spec. */
+  readonly offersSpecMode?: boolean;
   readonly allowInteractionMode: boolean;
   readonly selectedProviderStatus: Pick<
     ServerProvider,
@@ -98,13 +100,24 @@ export function buildComposerSlashCommandItems(input: {
       label: "/default",
       description: "Switch to build mode",
     },
-    ...(input.offersSpecs
+    ...(input.offersSpecMode
       ? [
           {
             id: "cmd:spec",
             type: "slash-command",
             command: "spec",
             label: "/spec",
+            description: "Draft a spec from your next message",
+          } as const,
+        ]
+      : []),
+    ...(input.offersSpecs
+      ? [
+          {
+            id: "cmd:specs",
+            type: "slash-command",
+            command: "specs",
+            label: "/specs",
             description: "Open project specs",
           } as const,
         ]
@@ -113,7 +126,10 @@ export function buildComposerSlashCommandItems(input: {
   const items: ComposerCommandItem[] = builtIn.filter(
     (item) =>
       item.command.includes(query) &&
-      (item.command === "model" || item.command === "spec" || allowInteractionMode),
+      (item.command === "model" ||
+        item.command === "spec" ||
+        item.command === "specs" ||
+        allowInteractionMode),
   );
 
   // Providers expand commands only at the start of a message. T3 commands
@@ -200,6 +216,7 @@ export function useComposerCommandMenu({
   onUpdateInteractionMode,
   onUsageLimits,
   onOpenSpecs,
+  onSelectSpecMode,
 }: {
   readonly draftMessage: string;
   readonly ownerKey: string | null;
@@ -219,6 +236,7 @@ export function useComposerCommandMenu({
   readonly onUpdateInteractionMode?: (mode: ProviderInteractionMode) => void;
   readonly onUsageLimits?: () => void;
   readonly onOpenSpecs?: () => void;
+  readonly onSelectSpecMode?: () => void;
 }) {
   const [selection, setSelection] = useState(() => composerSelectionAtEnd(draftMessage));
   const previousOwnerKeyRef = useRef(ownerKey);
@@ -402,6 +420,7 @@ export function useComposerCommandMenu({
         hasCompactableConversation,
         offersUsageLimits,
         offersSpecs: onOpenSpecs !== undefined,
+        offersSpecMode: onSelectSpecMode !== undefined,
         allowInteractionMode: onUpdateInteractionMode !== undefined,
         selectedProviderStatus: selectedProviderStatus
           ? {
@@ -615,7 +634,14 @@ export function useComposerCommandMenu({
       return;
     }
 
-    if (item.type === "slash-command" && item.command === "spec" && onOpenSpecs) {
+    if (item.type === "slash-command" && item.command === "spec" && onSelectSpecMode) {
+      const cleared = replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, "");
+      setSelection({ start: cleared.cursor, end: cleared.cursor });
+      onChangeDraftMessage(cleared.text);
+      onSelectSpecMode();
+      return;
+    }
+    if (item.type === "slash-command" && item.command === "specs" && onOpenSpecs) {
       const cleared = replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, "");
       setSelection({ start: cleared.cursor, end: cleared.cursor });
       onChangeDraftMessage(cleared.text);

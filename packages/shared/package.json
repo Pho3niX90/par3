@@ -155,6 +155,10 @@
       "types": "./src/projectScripts.ts",
       "import": "./src/projectScripts.ts"
     },
+    "./specComposer": {
+      "types": "./src/specComposer.ts",
+      "import": "./src/specComposer.ts"
+    },
     "./projectSettings": {
       "types": "./src/projectSettings.ts",
       "import": "./src/projectSettings.ts"

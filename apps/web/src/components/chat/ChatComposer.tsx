@@ -102,10 +102,21 @@ import {
 import { ComposerStashBadge } from "./ComposerStashBadge";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import {
-  useOpenSpecMode,
+  ThreadSpecBindDialog,
   useThreadSpecBannerItem,
   useThreadSpecState,
 } from "../../specs/ThreadSpecControl";
+import { registerSpecModeToggleHandler } from "../../specs/specModeActionBus";
+import {
+  type ComposerMode,
+  composerModeFlags,
+  composerModeOf,
+  resolveComposerMode,
+  resolveSpecChoice,
+  togglePlanMode as nextPlanMode,
+  toggleSpecMode as nextSpecMode,
+} from "@t3tools/shared/specComposer";
+import type { ComposerModeControlModel } from "./ComposerModeControl";
 import { useComposerTriggerState } from "./useComposerTriggerState";
 import { useComposerMenuItems } from "./useComposerMenuItems";
 import { useComposerFocusState } from "./useComposerFocusState";
@@ -252,6 +263,8 @@ const COMPOSER_SCROLL_COLLAPSE_THRESHOLD_PX = 24;
 const COMPOSER_SCROLL_GESTURE_RESET_MS = 120;
 import { toastManager } from "../ui/toast";
 import { PlayIcon, ShieldIcon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { subscribePlanModeToggle } from "./planModeActionBus";
 import { proposedPlanTitle } from "@t3tools/shared/proposedPlanText";
 import { hasProviderSetup } from "./ProviderStatusBanner";
 import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelSelection";
@@ -362,6 +375,8 @@ export interface ChatComposerHandle {
     selectedProviderModels: ReadonlyArray<ServerProvider["models"][number]>;
     interactionMode: ProviderInteractionMode;
     interactionModeEnabled: boolean;
+    /** Build, Plan or Spec as the composer can offer it now; Spec sends with the default interaction mode. */
+    composerMode: ComposerMode;
     shownPendingApprovalIds: ReadonlyArray<RuntimeRequestId>;
   };
   validateProviderInput: (providerInput: string) => boolean;
@@ -523,7 +538,6 @@ export interface ChatComposerProps {
   ) => void;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
-  toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
   /** The thread's or draft's sidekick; null when off. */
@@ -638,7 +652,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onProviderModelSelect,
     onOpenProviderSetup,
     getModelDisabledReason,
-    toggleInteractionMode,
     handleRuntimeModeChange,
     handleInteractionModeChange,
     sidekickModelSelection,
@@ -1036,6 +1049,84 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     "composer.togglePlanMode",
     { context: { composerFocus: true } },
   );
+  const specModeShortcutLabel = shortcutLabelForCommand(keybindings, "composer.toggleSpecMode", {
+    context: { composerFocus: true },
+  });
+  const threadSpec = useThreadSpecState(
+    environmentId,
+    activeProjectId,
+    routeKind === "server" ? routeThreadRef.threadId : null,
+  );
+  const specChoice = resolveSpecChoice({
+    specModeEnabled: threadSpec.usable,
+    threadBound: threadSpec.boundSpec !== null || threadSpec.intake !== null,
+    driver: selectedProviderEntry?.driverKind ?? null,
+    canMutate: threadSpec.canStartSpec,
+  });
+  const composerMode = resolveComposerMode({
+    requested: composerModeOf({
+      interactionMode,
+      specIntake: composerDraft.specIntake === true,
+    }),
+    planAvailable: planModeUiEnabled,
+    spec: specChoice,
+  });
+  const setComposerSpecIntake = useComposerDraftStore((store) => store.setSpecIntake);
+  const navigate = useNavigate();
+  const [bindSpecDialogOpen, setBindSpecDialogOpen] = useState(false);
+  const selectComposerMode = (mode: ComposerMode) => {
+    if (mode === composerMode) return;
+    if (mode === "plan" && !planModeUiEnabled) return;
+    if (mode === "spec" && specChoice.kind !== "available") return;
+    const flags = composerModeFlags(mode);
+    setComposerSpecIntake(composerDraftTarget, flags.specIntake);
+    handleInteractionModeChange(flags.interactionMode);
+    scheduleComposerFocus();
+  };
+  const selectComposerModeStable = useStableCallback(selectComposerMode);
+  // Each returns whether the toggle applied, so a key or the palette falls through when it cannot.
+  const toggleComposerPlan = () => {
+    if (!planModeUiEnabled) return false;
+    selectComposerMode(nextPlanMode(composerMode));
+    return true;
+  };
+  const toggleComposerSpec = () => {
+    if (specChoice.kind !== "available") return false;
+    selectComposerMode(nextSpecMode(composerMode));
+    return true;
+  };
+  const toggleComposerSpecStable = useStableCallback(toggleComposerSpec);
+  const toggleComposerPlanStable = useStableCallback(toggleComposerPlan);
+  useEffect(
+    () => subscribePlanModeToggle(() => void toggleComposerPlanStable()),
+    [toggleComposerPlanStable],
+  );
+  const specToggleAvailable = specChoice.kind === "available";
+  useEffect(() => {
+    if (!specToggleAvailable) return;
+    return registerSpecModeToggleHandler(() => void toggleComposerSpecStable());
+  }, [specToggleAvailable, toggleComposerSpecStable]);
+  const useExistingSpecThreadId = routeKind === "server" ? routeThreadRef.threadId : null;
+  const modeControl: ComposerModeControlModel = {
+    mode: composerMode,
+    showPlan: planModeUiEnabled,
+    spec: specChoice,
+    planShortcutLabel: interactionModeShortcutLabel,
+    specShortcutLabel: specModeShortcutLabel,
+    onSelectMode: selectComposerModeStable,
+    onUseExistingSpec:
+      activeProjectId === null
+        ? null
+        : useExistingSpecThreadId !== null
+          ? () => setBindSpecDialogOpen(true)
+          : () =>
+              void navigate({
+                to: "/specs",
+                search: { environment: environmentId, project: activeProjectId },
+              }),
+    useExistingSpecLabel:
+      useExistingSpecThreadId !== null ? "Use existing spec…" : "Open project specs",
+  };
   const selectedModelSelection: ModelSelection = createModelSelection(
     selectedInstanceId,
     selectedModel,
@@ -1211,12 +1302,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerTerminalContexts.length === 0 &&
     composerPreviewAnnotations.length === 0 &&
     composerReviewComments.length === 0;
-  const specSlashCommandAvailable = useThreadSpecState(
-    environmentId,
-    activeProjectId,
-    routeKind === "server" ? routeThreadRef.threadId : null,
-  ).usable;
-  const openSpecMode = useOpenSpecMode(environmentId, activeProjectId);
+  const specSlashCommandAvailable = specChoice.kind === "available";
 
   const {
     items: composerMenuItems,
@@ -1989,12 +2075,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         if (applied) {
           setComposerHighlightedItemId(null);
-          openSpecMode();
+          selectComposerMode("spec");
         }
         return;
       }
       if (!planModeUiEnabled) return;
-      void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
+      selectComposerMode(item.command === "plan" ? "plan" : "build");
       const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
         expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
       });
@@ -2290,9 +2376,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isCompacting,
     followUpBehavior,
     isSoftwareKeyboardOpen,
-    planModeUiEnabled,
-    specSlashCommandAvailable,
-    openSpecMode,
+    toggleComposerPlan,
+    toggleComposerSpec,
     isLiteralPendingAnswer,
     pendingUserInputs,
     promptHistoryMessages,
@@ -2313,7 +2398,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setComposerTrigger,
     setComposerHighlightedItemId,
     dismissComposerTrigger,
-    toggleInteractionMode,
     nudgeComposerMenuHighlight,
     onSelectComposerItem,
     resolveActiveComposerTrigger,
@@ -2585,13 +2669,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : expandedControlsIconOnlyBlockCount;
   const composerControls = (
     <ComposerControlsBar
-      interactionModeShortcutLabel={interactionModeShortcutLabel}
-      spec={{
-        environmentId,
-        projectId: activeProjectId,
-        threadId: routeKind === "server" ? routeThreadRef.threadId : null,
-        driver: selectedProviderEntry?.driverKind ?? null,
-      }}
+      modeControl={modeControl}
       sidekickSupported={sidekickSupported}
       sidekickModelSelection={sidekickModelSelection}
       onSidekickChange={onSidekickChange}
@@ -2609,11 +2687,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       promptUltrathink={promptUltrathink}
       onPromptEdit={editPromptFromTraitsStable}
       planModeEnabled={settings.composerPlanModeEnabled}
-      planModeUiEnabled={planModeUiEnabled}
-      interactionMode={interactionMode}
       compatibleRuntimeMode={compatibleRuntimeMode}
       compatibleRuntimeModeOptions={compatibleRuntimeModeOptions}
-      toggleInteractionMode={toggleInteractionMode}
       handleRuntimeModeChange={handleRuntimeModeChange}
       composerControlsCollapsed={composerControlsCollapsed}
       composerControlsHidden={composerControlsHidden}
@@ -2681,6 +2756,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     environmentId,
     activeProjectId,
     routeKind === "server" ? routeThreadRef.threadId : null,
+    phase === "running",
   );
   const leadingBannerItems = specBannerItem
     ? [...props.bannerItems, specBannerItem]
@@ -3347,8 +3423,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         selectedProvider,
         selectedModel,
         selectedProviderModels,
-        interactionMode,
+        interactionMode: composerMode === "spec" ? "default" : interactionMode,
         interactionModeEnabled: planModeUiEnabled,
+        composerMode,
       }),
       setMultipleModelSelections,
       validateProviderInput: (providerInput: string) => {
@@ -3413,6 +3490,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedProvider,
       selectedProviderModels,
       interactionMode,
+      composerMode,
       planModeUiEnabled,
       compactThreadContextStable,
       restoreAfterTimelineReachedEnd,
@@ -3559,6 +3637,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             restingControlsHost,
           )
         : null}
+      {bindSpecDialogOpen && useExistingSpecThreadId !== null && activeProjectId !== null ? (
+        <ThreadSpecBindDialog
+          environmentId={environmentId}
+          projectId={activeProjectId}
+          threadId={useExistingSpecThreadId}
+          driver={selectedProviderEntry?.driverKind ?? null}
+          onClose={() => setBindSpecDialogOpen(false)}
+        />
+      ) : null}
       <ComposerBanner.Dock>
         <ComposerBanner.Column>
           <ComposerBannerStack

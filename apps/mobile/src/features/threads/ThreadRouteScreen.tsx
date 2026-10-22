@@ -921,6 +921,7 @@ function ThreadRouteContent(
                 environmentId={selectedThread.environmentId}
                 projectId={selectedThreadProject?.id ?? null}
                 threadId={selectedThread.id}
+                threadRunning={composer.activeThreadBusy}
               />
             </>
           }

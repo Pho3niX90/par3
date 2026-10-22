@@ -1,3 +1,5 @@
+import { resolveSpecSendPath } from "@t3tools/shared/specComposer";
+import { useRunSpecIntake } from "../../specs/state";
 import { environmentThreadDetails } from "../../state/threads";
 import { runPlanSubmission } from "../../lib/planSubmission";
 import {
@@ -352,6 +354,7 @@ export function useComposerSend(input: ComposerSendInput) {
     persistThreadSettingsForNextTurn,
   } = input;
   const handleNewThread = useNewThreadHandler();
+  const runSpecIntake = useRunSpecIntake();
   const navigate = useNavigate();
   const clientSettingsHydrated = useClientSettingsHydrated();
   const planModeEnabled = useEnvironmentSettings(environmentId, selectPlanModeEnabled);
@@ -872,6 +875,8 @@ export function useComposerSend(input: ComposerSendInput) {
         : null;
     if (standaloneSlashCommand && multipleModelSelections === null) {
       handleInteractionModeChange(standaloneSlashCommand);
+      // Plan and Spec exclude each other, and /default returns to Build.
+      useComposerDraftStore.getState().setSpecIntake(composerDraftTarget, false);
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -946,6 +951,15 @@ export function useComposerSend(input: ComposerSendInput) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
       return;
     }
+    const specSend = resolveSpecSendPath({
+      mode: sendCtx.composerMode,
+      launchesThread: isLocalDraftThread || Boolean(baseBranchForWorktree),
+      multipleModels: multipleModelSelections !== null,
+    });
+    if (specSend.kind === "refused") {
+      setThreadError(threadIdForSend, specSend.message);
+      return;
+    }
     // Records bind attachments by the id each side knows: the local id for the optimistic
     // row, the upload id (or local id on the data-URL path) on the wire; the server
     // rebinds them to the persisted id.
@@ -1015,6 +1029,20 @@ export function useComposerSend(input: ComposerSendInput) {
       sendInFlightRef.current = false;
       setThreadError(threadIdForSend, attachmentCapabilitiesBeforeUpload.fileBlockReason);
       return;
+    }
+    if (specSend.kind === "mark-then-send") {
+      // The marker outlives a failed send on purpose: the thread's banner shows it and Cancel ends it.
+      const marked = await runSpecIntake(environmentId, {
+        projectId: activeProject.id,
+        threadId: threadIdForSend,
+        action: "mark",
+      });
+      if (!marked.ok) {
+        sendInFlightRef.current = false;
+        setThreadError(threadIdForSend, marked.message);
+        return;
+      }
+      useComposerDraftStore.getState().setSpecIntake(composerDraftTarget, false);
     }
     const turnUsesAttachmentUploads =
       composerFilesSnapshot.length > 0
@@ -1339,6 +1367,7 @@ export function useComposerSend(input: ComposerSendInput) {
       const bootstrap =
         isLocalDraftThread || baseBranchForWorktree
           ? {
+              ...(specSend.kind === "launch" ? { specIntake: true as const } : {}),
               ...(isLocalDraftThread
                 ? {
                     createThread: {
@@ -1430,6 +1459,9 @@ export function useComposerSend(input: ComposerSendInput) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        // The thread now carries the spec state, so the composer goes back to Build.
+        if (specSend.kind !== "none")
+          useComposerDraftStore.getState().setSpecIntake(composerDraftTarget, false);
         setKeepFullHistory(routeThreadKey, false);
         clearUsageLimitsFor(routeThreadKey);
         if (turnUsesAttachmentUploads) {

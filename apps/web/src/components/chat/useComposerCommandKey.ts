@@ -36,9 +36,9 @@ export function useComposerCommandKey(input: {
   readonly isCompacting: boolean;
   readonly followUpBehavior: ChatComposerProps["settings"]["followUpBehavior"];
   readonly isSoftwareKeyboardOpen: boolean;
-  readonly planModeUiEnabled: boolean;
-  readonly specSlashCommandAvailable: boolean;
-  readonly openSpecMode: () => void;
+  /** Each returns whether the toggle applied; false lets the key fall through. */
+  readonly toggleComposerPlan: () => boolean;
+  readonly toggleComposerSpec: () => boolean;
   readonly isLiteralPendingAnswer: boolean;
   readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
   readonly promptHistoryMessages: ChatComposerProps["promptHistoryMessages"];
@@ -65,7 +65,6 @@ export function useComposerCommandKey(input: {
   readonly setComposerTrigger: (trigger: ComposerTrigger | null) => void;
   readonly setComposerHighlightedItemId: Dispatch<SetStateAction<string | null>>;
   readonly dismissComposerTrigger: (trigger: ComposerTrigger | null) => void;
-  readonly toggleInteractionMode: () => void;
   readonly nudgeComposerMenuHighlight: (key: "ArrowDown" | "ArrowUp") => void;
   readonly onSelectComposerItem: (item: ComposerCommandItem) => void;
   readonly resolveActiveComposerTrigger: () => { trigger: ComposerTrigger | null };
@@ -90,9 +89,8 @@ export function useComposerCommandKey(input: {
     isCompacting,
     followUpBehavior,
     isSoftwareKeyboardOpen,
-    planModeUiEnabled,
-    specSlashCommandAvailable,
-    openSpecMode,
+    toggleComposerPlan,
+    toggleComposerSpec,
     isLiteralPendingAnswer,
     pendingUserInputs,
     promptHistoryMessages,
@@ -113,7 +111,6 @@ export function useComposerCommandKey(input: {
     setComposerTrigger,
     setComposerHighlightedItemId,
     dismissComposerTrigger,
-    toggleInteractionMode,
     nudgeComposerMenuHighlight,
     onSelectComposerItem,
     resolveActiveComposerTrigger,
@@ -205,18 +202,14 @@ export function useComposerCommandKey(input: {
       !event.isComposing &&
       shortcutCommand === "composer.togglePlanMode"
     ) {
-      if (!planModeUiEnabled) return false;
-      toggleInteractionMode();
-      return true;
+      return toggleComposerPlan();
     }
     if (
       submissionIntent === null &&
       !event.isComposing &&
       shortcutCommand === "composer.toggleSpecMode"
     ) {
-      if (!specSlashCommandAvailable) return false;
-      openSpecMode();
-      return true;
+      return toggleComposerSpec();
     }
     const { trigger } = resolveActiveComposerTrigger();
     const menuIsActive =

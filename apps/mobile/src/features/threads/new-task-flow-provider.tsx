@@ -1,3 +1,4 @@
+import { readSpecIntakeRequested, setSpecIntakeRequested } from "../../state/spec-intake-state";
 import { ActiveNewTaskContext } from "../../state/active-new-task";
 import * as Dialog from "../../components/ui/Dialog";
 import { resolveFilesystemReadAccess } from "@t3tools/client-runtime/state/filesystem";
@@ -978,6 +979,7 @@ export function NewTaskFlowProvider(
       return false;
     }
     const draftKey = pendingTaskDraftKey(message.messageId);
+    if (message.specIntake) setSpecIntakeRequested(draftKey, true);
     if (isComposerDraftEmpty(getComposerDraftSnapshot(draftKey))) {
       setComposerDraftText(draftKey, message.text);
       setComposerDraftContext(draftKey, message.context);
@@ -1059,6 +1061,7 @@ export function NewTaskFlowProvider(
       context: draft.context,
       modelSelection: draftModelSelection,
       runtimeMode: draft.runtimeMode ?? defaultRuntimeMode,
+      ...(readSpecIntakeRequested(selectedProjectDraftKey) ? { specIntake: true as const } : {}),
       interactionMode: resolvePendingTaskInteractionMode({
         preferenceLoaded: planModePreferenceLoaded,
         planModeEnabled: planModePreferenceEnabled,

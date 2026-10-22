@@ -1,3 +1,4 @@
+import { readSpecIntakeRequested, setSpecIntakeRequested } from "./spec-intake-state";
 import { useComposerAttachmentActions } from "./use-composer-attachment-actions";
 import * as Dialog from "../components/ui/Dialog";
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
@@ -708,6 +709,8 @@ export function useThreadComposerState() {
     const messageId = MessageId.make(metadata.messageId);
     clearThreadComposerError(threadKey);
     const sendRuntimeMode = draft.runtimeMode ?? thread.runtimeMode;
+    // The composer keeps this off whenever Spec cannot be offered, so a set flag is a valid request.
+    const sendsSpecIntake = readSpecIntakeRequested(threadKey);
     const sendInteractionMode = resolveThreadInteractionMode({
       provider,
       preferenceLoaded: planModePreferenceLoaded,
@@ -736,9 +739,12 @@ export function useThreadComposerState() {
       modelSelection,
       runtimeMode: sendRuntimeMode,
       interactionMode: sendInteractionMode,
+      ...(sendsSpecIntake ? { specIntake: true as const } : {}),
       ...(followUpDispatchMode === null ? {} : { dispatchMode: followUpDispatchMode }),
       createdAt: metadata.createdAt,
     });
+    // The queued message carries the request now, so the composer goes back to Build.
+    if (sendsSpecIntake) setSpecIntakeRequested(threadKey, false);
     clearComposerDraftContent(threadKey, { deferAttachmentCleanup: true });
     enqueuePromise.then(
       () => scheduleUnusedComposerAttachmentCleanup(attachments),

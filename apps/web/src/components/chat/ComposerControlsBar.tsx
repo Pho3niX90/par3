@@ -4,6 +4,7 @@ import type { ProviderInstanceEntry } from "../../providerInstances";
 import { type AppModelOption } from "../../modelSelection";
 import { CircleAlertIcon } from "lucide-react";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import type { ComposerModeControlModel } from "./ComposerModeControl";
 import { ComposerSidekickControl, SidekickMenuContent } from "./ComposerSidekickControl";
 import { providerCanLeadSidekick, resolveSidekickPairing } from "../../sidekick";
 import { ComposerControl, ComposerControlSeparator } from "./ComposerControl";
@@ -17,10 +18,7 @@ import {
   type ModelSelection,
   type ProviderDriverKind,
   type ProviderInstanceId,
-  type ProjectId,
-  type ProviderInteractionMode,
   type RuntimeMode,
-  type ThreadId,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { cn } from "~/lib/utils";
@@ -48,11 +46,9 @@ export function ComposerControlsBar(props: {
   promptUltrathink: PromptUltrathink;
   onPromptEdit: (edit: (prompt: string) => string) => void;
   planModeEnabled: boolean;
-  planModeUiEnabled: boolean;
-  interactionMode: ProviderInteractionMode;
+  modeControl: ComposerModeControlModel;
   compatibleRuntimeMode: RuntimeMode;
   compatibleRuntimeModeOptions: ReadonlyArray<RuntimeModeOption>;
-  toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   composerControlsCollapsed: boolean;
   composerControlsHidden: boolean;
@@ -82,13 +78,6 @@ export function ComposerControlsBar(props: {
   onModelPickerOpenChange: (open: boolean) => void;
   modelPickerIconClassName: string | undefined;
   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
-  interactionModeShortcutLabel: string | null;
-  spec: {
-    environmentId: EnvironmentId;
-    projectId: ProjectId | null;
-    threadId: ThreadId | null;
-    driver: string | null;
-  };
   sidekickSupported: boolean;
   sidekickModelSelection: ModelSelection | null;
   onSidekickChange: (selection: ModelSelection | null) => void;
@@ -108,11 +97,9 @@ export function ComposerControlsBar(props: {
     promptUltrathink,
     onPromptEdit,
     planModeEnabled,
-    planModeUiEnabled,
-    interactionMode,
+    modeControl,
     compatibleRuntimeMode,
     compatibleRuntimeModeOptions,
-    toggleInteractionMode,
     handleRuntimeModeChange,
     composerControlsCollapsed,
     composerControlsHidden,
@@ -142,8 +129,6 @@ export function ComposerControlsBar(props: {
     onModelPickerOpenChange,
     modelPickerIconClassName,
     getModelDisabledReason,
-    interactionModeShortcutLabel,
-    spec,
     sidekickSupported,
     sidekickModelSelection,
     onSidekickChange,
@@ -220,15 +205,11 @@ export function ComposerControlsBar(props: {
       id: "mode",
       content: (
         <ComposerFooterModeControls
-          showInteractionModeToggle={planModeUiEnabled}
-          interactionMode={interactionMode}
-          interactionModeShortcutLabel={interactionModeShortcutLabel}
-          spec={spec}
+          modeControl={modeControl}
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           size={composerControlsCollapsed ? "xs" : "sm"}
           hidden={composerControlsHidden || restingHiddenBlockCount > (showSidekickControl ? 1 : 0)}
-          onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
         />
       ),
@@ -368,12 +349,12 @@ export function ComposerControlsBar(props: {
           )}
         >
           <CompactComposerControlsMenu
-            interactionMode={interactionMode}
+            modeControl={modeControl}
             runtimeMode={compatibleRuntimeMode}
             runtimeModeOptions={compatibleRuntimeModeOptions}
             size={composerControlsCollapsed ? "xs" : "sm"}
             hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
-            showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.includes("mode")}
+            showModeChoice={hiddenRestingBlockIds.includes("mode")}
             traitsMenuContent={
               hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
@@ -382,7 +363,6 @@ export function ComposerControlsBar(props: {
                 <SidekickMenuContent {...sidekickMenuInput} />
               ) : undefined
             }
-            onToggleInteractionMode={toggleInteractionMode}
             onRuntimeModeChange={handleRuntimeModeChange}
           />
         </div>

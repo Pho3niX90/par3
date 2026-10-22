@@ -8,6 +8,37 @@ import {
   type ProjectThreadStartTurnSpec,
 } from "./projectThreadStartTurn";
 
+describe("project thread spec request", () => {
+  const spec = {
+    projectId: ProjectId.make("project"),
+    projectCwd: "/workspace",
+    threadId: "spec-thread",
+    commandId: "spec-command",
+    messageId: "spec-message",
+    createdAt: "2026-09-04T00:00:00Z",
+    text: "Add dark mode",
+    uploadedAttachments: [],
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.6-sol" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    workspaceMode: "worktree",
+    branch: "main",
+    worktreePath: null,
+    startFromOrigin: false,
+    worktreeBranchName: "t3/temp",
+  } satisfies ProjectThreadStartTurnSpec;
+
+  it("asks the launch to start a spec only when the message does", () => {
+    expect(buildProjectThreadStartTurnInput(spec).bootstrap).not.toHaveProperty("specIntake");
+    const input = buildProjectThreadStartTurnInput({ ...spec, specIntake: true });
+    expect(input.bootstrap).toMatchObject({
+      specIntake: true,
+      createThread: { interactionMode: "default" },
+      prepareWorktree: { baseBranch: "main" },
+    });
+  });
+});
+
 describe("project thread title", () => {
   it.each([
     {

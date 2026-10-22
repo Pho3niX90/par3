@@ -1,4 +1,6 @@
-import { specRoleSupported, type SpecRole, type SpecStatus } from "@t3tools/contracts";
+import type { SpecStatus } from "@t3tools/contracts";
+
+export { specRoleRefusal } from "@t3tools/shared/specComposer";
 
 export type SpecActionId =
   | "edit"
@@ -112,22 +114,6 @@ export function nextSpecStepHint(status: SpecStatus): string {
     case "rejected":
       return "Rejected. Reopen the spec to revise it.";
   }
-}
-
-const DRIVER_LABELS: Record<string, string> = {
-  codex: "Codex",
-  claudeAgent: "Claude",
-  cursor: "Cursor",
-  grok: "Grok",
-  opencode: "OpenCode",
-  antigravity: "Antigravity",
-};
-
-export function specRoleRefusal(driver: string | null, role: SpecRole): string | null {
-  if (driver === null) return "Choose a provider before binding this thread to a spec.";
-  if (specRoleSupported(driver, role)) return null;
-  const label = DRIVER_LABELS[driver] ?? driver;
-  return `The ${role} role needs Codex or Claude. ${label} supports the implementation and test roles only.`;
 }
 
 export function specModeCreateDisabledReason(input: {

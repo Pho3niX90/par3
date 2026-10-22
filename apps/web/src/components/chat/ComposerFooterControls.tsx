@@ -1,21 +1,11 @@
-import type {
-  EnvironmentId,
-  ModelSelection,
-  ProjectId,
-  ProviderInstanceId,
-  ProviderInteractionMode,
-  RuntimeMode,
-  ThreadId,
-} from "@t3tools/contracts";
+import type { ModelSelection, ProviderInstanceId, RuntimeMode } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
-import { BotIcon, PencilRulerIcon } from "lucide-react";
 import { type ComponentProps, memo } from "react";
 
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
-  ComposerControl,
   ComposerControlIcon,
   ComposerControlSeparator,
   ComposerSelectControl,
@@ -27,7 +17,11 @@ import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { runtimeModeConfig } from "./runtimeModeConfig";
 import { useComposerMenuState } from "./useComposerMenuState";
-import { ThreadSpecModeControl } from "../../specs/ThreadSpecControl";
+import {
+  ComposerModeControl,
+  type ComposerModeControlModel,
+  composerModeControlVisible,
+} from "./ComposerModeControl";
 
 export type RuntimeModeOption = { mode: RuntimeMode } & (typeof runtimeModeConfig)[RuntimeMode];
 const supervisedRuntimeModeOption = {
@@ -35,20 +29,11 @@ const supervisedRuntimeModeOption = {
   ...runtimeModeConfig["approval-required"],
 };
 export const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
-  showInteractionModeToggle: boolean;
-  interactionMode: ProviderInteractionMode;
-  interactionModeShortcutLabel: string | null;
-  spec: {
-    environmentId: EnvironmentId;
-    projectId: ProjectId | null;
-    threadId: ThreadId | null;
-    driver: string | null;
-  };
+  modeControl: ComposerModeControlModel;
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   size?: "sm" | "xs";
   hidden?: boolean;
-  onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const size = props.size ?? "sm";
@@ -58,49 +43,11 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
     props.runtimeModeOptions.find((option) => option.mode === props.runtimeMode) ??
     supervisedRuntimeModeOption;
   const RuntimeModeIcon = runtimeModeOption.icon;
-  const interactionModeLabel =
-    props.interactionMode === "plan"
-      ? "Plan mode — click to return to build mode"
-      : "Build mode — click to switch to plan mode";
-  const interactionModeTooltip = props.interactionModeShortcutLabel
-    ? `${interactionModeLabel} (${props.interactionModeShortcutLabel})`
-    : interactionModeLabel;
 
-  const interactionModeToggle = props.showInteractionModeToggle ? (
+  const interactionModeToggle = composerModeControlVisible(props.modeControl) ? (
     <>
       <ComposerControlSeparator size={size} />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ComposerControl
-              size={size}
-              className="shrink-0 whitespace-nowrap"
-              aria-pressed={props.interactionMode === "plan"}
-              type="button"
-              onClick={props.onToggleInteractionMode}
-              aria-label={interactionModeLabel}
-            />
-          }
-        >
-          {props.interactionMode === "plan" ? (
-            <ComposerControlIcon
-              icon={PencilRulerIcon}
-              size={size}
-              className="text-current opacity-100"
-            />
-          ) : (
-            <ComposerControlIcon
-              icon={BotIcon}
-              size={size}
-              opticalSize={size === "xs" ? "default" : "large"}
-            />
-          )}
-          <span data-composer-control-label className="sr-only sm:not-sr-only">
-            {props.interactionMode === "plan" ? "Plan" : "Build"}
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
-      </Tooltip>
+      <ComposerModeControl model={props.modeControl} size={size} hidden={props.hidden ?? false} />
     </>
   ) : null;
 
@@ -157,14 +104,6 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
       </Tooltip>
 
       {interactionModeToggle}
-      <ThreadSpecModeControl
-        environmentId={props.spec.environmentId}
-        projectId={props.spec.projectId}
-        threadId={props.spec.threadId}
-        driver={props.spec.driver}
-        size={size}
-        hidden={props.hidden ?? false}
-      />
     </>
   );
 });

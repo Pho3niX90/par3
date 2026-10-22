@@ -7,6 +7,8 @@ import {
   type EnvironmentId,
   type ProjectId,
   type SpecDocument,
+  type SpecIntake,
+  type SpecIntakeInput,
   type SpecLayout,
   type SpecMutationInput,
   type SpecQueryInput,
@@ -25,7 +27,13 @@ import { Atom } from "effect/reactivity";
 
 import { randomUUID } from "../lib/utils";
 import { useEnvironmentQuery } from "../state/query";
-import { serverEnvironment, specsLive, specsMutate, specsQuery } from "../state/server";
+import {
+  serverEnvironment,
+  specsIntake,
+  specsLive,
+  specsMutate,
+  specsQuery,
+} from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
 
 const FALSE_ATOM = Atom.make(false).pipe(Atom.withLabel("web-specs-false"));
@@ -44,6 +52,11 @@ function useSpecMutatePermission(
   return useAtomValue(atom);
 }
 
+function useSpecIntakePermission(environmentId: EnvironmentId | null): boolean {
+  const atom = environmentId === null ? FALSE_ATOM : specsIntake.permissionAtom(environmentId);
+  return useAtomValue(atom);
+}
+
 export function useProjectSpecModeState(
   environmentId: EnvironmentId | null,
   projectId: ProjectId | null,
@@ -51,6 +64,8 @@ export function useProjectSpecModeState(
   readonly capabilitiesSupported: boolean;
   readonly specModeEnabled: boolean;
   readonly canMutate: boolean;
+  /** The person may start or cancel a spec from a message, which the mutate permission does not cover. */
+  readonly canStartSpec: boolean;
 } {
   const capabilitiesSupported = useEnvironmentSupportsSpecMode(environmentId);
   const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
@@ -58,10 +73,12 @@ export function useProjectSpecModeState(
     ? resolveProjectSettings(config.settings, projectId).settings
     : null;
   const canMutate = useSpecMutatePermission(environmentId);
+  const canStartSpec = useSpecIntakePermission(environmentId);
   return {
     capabilitiesSupported,
     specModeEnabled: capabilitiesSupported && projectSettings?.specModeEnabled === true,
     canMutate,
+    canStartSpec,
   };
 }
 
@@ -112,6 +129,8 @@ export interface ThreadSpecBindingView {
   readonly specs: ReadonlyArray<SpecSummary>;
   readonly boundSpec: SpecDocument | null;
   readonly boundRole: SpecRole | null;
+  /** The thread is waiting for its agent to draft a new spec. */
+  readonly intake: SpecIntake | null;
   readonly isPending: boolean;
   readonly error: string | null;
   readonly refresh: () => void;
@@ -141,6 +160,7 @@ export function useThreadSpecBinding(
     specs: view.specs,
     boundSpec: detail,
     boundRole: binding?.role ?? null,
+    intake: view.data?.intake ?? null,
     isPending: view.isPending,
     error: view.error,
     refresh: view.refresh,
@@ -184,6 +204,24 @@ export function useRunSpecMutation() {
       input: withSpecMutationCommandId(payload),
     });
     if (result._tag === "Success") return { ok: true, document: result.value };
+    if (isAtomCommandInterrupted(result))
+      return { ok: false, message: "The request was cancelled." };
+    return { ok: false, message: describeSpecFailure(squashAtomCommandFailure(result)) };
+  };
+}
+
+export type SpecIntakeOutcome =
+  | { readonly ok: true; readonly intake: SpecIntake | null }
+  | { readonly ok: false; readonly message: string };
+
+export function useRunSpecIntake() {
+  const run = useAtomCommand(specsIntake, { reportFailure: false });
+  return async (
+    environmentId: EnvironmentId,
+    input: SpecIntakeInput,
+  ): Promise<SpecIntakeOutcome> => {
+    const result = await run({ environmentId, input });
+    if (result._tag === "Success") return { ok: true, intake: result.value.intake };
     if (isAtomCommandInterrupted(result))
       return { ok: false, message: "The request was cancelled." };
     return { ok: false, message: describeSpecFailure(squashAtomCommandFailure(result)) };

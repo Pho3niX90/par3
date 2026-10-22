@@ -35,6 +35,8 @@ import {
   forgetAcknowledgedThreadMessage,
 } from "./acknowledged-thread-messages";
 import { appAtomRegistry } from "./atom-registry";
+import { setSpecIntakeRequested } from "./spec-intake-state";
+import { useRunSpecIntake } from "./spec-intake";
 import { restoredNewTaskDraftKey } from "./new-task-draft-key";
 import { useProjects, useServerConfigs, useThreadShells } from "./entities";
 import {
@@ -367,6 +369,7 @@ export async function recoverEditedCreationAfterDelivery(
       ...(kept.runtimeMode !== undefined ? { runtimeMode: kept.runtimeMode } : {}),
       ...(kept.interactionMode !== undefined ? { interactionMode: kept.interactionMode } : {}),
     });
+    if (kept.specIntake) setSpecIntakeRequested(draftKey, true);
     // The append only schedules a debounced write; the queue entry is the
     // only durable copy until the draft lands, so flush before removing.
     await flushComposerDrafts();
@@ -497,6 +500,7 @@ export async function restoreRejectedQueuedMessage(
     // The queued message is gone; from here the draft owns the content and
     // must never be rolled back.
     rollback = null;
+    if (queuedMessage.specIntake) setSpecIntakeRequested(draftKey, true);
     if (queuedMessage.creation) {
       withdrawError();
       recordPendingThreadCreationOutcome({
@@ -595,6 +599,7 @@ export function useThreadOutboxDrain(): void {
   const setThreadInteractionMode = useAtomCommand(threadEnvironment.setInteractionMode, {
     reportFailure: false,
   });
+  const markSpecIntake = useRunSpecIntake();
   const dispatchingQueuedMessageId = useAtomValue(dispatchingQueuedMessageIdAtom);
   const editingQueuedMessageIds = useAtomValue(editingQueuedMessageIdsAtom);
   const queuedMessagesByThreadKey = useThreadOutboxMessages();
@@ -786,6 +791,18 @@ export function useThreadOutboxDrain(): void {
         }
       }
 
+      // The marker stays if the send then fails: the thread's banner shows it and Cancel ends it.
+      // Marking again on a retry is harmless.
+      if (queuedMessage.specIntake) {
+        if (!hasAccess()) return true;
+        const marked = await markSpecIntake(queuedMessage.environmentId, {
+          projectId: thread.projectId,
+          threadId: queuedMessage.threadId,
+          action: "mark",
+        });
+        if (!marked.ok) return restoreQueuedMessage(queuedMessage, marked.message);
+      }
+
       let prepared: PreparedTurnAttachments;
       let persistedMessage: QueuedThreadMessage;
       let deliveryRevision: number;
@@ -889,6 +906,7 @@ export function useThreadOutboxDrain(): void {
     },
     [
       makeDeliveryHelpers,
+      markSpecIntake,
       setThreadInteractionMode,
       setThreadRuntimeMode,
       startTurn,
@@ -1038,6 +1056,7 @@ export function useThreadOutboxDrain(): void {
           worktreePath: workspace.worktreePath,
           startFromOrigin: workspace.startFromOrigin ?? false,
           worktreeBranchName: buildTemporaryWorktreeBranchName(randomHex),
+          ...(queuedMessage.specIntake ? { specIntake: true } : {}),
         }),
       });
       if (AsyncResult.isFailure(deliveryResult) && !hasAccess()) return true;

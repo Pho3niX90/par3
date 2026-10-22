@@ -35,6 +35,8 @@ export interface ProjectThreadStartTurnSpec {
   readonly worktreePath: string | null;
   readonly startFromOrigin: boolean;
   readonly worktreeBranchName: string;
+  /** The first message starts a spec. */
+  readonly specIntake?: boolean;
 }
 
 export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpec) {
@@ -80,6 +82,7 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
             runSetupScript: true,
           }
         : {}),
+      ...(spec.specIntake ? { specIntake: true as const } : {}),
     },
     createdAt: spec.createdAt,
   };

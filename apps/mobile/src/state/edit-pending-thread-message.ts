@@ -1,3 +1,4 @@
+import { setSpecIntakeRequested } from "./spec-intake-state";
 import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { appAtomRegistry } from "./atom-registry";
@@ -57,6 +58,7 @@ export async function editPendingThreadMessage(message: QueuedThreadMessage): Pr
       ...(message.runtimeMode ? { runtimeMode: message.runtimeMode } : {}),
       ...(message.interactionMode ? { interactionMode: message.interactionMode } : {}),
     });
+    if (message.specIntake) setSpecIntakeRequested(draftKey, true);
     rollback = { snapshot, merged: getComposerDraftSnapshot(draftKey) };
     await flushComposerDrafts();
     if (!(await removeThreadOutboxMessage(message, revision))) return false;

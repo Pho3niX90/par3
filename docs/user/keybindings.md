@@ -31,7 +31,9 @@ Use `mod+shift+l` to reuse the previous worktree directly.
 
 `Shift+Tab` switches the composer between Build and [Plan](./composer.md#plan-mode).
 It works while the composer is focused, and inside a code block it still outdents.
-Change it under **Composer: Toggle Plan Mode**.
+Change it under **Composer: Toggle Plan Mode**. **Composer: Toggle Spec Mode**
+switches the composer between Build and [Spec](./spec-mode.md#start-a-spec); it has no
+default shortcut.
 
 To change effort one step without opening the picker, bind
 **Composer: Increase Effort** and **Composer: Decrease Effort** in Keybindings.

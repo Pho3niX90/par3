@@ -102,6 +102,12 @@ import {
 import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { ComposerPopoverAnchor } from "./ComposerPopoverAnchor";
 import { ComposerQueuedEditAttachments } from "./ComposerQueuedEdit";
+import { ComposerSpecModeBanner } from "./ComposerSpecMode";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { resolveSpecChoice } from "@t3tools/shared/specComposer";
+import { useThreadBoundSpec } from "../../state/specs";
+import { setSpecIntakeRequested } from "../../state/spec-intake-state";
+import { useSpecIntakePermission, useSpecIntakeRequested } from "../../state/spec-intake";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
 import { usePlanModeState } from "./use-plan-mode-enabled";
 import {
@@ -542,6 +548,38 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   };
   const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
   const { enabled: planModeEnabled } = usePlanModeState();
+  const specProjectId = project?.id ?? null;
+  const specView = useThreadBoundSpec(
+    props.environmentId,
+    specProjectId,
+    props.isDraft ? null : props.selectedThread.id,
+  );
+  const canStartSpec = useSpecIntakePermission(props.environmentId);
+  const specChoice = resolveSpecChoice({
+    specModeEnabled:
+      props.serverConfig?.environment.capabilities.specMode === true &&
+      specProjectId !== null &&
+      resolveProjectSettings(props.serverConfig.settings, specProjectId).settings
+        .specModeEnabled === true,
+    threadBound: specView.boundSpec !== null || specView.intake !== null,
+    driver: selectedProviderStatus?.driver ?? null,
+    canMutate: canStartSpec,
+  });
+  const specRequested = useSpecIntakeRequested(composerDraftKey);
+  // A request outlives neither a provider that cannot write requirements nor a thread that
+  // already has a spec, so the send paths can trust the flag.
+  const specUnavailable = specChoice.kind !== "available";
+  useEffect(() => {
+    if (specRequested && specUnavailable && composerDraftKey)
+      setSpecIntakeRequested(composerDraftKey, false);
+  }, [composerDraftKey, specRequested, specUnavailable]);
+  const selectSpecMode = () => {
+    if (specChoice.kind === "disabled") {
+      Dialog.alert("Spec mode unavailable", specChoice.reason);
+    } else if (specChoice.kind === "available" && composerDraftKey) {
+      setSpecIntakeRequested(composerDraftKey, true);
+    }
+  };
   const usageLimitsOffered =
     selectedProviderStatus !== null &&
     hasProviderUsageLimits(
@@ -582,7 +620,12 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     onUpdateInteractionMode:
       !planModeEnabled || selectedProviderStatus?.showInteractionModeToggle === false
         ? undefined
-        : props.onUpdateInteractionMode,
+        : (mode) => {
+            // Plan and Spec exclude each other, and /default returns to Build.
+            if (composerDraftKey) setSpecIntakeRequested(composerDraftKey, false);
+            props.onUpdateInteractionMode?.(mode);
+          },
+    onSelectSpecMode: specChoice.kind === "hidden" ? undefined : selectSpecMode,
     offersUsageLimits: usageLimitsOffered,
     onUsageLimits:
       usageLimitsOffered && draftAttachments.length === 0 ? openUsageLimits : undefined,
@@ -960,6 +1003,13 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             label="Model unavailable. Open model settings."
             tone="text"
             onPress={openSettings}
+          />
+        ) : null}
+
+        {specRequested && composerDraftKey ? (
+          <ComposerSpecModeBanner
+            disabled={isSubmissionLocked}
+            onTurnOff={() => setSpecIntakeRequested(composerDraftKey, false)}
           />
         ) : null}
 

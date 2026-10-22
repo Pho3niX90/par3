@@ -4,13 +4,17 @@ Spec mode puts a reviewed requirements document between a request and the code. 
 
 ## Start a spec
 
-Spec mode is on by default in every project. The composer offers **Spec** next to Build and Plan, plus the `/spec` command, and each project has a **Specs** list. A thread follows the spec workflow only after you bind it to a spec, so other threads are unaffected.
+Spec mode is on by default in every project. In the composer, choose **Spec** next to Build and Plan (or type `/spec`), describe the change, and send. The agent drafts the spec from your message, names it, and asks you to review it. Spec needs a provider that can write requirements (Codex or Claude); with another provider it stays greyed out and says why. Each project also has a **Specs** list.
+
+While the agent drafts, a banner above the composer says **Drafting a new spec** and offers **Cancel**. Cancel is available once the agent has stopped. When the spec exists, the banner shows it instead. Only a thread you start this way, or one you bind yourself, follows the spec workflow, so other threads are unaffected.
+
+To attach a thread to a spec that already exists, open the mode menu in the composer and choose **Use existing spec…**. On a new thread without a server yet, the same item opens the project's specs. On mobile, `/specs` opens the Specs list.
 
 To hide it for a project, open the project's Settings and turn off **Spec mode**. That hides the ways to start new spec work. Existing specs stay readable and reviewable, and threads already bound to a spec keep their restrictions.
 
 ## The workflow
 
-1. **Requirements.** Choose Spec in the composer and pick or create a spec. The thread's agent drafts `specs/<slug>/spec.md` with numbered acceptance criteria (`AC-1`, `AC-2`, …), fixes the readiness findings, and submits it for review. It cannot edit other files.
+1. **Requirements.** The thread's agent drafts `specs/<slug>/spec.md` with numbered acceptance criteria (`AC-1`, `AC-2`, …), fixes the readiness findings, and submits it for review. It cannot edit other files.
 2. **Review.** Open the spec from the Specs list. Check the checkout path shown at the top, since approval covers the files in that checkout. Approve, request changes, or reject.
 3. **Implementation.** Approving does not start anything. Choose **Start implementation** to create a thread bound to the spec. Its agent breaks the work into tasks that cover every acceptance criterion and reports progress.
 4. **Verification.** A test agent records evidence for each criterion. Manual checks need a person to confirm them in the spec's Evidence tab. The spec is done only when every criterion has current, passing evidence.
@@ -29,7 +33,7 @@ Pushing a branch or opening a pull request is optional.
 
 If the project's root has a `.base` file, Par3 treats its specs as BASE specs. The choice is made when a spec is first created or found, and the spec keeps it.
 
-- **Folders.** Specs live in `specs/KEY-123_short-name/` (or `specs/2026-short-name/`) as well as the usual lowercase names.
+- **Folders.** Specs live in `specs/KEY-123_short-name/` (or `specs/2026-short-name/`) as well as the usual lowercase names. When you start a spec from the composer, the agent uses a ticket key from your message. If there is none, it asks you for one and offers a `2026-short-name` folder instead.
 - **Template.** The sections a spec must have are the `##` headings in the project's `specs/_template.md`, and new specs start from that file. Extra sections never block review. Without a template, a spec only needs acceptance criteria. An unticked open question marked `[HIGH]` blocks review until it is resolved (ticked).
 - **BASE's own files stay untouched.** Par3 doesn't write or check `status.json`, `tasks.json` or `approval.json` in these specs, and there is no constitution. Status, tasks and approvals are tracked by Par3 itself, not in those files.
 - **BASE files.** Agents can write `prd.md`, `tech-analysis.md` and `status.json` next to `spec.md`, including while the requirements are still being drafted. Approval and task files are never written this way.

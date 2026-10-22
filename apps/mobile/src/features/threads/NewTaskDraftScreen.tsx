@@ -1,3 +1,4 @@
+import { setSpecIntakeRequested } from "../../state/spec-intake-state";
 import { DraftEnvironmentControl } from "./DraftEnvironmentControl";
 import { NativeScrollEdgeEffectsContext } from "../../native/NativeScrollViewMarker";
 import { DraftThreadHeader } from "./DraftThreadHeader";
@@ -944,6 +945,8 @@ export function NewTaskDraftScreen(props: {
       return null;
     }
     flow.recordLastUsedSelection(message);
+    // The queued task carries the request now, so the composer goes back to Build.
+    if (message.specIntake) setSpecIntakeRequested(draftKey, false);
     promptInputRef.current?.blur();
     navigation.dispatch(
       CommonActions.setParams(

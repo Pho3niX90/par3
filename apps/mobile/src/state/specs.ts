@@ -86,7 +86,13 @@ export function useThreadBoundSpec(
     environmentId,
     projectId === null || threadId === null ? null : { projectId, threadId, limit: 1 },
   );
-  return { boundSpec: view.data?.detail ?? null, isPending: view.isPending, error: view.error };
+  return {
+    boundSpec: view.data?.detail ?? null,
+    /** The thread is waiting for its agent to draft a new spec. */
+    intake: view.data?.intake ?? null,
+    isPending: view.isPending,
+    error: view.error,
+  };
 }
 
 export function useSpecMutations(environmentId: EnvironmentId | null, projectId: ProjectId | null) {

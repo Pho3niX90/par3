@@ -22,7 +22,6 @@ import { useImplementPlanInNewThread } from "./chat/useProposedPlanSend";
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
-import { subscribePlanModeToggle } from "./chat/planModeActionBus";
 import { subscribeSidekickChange } from "./chat/sidekickActionBus";
 import { resolveDraftHeroState } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
@@ -2851,7 +2850,6 @@ export default function ChatView(props: ChatViewProps) {
     onProviderModelSelectStable,
     onStartFromOriginChange,
     openProviderSetupStable,
-    toggleInteractionModeStable,
   } = useComposerSelection({
     environmentId,
     composerDraftTarget,
@@ -2936,10 +2934,6 @@ export default function ChatView(props: ChatViewProps) {
         if (sidekickSupported) handleSidekickChangeStable(selection);
       }),
     [handleSidekickChangeStable, sidekickSupported],
-  );
-  useEffect(
-    () => subscribePlanModeToggle(toggleInteractionModeStable),
-    [toggleInteractionModeStable],
   );
   const {
     onSend,
@@ -3751,7 +3745,6 @@ export default function ChatView(props: ChatViewProps) {
                               onProviderModelSelect={onProviderModelSelectStable}
                               onOpenProviderSetup={openProviderSetupStable}
                               getModelDisabledReason={getModelDisabledReason}
-                              toggleInteractionMode={toggleInteractionModeStable}
                               handleRuntimeModeChange={handleRuntimeModeChangeStable}
                               handleInteractionModeChange={handleInteractionModeChangeStable}
                               sidekickModelSelection={sidekickModelSelection}
