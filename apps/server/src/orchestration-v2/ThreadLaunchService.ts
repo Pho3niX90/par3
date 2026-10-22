@@ -365,7 +365,7 @@ const make = Effect.gen(function* () {
                 branch: result.branch,
                 exactName: settings.branchNamingMode === "custom",
               })),
-              // Without a fallback the thread keeps its temporary t3/<hash> name.
+              // Without a fallback the thread keeps its temporary par3/<hash> name.
               Effect.catch((error) =>
                 // sanitizeBranchFragment turns an unusable message into "update".
                 /[a-z0-9]/i.test(message.text)

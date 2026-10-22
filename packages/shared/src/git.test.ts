@@ -158,6 +158,12 @@ describe("isTemporaryWorktreeBranch", () => {
     );
   });
 
+  it("matches temporary worktree refs created before the Par3 prefix", () => {
+    expect(isTemporaryWorktreeBranch("t3/deadbeef")).toBe(true);
+    expect(isTemporaryWorktreeBranch("t3-deadbeef")).toBe(true);
+    expect(isTemporaryWorktreeBranch("t3/vault-sync")).toBe(false);
+  });
+
   it("matches legacy t3code temporary worktree refs", () => {
     expect(isTemporaryWorktreeBranch("t3code/deadbeef")).toBe(true);
     expect(isTemporaryWorktreeBranch("t3code-deadbeef")).toBe(true);

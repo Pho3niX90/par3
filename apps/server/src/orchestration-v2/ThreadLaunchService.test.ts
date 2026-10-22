@@ -1034,7 +1034,7 @@ it.effect("runs a Scratch scheduled task saved with a worktree in its own folder
   }).pipe(Effect.provide(harness.layer));
 });
 it.effect.each([
-  { message: "Fix the Login bug!", branch: "t3/fix-the-login-bug" },
+  { message: "Fix the Login bug!", branch: "par3/fix-the-login-bug" },
   { message: "!!! ???", branch: undefined },
 ])(
   "falls back to the first message when branch generation fails: $message",
