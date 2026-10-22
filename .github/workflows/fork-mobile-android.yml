@@ -22,6 +22,13 @@ on:
           - internal
           - alpha
           - production
+      status:
+        description: Release status on the track (completed rolls out to testers; draft waits for the console)
+        type: choice
+        default: draft
+        options:
+          - draft
+          - completed
   workflow_call:
     inputs:
       ref:
@@ -36,6 +43,10 @@ on:
         description: Play track to upload to
         type: string
         default: beta
+      status:
+        description: Release status on the track
+        type: string
+        default: draft
 
 concurrency:
   group: fork-mobile-android
@@ -151,5 +162,6 @@ jobs:
           packageName: com.paritylabs.par3
           releaseFiles: apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
           track: ${{ inputs.track }}
-          # Play only accepts drafts until the first release is reviewed; roll out in the console.
-          status: draft
+          # Play only accepts drafts until the app's first release is reviewed; draft then waits
+          # for a manual rollout in the console.
+          status: ${{ inputs.status }}

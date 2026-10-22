@@ -1017,6 +1017,7 @@ jobs:
       ref: ${{ needs.preflight.outputs.ref }}
       upload: true
       track: beta
+      status: completed
 
   # Vercel builds the hosted web app while the desktop jobs run. `--skip-domain`
   # keeps the custom domains (the channel and router domains) on the previous
