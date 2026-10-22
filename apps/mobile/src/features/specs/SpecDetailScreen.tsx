@@ -19,11 +19,13 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { uuidv4 } from "../../lib/uuid";
 import {
+  useRunSpecAction,
   useSpecDetail,
   useSpecMutations,
   useSpecPermissions,
   explainSpecRoleSupport,
 } from "../../state/specs";
+import { SpecDocumentsView } from "./SpecDocumentsView";
 import { SpecStatusBadge } from "./SpecStatusBadge";
 
 export interface SpecDetailScreenProps {
@@ -50,9 +52,11 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
 
   const {
     detail: spec,
+    remarks,
     isPending,
     error,
   } = useSpecDetail(props.environmentId, props.projectId, props.slug);
+  const runSpecAction = useRunSpecAction(props.environmentId, props.projectId);
   const { runMutation } = useSpecMutations(props.environmentId, props.projectId);
   const { canMutate } = useSpecPermissions(props.environmentId);
   const createThread = useAtomCommand(threadEnvironment.create, {
@@ -351,7 +355,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
         >
           {(
             [
-              { id: "requirements", label: "Requirements" },
+              { id: "requirements", label: spec.layout === "base" ? "Documents" : "Requirements" },
               { id: "tasks", label: `Tasks (${spec.tasks?.length ?? 0})` },
               { id: "evidence", label: `Evidence (${spec.evidence?.length ?? 0})` },
               { id: "approval", label: "Approval" },
@@ -392,7 +396,19 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
           gap: 16,
         }}
       >
-        {activeTab === "requirements" && (
+        {activeTab === "requirements" && spec.layout === "base" && (
+          <SpecDocumentsView
+            spec={spec}
+            remarks={remarks}
+            canMutate={canMutate}
+            runAction={runSpecAction}
+            onOpenThread={(threadId) =>
+              navigation.navigate("Thread", { environmentId: props.environmentId, threadId })
+            }
+          />
+        )}
+
+        {activeTab === "requirements" && spec.layout !== "base" && (
           <View className="rounded-2xl border border-border-subtle bg-surface p-4">
             <SelectableMarkdownText
               markdown={spec.content || "_No content provided._"}

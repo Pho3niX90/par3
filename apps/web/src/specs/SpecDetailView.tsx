@@ -26,6 +26,7 @@ import {
   useRunSpecMutation,
   useSpecsData,
 } from "./state";
+import { BaseDocumentReview } from "./BaseDocumentReview";
 import { useStartSpecThread } from "./useStartSpecThread";
 
 function Section({ title, children }: { readonly title: string; readonly children: ReactNode }) {
@@ -169,7 +170,12 @@ export function SpecDetailView({
   readonly onBack: () => void;
   readonly onEdit: (spec: SpecDocument) => void;
 }) {
-  const view = useSpecsData(environmentId, { projectId, slug: slug as SpecDocument["slug"] });
+  // Remarks and the other documents are only sent for BASE specs, which is all this asks of the server.
+  const view = useSpecsData(environmentId, {
+    projectId,
+    slug: slug as SpecDocument["slug"],
+    includeRemarks: true,
+  });
   const { canMutate } = useProjectSpecModeState(environmentId, projectId);
   const runMutation = useRunSpecMutation();
   const startThread = useStartSpecThread(environmentId, projectId);
@@ -327,8 +333,22 @@ export function SpecDetailView({
         </Section>
       ) : null}
 
-      <Section title="Requirements">
-        <ChatMarkdown text={spec.content} cwd={spec.workspacePath} environmentId={environmentId} />
+      <Section title={spec.layout === "base" ? "Documents" : "Requirements"}>
+        {spec.layout === "base" ? (
+          <BaseDocumentReview
+            environmentId={environmentId}
+            projectId={projectId}
+            spec={spec}
+            remarks={view.remarks}
+            canMutate={canMutate}
+          />
+        ) : (
+          <ChatMarkdown
+            text={spec.content}
+            cwd={spec.workspacePath}
+            environmentId={environmentId}
+          />
+        )}
       </Section>
 
       <Section title="Approval">

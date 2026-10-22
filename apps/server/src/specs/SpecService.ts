@@ -522,27 +522,6 @@ const make = Effect.gen(function* () {
     let document = yield* parse(row.document_json);
     const layout = layoutOf(document);
     const current = yield* hashes(workspace, slug, layout);
-    if (layout === "base" && document.specHash !== current.specHash) {
-      // A hash stored before checkbox state was ignored: if the stored text hashes to today's value
-      // it is the same requirements, so the approval and evidence move to the new hash.
-      const previous = document.specHash;
-      const migrated = yield* hashSpec(layout, document.content);
-      if (
-        migrated === current.specHash &&
-        previous === (yield* hash(withoutVolatileFrontmatter(document.content)))
-      ) {
-        document = {
-          ...document,
-          content: current.content,
-          specHash: migrated,
-          approval: document.approval && { ...document.approval, specHash: migrated },
-          evidence: document.evidence.map((item) =>
-            item.requirementsHash === previous ? { ...item, requirementsHash: migrated } : item,
-          ),
-        };
-        yield* save(projectId, document);
-      }
-    }
     if (
       document.specHash !== current.specHash ||
       document.constitutionHash !== current.constitutionHash

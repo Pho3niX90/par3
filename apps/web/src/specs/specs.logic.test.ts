@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   defaultSpecContent,
+  describeRemarkSelection,
   resolveSpecActions,
   seedSpecContent,
   specModeCreateDisabledReason,
@@ -101,5 +102,70 @@ describe("spec content and paging", () => {
   it("caps the page limit at the server maximum", () => {
     expect(specPageLimit(1)).toBe(25);
     expect(specPageLimit(100)).toBe(200);
+  });
+});
+
+describe("describeRemarkSelection", () => {
+  const source =
+    "# Title\n\n## Context\nSave and restore a setting.\n\n## Scope\nOnly the setting.\n";
+  const rendered = { renderedBefore: "", renderedAfter: "", renderedHeading: undefined };
+
+  it("names the source section and takes context from the source", () => {
+    expect(
+      describeRemarkSelection({
+        ...rendered,
+        source,
+        selected: "restore a setting",
+        documentLabel: "Spec",
+      }),
+    ).toEqual({
+      heading: "Context",
+      selection: { text: "restore a setting", prefix: "Save and ", suffix: "." },
+    });
+  });
+
+  it("uses the rendered neighbourhood when the source does not contain the text", () => {
+    expect(
+      describeRemarkSelection({
+        source,
+        selected: "bold words",
+        renderedBefore: "x".repeat(50) + "so the ",
+        renderedAfter: " end of it, and then some more text after",
+        renderedHeading: " Scope ",
+        documentLabel: "Spec",
+      }),
+    ).toEqual({
+      heading: "Scope",
+      selection: {
+        text: "bold words",
+        prefix: "x".repeat(23) + "so the ",
+        suffix: " end of it, and then some more",
+      },
+    });
+  });
+
+  it("falls back to the document when nothing names a section, and omits empty context", () => {
+    expect(
+      describeRemarkSelection({
+        ...rendered,
+        source: "no headings here",
+        selected: "here",
+        documentLabel: "PRD",
+      }),
+    ).toEqual({ heading: "PRD", selection: { text: "here", prefix: "no headings " } });
+  });
+
+  it("picks the repeat that follows the rendered text before it", () => {
+    const repeated = "## A\nthe cat\n\n## B\nthe cat\n";
+    expect(
+      describeRemarkSelection({
+        source: repeated,
+        selected: "the cat",
+        renderedBefore: "B",
+        renderedAfter: "",
+        renderedHeading: undefined,
+        documentLabel: "Spec",
+      }).heading,
+    ).toBe("B");
   });
 });

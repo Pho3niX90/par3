@@ -1,4 +1,9 @@
-import type { SpecStatus } from "@t3tools/contracts";
+import {
+  locateSelection,
+  sectionHeadingAt,
+  selectionContext,
+} from "@t3tools/client-runtime/spec-documents";
+import type { SpecRemarkSelection, SpecStatus } from "@t3tools/contracts";
 
 export { specRoleRefusal } from "@t3tools/shared/specComposer";
 
@@ -172,4 +177,43 @@ export function defaultSpecContent(title: string): string {
     "Approach, trade-offs and links.",
     "",
   ].join("\n");
+}
+
+const MAX_SELECTION = 2000;
+const CONTEXT = 30;
+
+/**
+ * What a remark records about a selection of rendered text: the section it belongs to and some
+ * surrounding text. The source is searched first, since that gives the real `##` heading and a
+ * stable context; text the source cannot be matched to (formatting inside the selection) falls
+ * back to what the rendered page around it said.
+ */
+export function describeRemarkSelection(input: {
+  readonly source: string;
+  readonly selected: string;
+  readonly renderedBefore: string;
+  readonly renderedAfter: string;
+  readonly renderedHeading: string | undefined;
+  readonly documentLabel: string;
+}): { readonly selection: SpecRemarkSelection; readonly heading: string } {
+  const text = input.selected.trim().slice(0, MAX_SELECTION);
+  const located = locateSelection(input.source, text, input.renderedBefore.slice(-CONTEXT));
+  const context = located
+    ? selectionContext(input.source, located.start, located.end, CONTEXT)
+    : {
+        prefix: input.renderedBefore.slice(-CONTEXT),
+        suffix: input.renderedAfter.slice(0, CONTEXT),
+      };
+  const heading =
+    (located ? sectionHeadingAt(input.source, located.start) : undefined) ??
+    input.renderedHeading?.trim() ??
+    input.documentLabel;
+  return {
+    heading: heading === "" ? input.documentLabel : heading,
+    selection: {
+      text,
+      ...(context.prefix === "" ? {} : { prefix: context.prefix }),
+      ...(context.suffix === "" ? {} : { suffix: context.suffix }),
+    },
+  };
 }

@@ -32,7 +32,6 @@ import * as SpecRemarkService from "./SpecRemarkService.ts";
 import * as SpecService from "./SpecService.ts";
 import type { SpecDocumentMutationInput } from "./SpecService.ts";
 import { ApprovalHooks, PYTHON_MISSING } from "./baseWorkflow.ts";
-import { withoutVolatileFrontmatter } from "./specFrontmatter.ts";
 
 const now = "2026-10-20T00:00:00.000Z";
 const human = { kind: "human" as const, subject: "reviewer-1", label: "Reviewer" };
@@ -3104,56 +3103,6 @@ it.layer(layerTest)("SpecService", (it) => {
         .detail!;
       assert.isFalse(par3After.approvalValid);
       assert.equal(par3After.status, "review");
-    }),
-  );
-
-  it.effect("keeps approvals recorded before checkbox state was ignored", () =>
-    Effect.gen(function* () {
-      const service = yield* SpecService.SpecService;
-      const sql = yield* SqlClient.SqlClient;
-      const fs = yield* FileSystem.FileSystem;
-      const ctx = yield* reviewedBaseSpec("checkbox-migrate");
-      const specFile = `${ctx.root}/specs/${baseSlug}/spec.md`;
-      const approved = yield* ctx.approve;
-
-      // Rewind the record to what the previous version stored: a hash of the text as it was.
-      const row = (yield* sql<{
-        document_json: string;
-      }>`SELECT document_json FROM spec_documents WHERE workspace_path = ${ctx.root} AND slug = ${baseSlug}`)[0]!;
-      const stored = JSON.parse(row.document_json);
-      const legacy = yield* sha256(withoutVolatileFrontmatter(stored.content));
-      assert.notEqual(legacy, approved.specHash);
-      const evidence = [
-        {
-          id: "e",
-          acs: ["AC-1"],
-          kind: "automated",
-          description: "Checked",
-          checkpoint: "abc",
-          requirementsHash: legacy,
-          taskHash: stored.taskHash,
-          passed: true,
-        },
-      ];
-      const rewound = JSON.stringify({
-        ...stored,
-        specHash: legacy,
-        approval: { ...stored.approval, specHash: legacy },
-        evidence,
-      });
-      yield* sql`UPDATE spec_documents SET document_json = ${rewound} WHERE workspace_path = ${ctx.root} AND slug = ${baseSlug}`;
-      yield* fs.writeFileString(
-        specFile,
-        (yield* fs.readFileString(specFile)).replace("- [ ] AC-1", "- [x] AC-1"),
-      );
-
-      const migrated = (yield* service.query({ projectId: ctx.projectId, slug: baseSlug })).detail!;
-      assert.isTrue(migrated.approvalValid);
-      assert.equal(migrated.status, "approved");
-      assert.equal(migrated.revision, approved.revision);
-      assert.equal(migrated.specHash, approved.specHash);
-      assert.equal(migrated.approval?.specHash, approved.specHash);
-      assert.equal(migrated.evidence[0]?.requirementsHash, approved.specHash);
     }),
   );
 

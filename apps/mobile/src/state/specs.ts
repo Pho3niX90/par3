@@ -4,12 +4,14 @@ import {
   type EnvironmentId,
   type ProjectId,
   type SpecMutationInput,
+  type SpecMutationResult,
   type SpecQueryInput,
   type SpecRole,
   type ThreadId,
   specRoleSupported,
 } from "@t3tools/contracts";
-import { Atom } from "effect/reactivity";
+import * as Cause from "effect/Cause";
+import { Atom, AsyncResult } from "effect/reactivity";
 import { useCallback } from "react";
 
 import { uuidv4 } from "../lib/uuid";
@@ -71,9 +73,17 @@ export function useSpecDetail(
 ) {
   const view = useSpecs(
     environmentId,
-    projectId === null || slug === null ? null : { projectId, slug, limit: 1 },
+    // Remarks and the other documents are only sent for a BASE spec, so asking costs a Par3 spec nothing.
+    projectId === null || slug === null
+      ? null
+      : { projectId, slug, limit: 1, includeRemarks: true },
   );
-  return { detail: view.data?.detail ?? null, isPending: view.isPending, error: view.error };
+  return {
+    detail: view.data?.detail ?? null,
+    remarks: view.data?.remarks ?? null,
+    isPending: view.isPending,
+    error: view.error,
+  };
 }
 
 /** With a thread and no slug, the server returns the thread's bound spec as the detail. */
@@ -127,4 +137,46 @@ export function useSpecMutations(environmentId: EnvironmentId | null, projectId:
   );
 
   return { runMutation };
+}
+
+export type SpecActionOutcome =
+  | { readonly ok: true; readonly result: SpecMutationResult }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * Runs a spec change and hands back its outcome with the server's message, for the actions whose
+ * refusal the person needs to read (a stale checklist line, no open remarks) rather than a toast.
+ */
+export function useRunSpecAction(environmentId: EnvironmentId | null, projectId: ProjectId | null) {
+  const mutate = useAtomCommand(serverEnvironment.specsMutate, {
+    label: "spec action",
+    reportFailure: false,
+  });
+  return useCallback(
+    async (
+      slug: string,
+      expectedRevision: number,
+      payload: Record<string, unknown> & { action: string },
+    ): Promise<SpecActionOutcome> => {
+      if (!environmentId || !projectId)
+        return { ok: false, message: "Missing environment or project." };
+      const result = await mutate({
+        environmentId,
+        input: {
+          ...payload,
+          projectId,
+          slug,
+          expectedRevision,
+          commandId: uuidv4() as CommandId,
+        } as SpecMutationInput,
+      });
+      if (!AsyncResult.isFailure(result)) return { ok: true, result: result.value };
+      const error = Cause.squash(result.cause);
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "The spec request failed.",
+      };
+    },
+    [environmentId, projectId, mutate],
+  );
 }

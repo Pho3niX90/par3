@@ -19,6 +19,14 @@
       "types": "./src/lastUsedThreadSelection.ts",
       "default": "./src/lastUsedThreadSelection.ts"
     },
+    "./spec-remarks": {
+      "types": "./src/specRemarks.ts",
+      "default": "./src/specRemarks.ts"
+    },
+    "./spec-documents": {
+      "types": "./src/specDocuments.ts",
+      "default": "./src/specDocuments.ts"
+    },
     "./handoff": {
       "types": "./src/handoff.ts",
       "default": "./src/handoff.ts"

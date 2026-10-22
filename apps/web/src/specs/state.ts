@@ -11,8 +11,10 @@ import {
   type SpecIntakeInput,
   type SpecLayout,
   type SpecMutationInput,
+  type SpecMutationResult,
   type SpecQueryInput,
   type SpecQueryResult,
+  type SpecRemarksView,
   type SpecRole,
   type SpecStatus,
   type SpecSummary,
@@ -86,6 +88,8 @@ export interface SpecsDataView {
   readonly data: SpecQueryResult | null;
   readonly specs: ReadonlyArray<SpecSummary>;
   readonly detail: SpecDocument | null;
+  /** Present for a BASE spec when the query asked for remarks. */
+  readonly remarks: SpecRemarksView | null;
   readonly isPending: boolean;
   readonly error: string | null;
   readonly refresh: () => void;
@@ -116,6 +120,7 @@ export function useSpecsData(
     data,
     specs: data?.specs ?? EMPTY_SPECS_ARRAY,
     detail: data?.detail ?? null,
+    remarks: data?.remarks ?? null,
     isPending: active && data === null && (liveView.isPending || queryView.isPending),
     error: queryView.error ?? liveView.error,
     refresh: () => {
@@ -182,7 +187,7 @@ function withSpecMutationCommandId(payload: SpecMutationPayload): SpecMutationIn
 }
 
 export type SpecMutationOutcome =
-  | { readonly ok: true; readonly document: SpecDocument }
+  | { readonly ok: true; readonly document: SpecMutationResult }
   | { readonly ok: false; readonly message: string };
 
 export function describeSpecFailure(error: unknown): string {
