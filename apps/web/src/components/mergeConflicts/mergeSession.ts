@@ -1,6 +1,7 @@
 import { EditStateManager } from "@pierre/diffs/edit";
 import type { EnvironmentId, MergeConflictReadResult } from "@t3tools/contracts";
 import {
+  commonLines,
   computeMerge3,
   splitLines,
   type Merge3Lines,
@@ -19,23 +20,42 @@ const retainedTimelines = new Map<string, MergeTimeline<object>>();
 
 let nextInstance = 0;
 
-/** Identifies one file at one state of the conflict; a draft is only resumed for the same one. */
-function mergeEditStateKey(
+/** What the merge view merges, from a git conflict or anything else with two versions. */
+export interface MergeInput {
+  /** Identifies these exact versions; a draft is only resumed for the same key. */
+  readonly key: string;
+  readonly path: string;
+  readonly labels: { readonly ours: string; readonly theirs: string };
+  /** The common ancestor; null when there is none, so the shared lines stand in for it. */
+  readonly base: string | null;
+  readonly ours: string;
+  readonly theirs: string;
+}
+
+/** A read of a text file with both sides present; never one with a `fileLevelReason`. */
+export function gitConflictMergeInput(
   environmentId: EnvironmentId,
   cwd: string,
   file: MergeConflictReadResult,
-): string {
+): MergeInput {
   const { base, ours, theirs } = file.expected.stages;
-  return [
-    "merge",
-    environmentId,
-    cwd,
-    file.path,
-    base ?? "-",
-    ours ?? "-",
-    theirs ?? "-",
-    file.expected.workingCopyHash ?? "-",
-  ].join("\0");
+  return {
+    key: [
+      "merge",
+      environmentId,
+      cwd,
+      file.path,
+      base ?? "-",
+      ours ?? "-",
+      theirs ?? "-",
+      file.expected.workingCopyHash ?? "-",
+    ].join("\0"),
+    path: file.path,
+    labels: file.labels,
+    base: file.base,
+    ours: file.ours ?? "",
+    theirs: file.theirs ?? "",
+  };
 }
 
 export interface MergeSession {
@@ -47,16 +67,12 @@ export interface MergeSession {
 }
 
 /** One merge computation per load: the three-way merge, its chunk timeline, and the pane controller. */
-export function createMergeSession(
-  environmentId: EnvironmentId,
-  cwd: string,
-  file: MergeConflictReadResult,
-): MergeSession {
-  const editStateKey = mergeEditStateKey(environmentId, cwd, file);
+export function createMergeSession(source: MergeInput): MergeSession {
+  const editStateKey = source.key;
   const input = {
-    base: file.base ?? "",
-    ours: file.ours ?? "",
-    theirs: file.theirs ?? "",
+    base: source.base ?? commonLines(source.ours, source.theirs),
+    ours: source.ours,
+    theirs: source.theirs,
   };
   const lines: Merge3Lines = {
     base: splitLines(input.base),

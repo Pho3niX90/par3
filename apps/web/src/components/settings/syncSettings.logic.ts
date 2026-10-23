@@ -1,5 +1,6 @@
 import {
   planSync,
+  type SyncConflict,
   type SyncEnvironmentView,
   type SyncPlan,
 } from "@t3tools/client-runtime/sync/plan";
@@ -20,6 +21,36 @@ export function environmentSyncCounts(
       conflict.candidates.some((candidate) => candidate.environmentId === environmentId),
     ).length,
   };
+}
+
+/** Secrets are never shown, and MCP servers are stored as settings rather than as the text. */
+const UNMERGEABLE_CATEGORIES = new Set(["vault", "mcpServers"]);
+
+export interface SyncMergeSide {
+  readonly hash: string;
+  readonly environmentIds: ReadonlyArray<EnvironmentId>;
+}
+
+/**
+ * The two versions a conflict can be merged from: a text file present everywhere in exactly two
+ * versions. A deletion or a third version can only be settled by choosing.
+ */
+export function syncMergeSides(
+  conflict: SyncConflict,
+): readonly [SyncMergeSide, SyncMergeSide] | null {
+  if (UNMERGEABLE_CATEGORIES.has(conflict.categoryId)) return null;
+  const sides = new Map<string, EnvironmentId[]>();
+  for (const candidate of conflict.candidates) {
+    if (candidate.hash === null) return null;
+    const environmentIds = sides.get(candidate.hash) ?? [];
+    environmentIds.push(candidate.environmentId);
+    sides.set(candidate.hash, environmentIds);
+  }
+  const [left, right, ...rest] = [...sides].map(([hash, environmentIds]) => ({
+    hash,
+    environmentIds,
+  }));
+  return left !== undefined && right !== undefined && rest.length === 0 ? [left, right] : null;
 }
 
 /** Categories a machine offers to sync by default: everything it can sync right now. */
