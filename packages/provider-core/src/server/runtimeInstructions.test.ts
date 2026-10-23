@@ -42,3 +42,10 @@ it("allows screenshots in proposed plans across harnesses", () => {
       "absolute file paths, including screenshots embedded in proposed plans",
     );
 });
+
+it("asks every harness for absolute file paths", () => {
+  for (const harness of ["Codex", "Claude Code", "Cursor", "Grok", "OpenCode", "Antigravity"])
+    expect(buildRuntimeInstructions({ harness })).toContain(
+      "Refer to files by absolute path too: Par3 reads a relative path from the project root, not from your shell's current directory.",
+    );
+});
