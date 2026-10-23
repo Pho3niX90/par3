@@ -2195,20 +2195,43 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       });
       return;
     }
-    const media = resolveMarkdownMediaPreview(href, {
+    const queryOptions = { signal: request.signal, reportFailure: false, reportDefect: false };
+    // Resolves to the workspace-relative file a missing path most likely names, or null.
+    const findWorkspaceFile = (workspaceRoot: string, relativePath: string) => {
+      const lookup = workspaceFileLookup(relativePath, workspaceRoot);
+      if (lookup === null) return Promise.resolve(null);
+      return executeAtomQuery(
+        appAtomRegistry,
+        projectEnvironment.searchEntries({
+          environmentId: props.environmentId,
+          input: {
+            cwd: workspaceRoot,
+            query: lookup.query,
+            kind: "file",
+            limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
+          },
+        }),
+        queryOptions,
+      ).then(
+        (result) => (result._tag === "Success" ? lookup.pick(result.value.entries) : null),
+        () => null,
+      );
+    };
+    const mediaPreviewInput = {
       environmentId: props.environmentId,
       threadId: props.threadId,
       workspaceRoot: props.workspaceRoot,
       imageEmbed,
-    });
+    };
+    const media = resolveMarkdownMediaPreview(href, mediaPreviewInput);
     if (media) {
       void Haptics.selectionAsync();
-      const openPreview = () => {
+      const openPreview = (preview: typeof media = media) => {
         if (request.signal.aborted) return;
-        if (media.kind === "video") {
-          setExpandedVideo((current) => current ?? media.source);
+        if (preview.kind === "video") {
+          setExpandedVideo((current) => current ?? preview.source);
         } else {
-          setExpandedFile((current) => current ?? media.source);
+          setExpandedFile((current) => current ?? preview.source);
         }
       };
       const resource = "resource" in media.source ? media.source.resource : null;
@@ -2223,17 +2246,40 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             environmentId: props.environmentId,
             input: { path: mediaPath },
           }),
-          { signal: request.signal, reportFailure: false, reportDefect: false },
-        ).then((result) => {
-          if (request.signal.aborted) return;
-          if (result._tag === "Success" && result.value?.kind === "directory") {
-            navigation.navigate("ThreadFile", {
-              environmentId: String(props.environmentId),
-              threadId: String(props.threadId),
-              path: fileRoutePathSegments(mediaPath),
-            });
-          } else openPreview();
-        }, openPreview);
+          queryOptions,
+        ).then(
+          (result) => {
+            if (request.signal.aborted) return;
+            const workspaceRoot = props.workspaceRoot;
+            const relativePath = workspaceRoot
+              ? resolveWorkspaceRelativeFilePath(workspaceRoot, mediaPath)
+              : null;
+            if (result._tag === "Success" && result.value?.kind === "directory") {
+              navigation.navigate("ThreadFile", {
+                environmentId: String(props.environmentId),
+                threadId: String(props.threadId),
+                path: fileRoutePathSegments(mediaPath),
+              });
+            } else if (
+              result._tag === "Success" &&
+              result.value === null &&
+              workspaceRoot &&
+              relativePath
+            ) {
+              void findWorkspaceFile(workspaceRoot, relativePath).then((match) =>
+                openPreview(
+                  (match === null
+                    ? null
+                    : resolveMarkdownMediaPreview(
+                        `${resolveWorkspaceFilePath(workspaceRoot, match)}${markdownImageSourceFragment(href)}`,
+                        mediaPreviewInput,
+                      )) ?? media,
+                ),
+              );
+            } else openPreview();
+          },
+          () => openPreview(),
+        );
       } else openPreview();
       return;
     }
@@ -2264,7 +2310,6 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         readEnvironmentScope(props.environmentId, AuthFilesystemReadScope)
       ) {
         const workspaceRoot = props.workspaceRoot;
-        const queryOptions = { signal: request.signal, reportFailure: false, reportDefect: false };
         // Most links are right as written, so only a missing path pays for a search.
         void executeAtomQuery(
           appAtomRegistry,
@@ -2279,25 +2324,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
               openAt(relativePath);
               return;
             }
-            void executeAtomQuery(
-              appAtomRegistry,
-              projectEnvironment.searchEntries({
-                environmentId: props.environmentId,
-                input: {
-                  cwd: workspaceRoot,
-                  query: lookup.query,
-                  kind: "file",
-                  limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
-                },
-              }),
-              queryOptions,
-            ).then(
-              (result) =>
-                openAt(
-                  (result._tag === "Success" ? lookup.pick(result.value.entries) : null) ??
-                    relativePath,
-                ),
-              () => openAt(relativePath),
+            void findWorkspaceFile(workspaceRoot, relativePath).then((match) =>
+              openAt(match ?? relativePath),
             );
           },
           () => openAt(relativePath),

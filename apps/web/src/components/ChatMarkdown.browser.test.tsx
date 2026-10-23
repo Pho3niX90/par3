@@ -7,17 +7,34 @@ import { act, render } from "../../test/render";
 import "../index.css";
 
 import { filesystemEnvironment } from "../state/filesystem";
+import { projectEnvironment } from "../state/projects";
 import { useRightPanelStore } from "../rightPanelStore";
 import { setMarkdownTaskChecked } from "./files/filePreviewMode";
 
-const { workspaceSearch, filesystemMetadata } = vi.hoisted(() => ({
-  workspaceSearch: vi.fn(),
-  filesystemMetadata: vi.fn(),
-}));
+const { workspaceSearch, filesystemMetadata, cachedFileMetadata, openFileInPreview } = vi.hoisted(
+  () => ({
+    workspaceSearch: vi.fn(),
+    filesystemMetadata: vi.fn(),
+    cachedFileMetadata: vi.fn(),
+    openFileInPreview: vi.fn(),
+  }),
+);
 vi.mock(import("../state/use-atom-query-runner"), async (original) => ({
   ...(await original()),
   useAtomQueryRunner: ((family: unknown) =>
-    family === filesystemEnvironment.getMetadata ? filesystemMetadata : workspaceSearch) as never,
+    family === filesystemEnvironment.getMetadata
+      ? filesystemMetadata
+      : family === projectEnvironment.fileMetadata
+        ? cachedFileMetadata
+        : workspaceSearch) as never,
+}));
+vi.mock(import("../browser/openFileInPreview"), async (original) => ({
+  ...(await original()),
+  openFileInPreview: openFileInPreview as never,
+}));
+vi.mock(import("../browser/previewRuntime"), async (original) => ({
+  ...(await original()),
+  isPreviewAvailableFor: () => true,
 }));
 
 // Atoms derived from the server config run in the real registry over a missing config.
@@ -40,6 +57,7 @@ vi.mock(import("../state/session"), async (original) => {
     ...(await original()),
     useEnvironmentScope: hasScope as never,
     readEnvironmentScope: hasScope as never,
+    readPreparedConnection: (() => ({ httpBaseUrl: "http://environment.test" })) as never,
   };
 });
 vi.mock(import("../remoteOpen"), async (original) => ({
@@ -79,6 +97,8 @@ function setup() {
   renderDiagram.mockReset();
   workspaceSearch.mockReset().mockResolvedValue(AsyncResult.success({ entries: [] }));
   filesystemMetadata.mockReset().mockResolvedValue(AsyncResult.success({ entries: [null] }));
+  cachedFileMetadata.mockReset().mockResolvedValue(AsyncResult.success(null));
+  openFileInPreview.mockReset().mockResolvedValue(AsyncResult.success(undefined));
 }
 
 function renderText(text: string, props: Partial<Parameters<typeof ChatMarkdown>[0]> = {}) {
@@ -227,6 +247,28 @@ describe("ChatMarkdown workspace file opens", () => {
 
     expect(openFile).toHaveBeenCalledExactlyOnceWith(threadRef, "/elsewhere/b.md", 9);
     expect(workspaceSearch).toHaveBeenCalledOnce();
+  });
+
+  // An agent that `cd`ed into a subfolder names files relative to its shell, not the project.
+  it("previews a PDF written from a subfolder at the file it names", async () => {
+    setup();
+    workspaceSearch.mockResolvedValue(
+      AsyncResult.success({
+        entries: [{ path: "bikeconnectors/legal/pdf/BC-04_review.pdf", kind: "file" }],
+        truncated: false,
+      }),
+    );
+    await using screen = await renderText("Open `pdf/BC-04_review.pdf`.", {
+      cwd: "/srv/jvn",
+      threadRef,
+    });
+    await act(async () => screen.container.querySelector("a")!.click());
+
+    await vi.waitFor(() =>
+      expect(openFileInPreview).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ filePath: "/srv/jvn/bikeconnectors/legal/pdf/BC-04_review.pdf" }),
+      ),
+    );
   });
 });
 

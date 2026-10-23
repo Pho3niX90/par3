@@ -858,7 +858,20 @@ function useChatMarkdownState({
         onOpenInPanel={(path) => openFileInPanel(fileLinkMeta, path)}
         onOpenMedia={
           threadRef && canPreviewMedia
-            ? () => openMarkdownMedia(mediaPath, fileLinkMeta.filePath)
+            ? () => {
+                // Claimed before the lookup, so a slower earlier click cannot
+                // replace the preview a later click opened.
+                const requestId = ++mediaRequestId.current;
+                void resolveHostPath().then((hostPath) => {
+                  if (mediaRequestId.current !== requestId) return;
+                  if (!hostPath.matched) {
+                    openMarkdownMedia(mediaPath, fileLinkMeta.filePath);
+                    return;
+                  }
+                  const fragment = markdownImageSourceFragment(mediaPath);
+                  openMarkdownMedia(`${hostPath.absolutePath}${fragment}`, hostPath.absolutePath);
+                });
+              }
             : undefined
         }
         openInEditorMenuLabel={preferredEditorMenuLabel}
@@ -873,7 +886,7 @@ function useChatMarkdownState({
           canOperatePreview &&
           isPreviewAvailableFor(threadRef.environmentId) &&
           isBrowserPreviewFile(fileLinkMeta.filePath)
-            ? () => openMarkdownFileInPreview(fileLinkMeta.filePath)
+            ? async () => openMarkdownFileInPreview((await resolveHostPath()).absolutePath)
             : undefined
         }
       />
