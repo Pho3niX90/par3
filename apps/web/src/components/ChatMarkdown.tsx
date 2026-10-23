@@ -858,7 +858,12 @@ function useChatMarkdownState({
         onOpenInPanel={(path) => openFileInPanel(fileLinkMeta, path)}
         onOpenMedia={
           threadRef && canPreviewMedia
-            ? () => openMarkdownMedia(mediaPath, fileLinkMeta.filePath)
+            ? () =>
+                void resolveHostPath().then((hostPath) =>
+                  hostPath.matched
+                    ? openMarkdownMedia(hostPath.absolutePath, hostPath.absolutePath)
+                    : openMarkdownMedia(mediaPath, fileLinkMeta.filePath),
+                )
             : undefined
         }
         openInEditorMenuLabel={preferredEditorMenuLabel}
@@ -873,7 +878,7 @@ function useChatMarkdownState({
           canOperatePreview &&
           isPreviewAvailableFor(threadRef.environmentId) &&
           isBrowserPreviewFile(fileLinkMeta.filePath)
-            ? () => openMarkdownFileInPreview(fileLinkMeta.filePath)
+            ? async () => openMarkdownFileInPreview((await resolveHostPath()).absolutePath)
             : undefined
         }
       />
