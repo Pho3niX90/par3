@@ -60,8 +60,8 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
   const RuntimeModeIcon = runtimeModeOption.icon;
   const interactionModeLabel =
     props.interactionMode === "plan"
-      ? "Plan mode — click to return to build mode"
-      : "Build mode — click to switch to plan mode";
+      ? "Plan mode. Click to return to build mode"
+      : "Build mode. Click to switch to plan mode";
   const interactionModeTooltip = props.interactionModeShortcutLabel
     ? `${interactionModeLabel} (${props.interactionModeShortcutLabel})`
     : interactionModeLabel;

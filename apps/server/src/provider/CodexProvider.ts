@@ -794,14 +794,17 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   // Plan limits only exist for a ChatGPT login. Without one (API key, Bedrock,
   // or a custom `model_provider`, which reports no account), Codex can still
   // answer the usage read from a ChatGPT login saved in its home, which this
-  // instance's turns don't draw on.
+  // instance's turns don't draw on. A CLI that needs an OpenAI login but has none
+  // keeps the probe failure, so the notice carries the sign-in guidance.
+  const signInRequired = !snapshot.account.account && snapshot.account.requiresOpenaiAuth;
   const usageLimits =
-    snapshot.account.account?.type !== "chatgpt"
+    snapshot.account.account?.type !== "chatgpt" && !signInRequired
       ? makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" })
       : snapshot.rateLimits === undefined || "failure" in snapshot.rateLimits
         ? makeUnavailableUsageLimits({
             checkedAt,
             reason: "probeFailed",
+            ...(accountStatus.message ? { message: accountStatus.message } : {}),
             ...(snapshot.rateLimits ? { message: snapshot.rateLimits.failure } : {}),
           })
         : codexRateLimitsToLimits({
