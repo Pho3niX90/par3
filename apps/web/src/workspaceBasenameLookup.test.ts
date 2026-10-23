@@ -3,7 +3,54 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   claimWorkspaceBasenameLookup,
   pickWorkspaceBasenameMatch,
+  workspaceFileLookup,
 } from "@t3tools/client-runtime/workspace-basename-lookup";
+
+describe("workspaceFileLookup", () => {
+  const cwd = "C:\\Projects\\jvn-group-products";
+  const entries = [
+    { path: "bikeconnectors/legal/BC-04-motorcycle-rental-agreement.md", kind: "file" as const },
+    { path: "bikeconnectors/legal", kind: "directory" as const },
+    { path: "bikeconnectors/website/lib/site.ts", kind: "file" as const },
+    { path: "jvn-food-group/website/lib/site.ts", kind: "file" as const },
+  ];
+
+  // An agent that `cd`ed into a subfolder names files relative to its shell, not the project.
+  it("finds a path written relative to a subfolder", () => {
+    const lookup = workspaceFileLookup("legal/BC-04-motorcycle-rental-agreement.md", cwd);
+    expect(lookup?.pick(entries)).toBe("bikeconnectors/legal/BC-04-motorcycle-rental-agreement.md");
+  });
+
+  it("matches whole path segments, ignoring case on Windows", () => {
+    expect(
+      workspaceFileLookup("Legal/bc-04-motorcycle-rental-agreement.md", cwd)?.pick(entries),
+    ).toBe("bikeconnectors/legal/BC-04-motorcycle-rental-agreement.md");
+    expect(
+      workspaceFileLookup("gal/BC-04-motorcycle-rental-agreement.md", cwd)?.pick(entries),
+    ).toBeNull();
+    expect(
+      workspaceFileLookup("legal/bc-04-motorcycle-rental-agreement.md", "/srv/jvn")?.pick(entries),
+    ).toBeNull();
+  });
+
+  it("refuses to guess between subfolders", () => {
+    expect(workspaceFileLookup("website/lib/site.ts", cwd)?.pick(entries)).toBeNull();
+  });
+
+  it("does not look up paths that step outside the written location", () => {
+    expect(workspaceFileLookup("../legal/BC-04-motorcycle-rental-agreement.md", cwd)).toBeNull();
+    expect(workspaceFileLookup("./legal/BC-04-motorcycle-rental-agreement.md", cwd)).toBeNull();
+    expect(workspaceFileLookup("C:\\Projects\\legal\\BC-04.md", cwd)).toBeNull();
+  });
+
+  it("strips a repeated project folder before matching", () => {
+    expect(
+      workspaceFileLookup("jvn-group-products/bikeconnectors/website/lib/site.ts", cwd)?.pick(
+        entries,
+      ),
+    ).toBe("bikeconnectors/website/lib/site.ts");
+  });
+});
 
 describe("pickWorkspaceBasenameMatch", () => {
   const entries = [

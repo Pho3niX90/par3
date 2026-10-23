@@ -162,11 +162,8 @@ import { projectEnvironment } from "../state/projects";
 import { filesystemEnvironment } from "../state/filesystem";
 import {
   claimWorkspaceBasenameLookup,
-  needsWorkspaceBasenameLookup,
-  pickStrippedWorkspaceMatch,
-  pickWorkspaceBasenameMatch,
-  stripRepeatedWorkspacePrefix,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
+  workspaceFileLookup,
 } from "@t3tools/client-runtime/workspace-basename-lookup";
 import {
   parseChangeRequestUrl,
@@ -497,6 +494,9 @@ function useChatMarkdownState({
   const searchProjectEntries = useAtomQueryRunner(projectEnvironment.searchEntries, {
     reportFailure: false,
   });
+  const readFileMetadata = useAtomQueryRunner(projectEnvironment.fileMetadata, {
+    reportFailure: false,
+  });
   const getFilesystemMetadata = useAtomQueryRunner(filesystemEnvironment.getMetadata, {
     reportFailure: false,
     refresh: true,
@@ -755,31 +755,29 @@ function useChatMarkdownState({
     ) {
       return null;
     }
-    const isBasename = needsWorkspaceBasenameLookup(workspaceRelativePath);
-    const strippedPath = isBasename
-      ? null
-      : stripRepeatedWorkspacePrefix(workspaceRelativePath, cwd);
-    if (!isBasename && strippedPath === null) return null;
+    const lookup = workspaceFileLookup(workspaceRelativePath, cwd);
+    if (lookup === null) return null;
+    const literalPath = resolveWorkspaceFilePath(workspaceRelativePath, cwd);
+    // The chip's icon already loaded this, so a link that is right as written
+    // opens without waiting on the server.
+    const cached = await readFileMetadata({ environmentId, input: { path: literalPath } });
+    if (cached._tag !== "Success" || cached.value !== null) return null;
     const result = await searchProjectEntries({
       environmentId,
       input: {
         cwd,
-        query: strippedPath ?? workspaceRelativePath,
+        query: lookup.query,
         limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
         kind: "file",
       },
     });
     if (result._tag !== "Success") return null;
-    if (strippedPath === null) {
-      return pickWorkspaceBasenameMatch(workspaceRelativePath, result.value.entries);
-    }
-    const match = pickStrippedWorkspaceMatch(strippedPath, cwd, result.value.entries);
+    const match = lookup.pick(result.value.entries);
     if (match === null) return null;
-    // Search can be truncated or still scanning, so it cannot rule out the
-    // literal path. Check the host before redirecting to the stripped match.
+    // The cached miss can predate the file. Check the host before redirecting.
     const metadata = await getFilesystemMetadata({
       environmentId,
-      input: { paths: [resolveWorkspaceFilePath(workspaceRelativePath, cwd)] },
+      input: { paths: [literalPath] },
     });
     return metadata._tag === "Success" && metadata.value.entries[0] === null ? match : null;
   };
@@ -793,8 +791,7 @@ function useChatMarkdownState({
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
-      (!needsWorkspaceBasenameLookup(panelPath) &&
-        stripRepeatedWorkspacePrefix(panelPath, cwd) === null)
+      workspaceFileLookup(panelPath, cwd) === null
     ) {
       openAt(panelPath);
       return;
@@ -831,6 +828,8 @@ function useChatMarkdownState({
         href={fileLinkMeta.targetPath}
         targetPath={fileLinkMeta.targetPath}
         iconPath={fileLinkMeta.filePath}
+        workspaceRoot={cwd}
+        workspaceLookupPath={fileLinkMeta.workspaceLookupPath}
         workspaceRelativePath={fileLinkMeta.workspaceRelativePath}
         panelPath={panelPath}
         line={fileLinkMeta.line}

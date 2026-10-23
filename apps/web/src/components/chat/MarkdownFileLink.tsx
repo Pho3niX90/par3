@@ -4,13 +4,21 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
+import {
+  WORKSPACE_BASENAME_LOOKUP_LIMIT,
+  workspaceFileLookup,
+} from "@t3tools/client-runtime/workspace-basename-lookup";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { resolveWorkspaceFilePath } from "@t3tools/shared/path";
 import { memo, type MouseEvent as ReactMouseEvent } from "react";
 
+import { useFileMetadataQuery } from "../../hooks/useFileMetadata";
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
 import { shouldOpenMarkdownFileLinkInEditor } from "../../markdown-links";
 import type { markdownFileCopyPaths } from "../../markdownFileHostPath";
+import { projectEnvironment } from "../../state/projects";
+import { useEnvironmentQuery } from "../../state/query";
 import { ContextChip } from "../ContextChip";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -28,6 +36,8 @@ interface MarkdownFileLinkProps {
   href: string;
   targetPath: string;
   iconPath: string;
+  workspaceRoot: string | undefined;
+  workspaceLookupPath: string | null;
   workspaceRelativePath: string | null;
   panelPath: string | null;
   line?: number | undefined;
@@ -52,6 +62,8 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   href,
   targetPath,
   iconPath,
+  workspaceRoot,
+  workspaceLookupPath,
   workspaceRelativePath,
   panelPath,
   line,
@@ -378,7 +390,13 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
       />
       <TooltipPopup side="top" variant="code">
         <div className="overflow-x-auto whitespace-nowrap scrollbar-thumb-border/78 scrollbar-track-transparent [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/78 [&::-webkit-scrollbar-track]:bg-transparent">
-          <WorkspaceEntryTooltip path={iconPath} label={targetPath} environmentId={environmentId} />
+          <MarkdownFileLinkTooltip
+            environmentId={environmentId}
+            iconPath={iconPath}
+            targetPath={targetPath}
+            workspaceRoot={workspaceRoot}
+            workspaceLookupPath={workspaceLookupPath}
+          />
         </div>
       </TooltipPopup>
     </Tooltip>
@@ -393,6 +411,8 @@ function areMarkdownFileLinkPropsEqual(
     previous.href === next.href &&
     previous.targetPath === next.targetPath &&
     previous.iconPath === next.iconPath &&
+    previous.workspaceRoot === next.workspaceRoot &&
+    previous.workspaceLookupPath === next.workspaceLookupPath &&
     previous.environmentId === next.environmentId &&
     previous.workspaceRelativePath === next.workspaceRelativePath &&
     previous.panelPath === next.panelPath &&
@@ -409,5 +429,45 @@ function areMarkdownFileLinkPropsEqual(
     previous.onReveal === next.onReveal &&
     previous.resolveCopyPaths === next.resolveCopyPaths &&
     previous.revealLabel === next.revealLabel
+  );
+}
+
+/** Shows the file a link opens when it misses as written, using the same lookup as a click. */
+function MarkdownFileLinkTooltip(props: {
+  environmentId: EnvironmentId | null;
+  iconPath: string;
+  targetPath: string;
+  workspaceRoot: string | undefined;
+  workspaceLookupPath: string | null;
+}) {
+  const { environmentId, iconPath, targetPath, workspaceRoot, workspaceLookupPath } = props;
+  const literal = useFileMetadataQuery(environmentId, iconPath);
+  const lookup =
+    literal.isSuccess && literal.data === null && workspaceRoot && workspaceLookupPath
+      ? workspaceFileLookup(workspaceLookupPath, workspaceRoot)
+      : null;
+  const search = useEnvironmentQuery(
+    lookup && environmentId && workspaceRoot
+      ? projectEnvironment.searchEntries({
+          environmentId,
+          input: {
+            cwd: workspaceRoot,
+            query: lookup.query,
+            limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
+            kind: "file",
+          },
+        })
+      : null,
+  );
+  const match = lookup && search.data ? lookup.pick(search.data.entries) : null;
+  if (match === null || !workspaceRoot) {
+    return (
+      <WorkspaceEntryTooltip path={iconPath} label={targetPath} environmentId={environmentId} />
+    );
+  }
+  const path = resolveWorkspaceFilePath(match, workspaceRoot);
+  const position = targetPath.startsWith(iconPath) ? targetPath.slice(iconPath.length) : "";
+  return (
+    <WorkspaceEntryTooltip path={path} label={`${path}${position}`} environmentId={environmentId} />
   );
 }
