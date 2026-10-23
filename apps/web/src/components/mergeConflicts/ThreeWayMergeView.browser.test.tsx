@@ -8,6 +8,7 @@ import { userEvent, page } from "vite-plus/test/browser";
 
 import "../../index.css";
 import { render } from "../../../test/render";
+import { gitConflictMergeInput } from "./mergeSession";
 import { ThreeWayMergeView, type MergeApplyOutcome } from "./ThreeWayMergeView";
 
 const BASE = "one\ntwo\nthree\nfour\n";
@@ -61,9 +62,7 @@ function renderView(
 ) {
   return render(
     <ThreeWayMergeView
-      environmentId={environmentId}
-      cwd="/repo"
-      file={fileOverride}
+      input={gitConflictMergeInput(environmentId, "/repo", fileOverride)}
       keybindings={keybindings}
       hasNextFile={false}
       onApply={onApply}
@@ -192,9 +191,7 @@ describe("ThreeWayMergeView", () => {
     }));
     await using screen = await render(
       <ThreeWayMergeView
-        environmentId={EnvironmentId.make("env-merge-test")}
-        cwd="/repo"
-        file={uniqueFile()}
+        input={gitConflictMergeInput(EnvironmentId.make("env-merge-test"), "/repo", uniqueFile())}
         keybindings={DEFAULT_RESOLVED_KEYBINDINGS}
         hasNextFile={false}
         onApply={onApply}

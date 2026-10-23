@@ -19,6 +19,7 @@ import { toastManager } from "../ui/toast";
 import { conflictRowActions, fileLevelReasonLabel } from "./mergeConflicts.logic";
 import { useMergeConflictSessionStore, repositoryKey } from "./mergeConflictSessionStore";
 import { operationSignature } from "./mergeConflicts.logic";
+import { gitConflictMergeInput } from "./mergeSession";
 import { ThreeWayMergeView, type MergeApplyOutcome } from "./ThreeWayMergeView";
 
 type LoadState =
@@ -169,9 +170,7 @@ export function MergeFileSession(props: {
   return (
     <ThreeWayMergeView
       key={`${attempt}:${path}`}
-      environmentId={environmentId}
-      cwd={cwd}
-      file={file}
+      input={gitConflictMergeInput(environmentId, cwd, file)}
       keybindings={props.keybindings}
       hasNextFile={next !== undefined}
       onApply={apply}

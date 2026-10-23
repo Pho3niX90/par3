@@ -1,9 +1,11 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { sha256 } from "@noble/hashes/sha2";
 import {
   planConflictResolution,
   planSync,
   runSyncPlan,
   type PlannedOp,
+  type SyncConflict,
   type SyncEnvironmentView,
   type SyncRunResult,
   type SyncTransport,
@@ -217,6 +219,38 @@ export function useResolveSyncConflict() {
   return async (key: string, winner: EnvironmentId | "delete"): Promise<SyncRunResult> => {
     const views = registry.get(syncViewsAtom);
     const ops = planConflictResolution(views, key, winner);
+    return runWithTransport(registry, ops, [...ops.keys()]);
+  };
+}
+
+/** The servers' item hash: SHA-256 of the UTF-8 text, in hex. */
+function hashSyncContents(contents: string): string {
+  return [...sha256(new TextEncoder().encode(contents))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Settles a conflict on merged contents, unless a machine changed the item since `basis` was
+ * read: writing a merge of older versions would silently drop the newer change.
+ */
+export function useApplySyncMerge() {
+  const registry = useContext(RegistryContext);
+  return async (basis: SyncConflict, contents: string): Promise<SyncRunResult | "stale"> => {
+    const current = registry.get(syncPlanAtom).conflicts.find(({ key }) => key === basis.key);
+    const unchanged =
+      current !== undefined &&
+      current.candidates.length === basis.candidates.length &&
+      current.candidates.every((candidate) =>
+        basis.candidates.some(
+          (seen) => seen.environmentId === candidate.environmentId && seen.hash === candidate.hash,
+        ),
+      );
+    if (!unchanged) return "stale";
+    const ops = planConflictResolution(registry.get(syncViewsAtom), basis.key, {
+      contents,
+      hash: hashSyncContents(contents),
+    });
     return runWithTransport(registry, ops, [...ops.keys()]);
   };
 }

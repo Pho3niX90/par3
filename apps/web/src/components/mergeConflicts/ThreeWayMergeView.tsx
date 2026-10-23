@@ -1,11 +1,7 @@
 import { parseDiffFromFile } from "@pierre/diffs";
 import { Editor, type EditorFactory } from "@pierre/diffs/edit";
 import { EditProvider, File, FileDiff, Virtualizer } from "@pierre/diffs/react";
-import type {
-  EnvironmentId,
-  MergeConflictReadResult,
-  ResolvedKeybindingsConfig,
-} from "@t3tools/contracts";
+import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -49,7 +45,12 @@ import {
   type ChunkState,
   type MergeSide,
 } from "./mergeModel";
-import { createMergeSession, discardMergeDraft, type MergeSession } from "./mergeSession";
+import {
+  createMergeSession,
+  discardMergeDraft,
+  type MergeInput,
+  type MergeSession,
+} from "./mergeSession";
 
 /** The result pane's editor is created here so the view can reach it for chunk actions and undo. */
 type MergeEditor = Editor<"file", undefined, undefined>;
@@ -62,13 +63,10 @@ export type MergeApplyOutcome =
   | { readonly status: "failed" };
 
 export interface ThreeWayMergeViewProps {
-  readonly cwd: string;
-  readonly environmentId: EnvironmentId;
-  /** A read of a text file with both sides present; never one with a `fileLevelReason`. */
-  readonly file: MergeConflictReadResult;
+  readonly input: MergeInput;
   readonly keybindings: ResolvedKeybindingsConfig;
   /** Another conflicted file follows this one, so Apply moves on to it. */
-  readonly hasNextFile: boolean;
+  readonly hasNextFile?: boolean;
   readonly onApply: (content: string) => Promise<MergeApplyOutcome>;
   readonly onCancel: () => void;
   /** Reads the file again, discarding what this view holds. */
@@ -109,12 +107,12 @@ function resultLineCount(editor: MergeEditor): number {
 }
 
 export function ThreeWayMergeView(props: ThreeWayMergeViewProps) {
-  const [session] = useState(() => createMergeSession(props.environmentId, props.cwd, props.file));
+  const [session] = useState(() => createMergeSession(props.input));
   return <MergeViewBody key={session.editStateKey} session={session} {...props} />;
 }
 
 function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: MergeSession }) {
-  const { session, file } = props;
+  const { session, input: file } = props;
   const { controller, timeline, lines, merge } = session;
   const { resolvedTheme } = useTheme();
   const [model, setModel] = useState(timeline.model);
@@ -143,12 +141,12 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
   }))[0];
   const oursFile = useState(() => ({
     name: file.path,
-    contents: file.ours ?? "",
+    contents: file.ours,
     cacheKey: `${session.editStateKey}\0ours`,
   }))[0];
   const theirsFile = useState(() => ({
     name: file.path,
-    contents: file.theirs ?? "",
+    contents: file.theirs,
     cacheKey: `${session.editStateKey}\0theirs`,
   }))[0];
   const { ready: editable, onPostRender: onEditablePostRender } =
@@ -372,16 +370,18 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
           <SparklesIcon />
           Resolve simple conflicts
         </Button>
-        <Menu>
-          <MenuTrigger render={<Button size="xs" variant="outline" />}>
-            <GitCompareIcon />
-            Compare with base
-          </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuItem onClick={() => setComparison("ours")}>Base and ours</MenuItem>
-            <MenuItem onClick={() => setComparison("theirs")}>Base and theirs</MenuItem>
-          </MenuPopup>
-        </Menu>
+        {file.base === null ? null : (
+          <Menu>
+            <MenuTrigger render={<Button size="xs" variant="outline" />}>
+              <GitCompareIcon />
+              Compare with base
+            </MenuTrigger>
+            <MenuPopup align="end">
+              <MenuItem onClick={() => setComparison("ours")}>Base and ours</MenuItem>
+              <MenuItem onClick={() => setComparison("theirs")}>Base and theirs</MenuItem>
+            </MenuPopup>
+          </Menu>
+        )}
         <Button size="xs" variant="ghost" disabled={applying} onClick={props.onCancel}>
           Cancel
         </Button>
@@ -489,7 +489,8 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
           <AlertDialogHeader>
             <AlertDialogTitle>Apply with conflicts left?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pluralize(summary.conflicts, "conflict")} still hold the base text. Applying keeps
+              {pluralize(summary.conflicts, "conflict")}{" "}
+              {file.base === null ? "are unresolved" : "still hold the base text"}. Applying keeps
               the result exactly as it is now.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -504,8 +505,8 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
         side={comparison}
         path={file.path}
         base={file.base ?? ""}
-        ours={file.ours ?? ""}
-        theirs={file.theirs ?? ""}
+        ours={file.ours}
+        theirs={file.theirs}
         theme={resolveDiffThemeName(resolvedTheme)}
         onClose={() => setComparison(null)}
       />

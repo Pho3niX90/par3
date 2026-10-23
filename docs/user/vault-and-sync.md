@@ -72,3 +72,9 @@ read, and each refused attempt, is listed under the secret.
 If the same item changed differently on two machines, or a machine joins with a different
 version, nothing is overwritten. The item shows as a conflict in **Settings → Vault & sync**:
 keep one machine's version, or delete it everywhere.
+
+When a file exists in exactly two versions, **Merge…** opens both side by side with an editable
+result in the middle, and **Apply** writes the result to every machine. Sync keeps no copy of the
+version the machines last agreed on, so lines only one side has are offered as that side's change:
+check whether each was added on one machine or removed on the other. Secrets and MCP servers
+can't be merged.

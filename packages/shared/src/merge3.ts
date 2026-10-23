@@ -81,6 +81,23 @@ export function splitLines(text: string): string[] {
   return lines;
 }
 
+/**
+ * The lines two texts share, in order: a stand-in base when there is no common ancestor. Against
+ * it every difference is an insertion, so a region both sides changed is a conflict and a region
+ * only one side has is offered as that side's change. Empty when the texts are too different to
+ * diff cheaply, which leaves the whole file as one conflict.
+ */
+export function commonLines(left: string, right: string): string {
+  const changes = diffArrays(splitLines(left), splitLines(right), {
+    maxEditLength: DEFAULT_MERGE3_MAX_EDIT_LENGTH,
+  });
+  if (changes === undefined) return "";
+  return changes
+    .filter((change) => !change.added && !change.removed)
+    .flatMap((change) => change.value)
+    .join("");
+}
+
 export function detectLineEnding(text: string): "\r\n" | "\n" {
   let crlf = 0;
   let lf = 0;

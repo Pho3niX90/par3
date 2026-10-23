@@ -19,7 +19,8 @@ import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
-import { defaultSyncCategories, environmentSyncCounts } from "./syncSettings.logic";
+import { SyncMergeDialog } from "./SyncMergeDialog";
+import { defaultSyncCategories, environmentSyncCounts, syncMergeSides } from "./syncSettings.logic";
 import { VaultSettings } from "./VaultSettings";
 
 export function VaultSyncSettingsPanel() {
@@ -62,6 +63,7 @@ function SyncSettings() {
   const errors = useSyncRunnerStore((state) => state.lastErrorByEnvironment);
   const resolveConflict = useResolveSyncConflict();
   const [resolving, setResolving] = useState<string | null>(null);
+  const [merging, setMerging] = useState<SyncConflict | null>(null);
   const connected = environments.filter(
     (environment) => environment.connection.phase === "connected",
   );
@@ -157,6 +159,16 @@ function SyncSettings() {
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
+                    {syncMergeSides(conflict) === null ? null : (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={resolving !== null}
+                        onClick={() => setMerging(conflict)}
+                      >
+                        Merge…
+                      </Button>
+                    )}
                     {conflict.candidates
                       .filter((candidate) => candidate.hash !== null)
                       .map((candidate) => (
@@ -185,6 +197,12 @@ function SyncSettings() {
           </div>
         ) : null}
       </div>
+      <SyncMergeDialog
+        conflictKey={merging?.key ?? null}
+        title={merging ? itemName(merging.categoryId, merging.name, environments) : ""}
+        labelOf={labelOf}
+        onClose={() => setMerging(null)}
+      />
     </SettingsSection>
   );
 }
