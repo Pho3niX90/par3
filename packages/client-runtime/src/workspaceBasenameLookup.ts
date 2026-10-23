@@ -22,7 +22,7 @@ function basenameOfPath(path: string): string {
   return separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
 }
 
-export function needsWorkspaceBasenameLookup(relativePath: string): boolean {
+function needsWorkspaceBasenameLookup(relativePath: string): boolean {
   const trimmed = relativePath.trim();
   return (
     trimmed !== "." &&
@@ -50,7 +50,7 @@ export function pickWorkspaceBasenameMatch(
 }
 
 // Repository-relative paths can repeat the project's suffix in subfolder projects.
-export function stripRepeatedWorkspacePrefix(relativePath: string, cwd: string): string | null {
+function stripRepeatedWorkspacePrefix(relativePath: string, cwd: string): string | null {
   if (isAbsolutePath(relativePath)) return null;
   const pathSegments = relativePath.split(/[\\/]+/);
   const cwdSegments = cwd.split(/[\\/]+/).filter(Boolean);
@@ -66,16 +66,75 @@ export function stripRepeatedWorkspacePrefix(relativePath: string, cwd: string):
   return null;
 }
 
-export function pickStrippedWorkspaceMatch(
+function workspacePathKey(cwd: string): (path: string) => string {
+  const caseInsensitive = isWindowsAbsolutePath(cwd);
+  return (path) => {
+    const normalized = path.replaceAll("\\", "/");
+    return caseInsensitive ? normalized.toLowerCase() : normalized;
+  };
+}
+
+function pickStrippedWorkspaceMatch(
   strippedPath: string,
   cwd: string,
   entries: ReadonlyArray<WorkspaceEntryCandidate>,
 ): string | null {
-  const caseInsensitive = isWindowsAbsolutePath(cwd);
-  const key = (path: string) => {
-    const normalized = path.replaceAll("\\", "/");
-    return caseInsensitive ? normalized.toLowerCase() : normalized;
-  };
+  const key = workspacePathKey(cwd);
   const files = entries.filter((entry) => entry.kind === "file");
   return files.find((entry) => key(entry.path) === key(strippedPath))?.path ?? null;
+}
+
+// Agents name files relative to the directory their shell `cd`ed into, which
+// can be any subfolder of the project. Only a single candidate is trusted.
+function pickSubfolderWorkspaceMatch(
+  relativePath: string,
+  cwd: string,
+  entries: ReadonlyArray<WorkspaceEntryCandidate>,
+): string | null {
+  const key = workspacePathKey(cwd);
+  const suffix = `/${key(relativePath)}`;
+  const matches = entries.filter(
+    (entry) => entry.kind === "file" && key(entry.path).endsWith(suffix),
+  );
+  return matches.length === 1 ? (matches[0]?.path ?? null) : null;
+}
+
+function isPlainRelativePath(path: string): boolean {
+  return (
+    !isAbsolutePath(path) &&
+    !path.startsWith("~") &&
+    path.split(/[\\/]/).every((segment) => segment !== "" && segment !== "." && segment !== "..")
+  );
+}
+
+export interface WorkspaceFileLookup {
+  readonly query: string;
+  readonly pick: (entries: ReadonlyArray<WorkspaceEntryCandidate>) => string | null;
+}
+
+/**
+ * How to find the file a workspace-relative link means when nothing exists at
+ * that path. Callers check the literal path first: a link that resolves as
+ * written always wins.
+ */
+export function workspaceFileLookup(relativePath: string, cwd: string): WorkspaceFileLookup | null {
+  if (needsWorkspaceBasenameLookup(relativePath)) {
+    return {
+      query: relativePath,
+      pick: (entries) => pickWorkspaceBasenameMatch(relativePath, entries),
+    };
+  }
+  const strippedPath = stripRepeatedWorkspacePrefix(relativePath, cwd);
+  if (strippedPath !== null) {
+    return {
+      query: strippedPath,
+      pick: (entries) => pickStrippedWorkspaceMatch(strippedPath, cwd, entries),
+    };
+  }
+  return isPlainRelativePath(relativePath)
+    ? {
+        query: relativePath,
+        pick: (entries) => pickSubfolderWorkspaceMatch(relativePath, cwd, entries),
+      }
+    : null;
 }

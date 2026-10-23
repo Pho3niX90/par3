@@ -24,7 +24,7 @@ export function describeSkillAvailability(
   skill: Pick<ServerProviderSkill, "enabled" | "userInvocable">,
 ): string | null {
   if (!skill.enabled) return "Disabled in provider settings";
-  if (skill.userInvocable === false) return "Agent only — not offered in the composer";
+  if (skill.userInvocable === false) return "Agent only (not offered in the composer)";
   return null;
 }
 
