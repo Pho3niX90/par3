@@ -2271,7 +2271,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
                   (match === null
                     ? null
                     : resolveMarkdownMediaPreview(
-                        resolveWorkspaceFilePath(workspaceRoot, match),
+                        `${resolveWorkspaceFilePath(workspaceRoot, match)}${markdownImageSourceFragment(href)}`,
                         mediaPreviewInput,
                       )) ?? media,
                 ),
