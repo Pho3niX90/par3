@@ -80,6 +80,13 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   revealLabel,
   resolveCopyPaths,
 }: MarkdownFileLinkProps) {
+  const target = useMarkdownFileLinkTarget({
+    environmentId,
+    iconPath,
+    workspaceRoot,
+    workspaceLookupPath,
+  });
+  const unresolvedState = target.unresolved ? { state: "unresolved" as const } : {};
   const handleOpenInEditor = () => {
     if (!onOpen) {
       return;
@@ -340,6 +347,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
           hasPrimaryAction ? (
             <ContextChip
               kind="mention"
+              {...unresolvedState}
               dir="ltr"
               render={<a href={href} />}
               className={MARKDOWN_FILE_LINK_CLASS_NAME}
@@ -369,6 +377,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
           ) : (
             <ContextChip
               kind="mention"
+              {...unresolvedState}
               dir="ltr"
               render={<button type="button" />}
               aria-label={`File options for ${label}`}
@@ -394,8 +403,8 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
             environmentId={environmentId}
             iconPath={iconPath}
             targetPath={targetPath}
-            workspaceRoot={workspaceRoot}
-            workspaceLookupPath={workspaceLookupPath}
+            matchPath={target.matchPath}
+            unresolved={target.unresolved}
           />
         </div>
       </TooltipPopup>
@@ -432,18 +441,21 @@ function areMarkdownFileLinkPropsEqual(
   );
 }
 
-/** Shows the file a link opens when it misses as written, using the same lookup as a click. */
-function MarkdownFileLinkTooltip(props: {
+/**
+ * Where a link points: the file as written, the one file a lookup finds when
+ * that is missing, or nothing. Only a missing link pays for the search.
+ */
+function useMarkdownFileLinkTarget(input: {
   environmentId: EnvironmentId | null;
   iconPath: string;
-  targetPath: string;
   workspaceRoot: string | undefined;
   workspaceLookupPath: string | null;
 }) {
-  const { environmentId, iconPath, targetPath, workspaceRoot, workspaceLookupPath } = props;
+  const { environmentId, iconPath, workspaceRoot, workspaceLookupPath } = input;
   const literal = useFileMetadataQuery(environmentId, iconPath);
+  const missing = literal.isSuccess && literal.data === null;
   const lookup =
-    literal.isSuccess && literal.data === null && workspaceRoot && workspaceLookupPath
+    missing && workspaceRoot && workspaceLookupPath
       ? workspaceFileLookup(workspaceLookupPath, workspaceRoot)
       : null;
   const search = useEnvironmentQuery(
@@ -460,14 +472,33 @@ function MarkdownFileLinkTooltip(props: {
       : null,
   );
   const match = lookup && search.data ? lookup.pick(search.data.entries) : null;
-  if (match === null || !workspaceRoot) {
+  return {
+    matchPath:
+      match !== null && workspaceRoot ? resolveWorkspaceFilePath(match, workspaceRoot) : null,
+    unresolved: missing && match === null && (lookup === null || search.isSuccess),
+  };
+}
+
+function MarkdownFileLinkTooltip(props: {
+  environmentId: EnvironmentId | null;
+  iconPath: string;
+  targetPath: string;
+  matchPath: string | null;
+  unresolved: boolean;
+}) {
+  const { environmentId, iconPath, targetPath, matchPath, unresolved } = props;
+  if (unresolved) return <>{`${targetPath} · Not found`}</>;
+  if (matchPath === null) {
     return (
       <WorkspaceEntryTooltip path={iconPath} label={targetPath} environmentId={environmentId} />
     );
   }
-  const path = resolveWorkspaceFilePath(match, workspaceRoot);
   const position = targetPath.startsWith(iconPath) ? targetPath.slice(iconPath.length) : "";
   return (
-    <WorkspaceEntryTooltip path={path} label={`${path}${position}`} environmentId={environmentId} />
+    <WorkspaceEntryTooltip
+      path={matchPath}
+      label={`${matchPath}${position}`}
+      environmentId={environmentId}
+    />
   );
 }
