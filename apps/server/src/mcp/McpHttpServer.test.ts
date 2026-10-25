@@ -421,14 +421,15 @@ it.effect.each(["limit", "runLimit", "maxCharsPerItem"])(
   },
 );
 
-it("routes same-child follow-ups to t3_thread_send and independent reviews to delegate_task", () => {
+it("routes finished-child follow-ups to continueTaskId and independent reviews to delegate_task", () => {
   const description = OrchestratorToolkit.tools.delegate_task.description ?? "";
   expect(description).toContain(
-    "For independent T3 delegated review rounds, call delegate_task again",
+    "For every independent review round, call delegate_task again without continueTaskId",
   );
   expect(description).toContain(
-    "For a follow-up that needs the same child's conversation, use t3_thread_send on its childThreadId.",
+    "call delegate_task with continueTaskId set to that taskId once its result has arrived",
   );
+  expect(description).toContain("steer the running child with t3_thread_send on childThreadId");
   expect(description).not.toContain("not the target for starting another");
 });
 
