@@ -1,12 +1,7 @@
 /**
- * ThreadRepositories - the child repositories a thread edited when its folder is not a repository.
- *
- * A project rooted at a plain folder that holds several repositories has no single git status, so
- * the thread details panel asks for the repositories under that folder that the thread's file
- * edits landed in. Each one is then shown through the ordinary per-folder VCS requests. Paths come
- * from the thread's recorded file changes, so edits made only through shell commands are not seen.
- *
- * @module vcs/ThreadRepositories
+ * The child repositories a thread edited when its project folder is not itself a repository; each is
+ * then shown through the ordinary per-folder VCS requests. Paths come from recorded file changes,
+ * so edits made only through shell commands are not seen.
  */
 import {
   type VcsThreadRepositoriesInput,

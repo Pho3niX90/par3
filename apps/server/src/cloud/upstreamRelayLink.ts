@@ -15,11 +15,9 @@ function isUpstreamRelayUrl(value: string): boolean {
 }
 
 /**
- * Par3 installs that once used T3 Connect still hold a link to upstream's
- * relay. It belongs to an upstream account, so linking to the Par3 relay fails
- * the linked-account check, and while it stays it keeps publishing agent
- * activity to upstream. Drop it unless this build is itself pointed at
- * upstream's relay. No relay call: the upstream record is not ours to revoke.
+ * Installs that once used T3 Connect still hold a link to upstream's relay, owned by an upstream
+ * account: it fails Par3's linked-account check and keeps publishing activity upstream. Drop it
+ * unless this build targets upstream's relay; the upstream record is not ours to revoke.
  */
 export const dropUpstreamRelayLink = Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;

@@ -86,12 +86,9 @@ const markdownRoots = (...directories: ReadonlyArray<string>): ReadonlyArray<Fil
   directories.map((path) => ({ path, kind: "directory", extension: ".md" }));
 
 /**
- * Only these paths ever sync. Settings, credentials, plugins, sessions, and every other file in a
- * provider home stay on their machine. Providers whose global rules live in app state or whose
- * config is not file-based (Cursor user rules, Muse, ACP registry agents) have nothing here.
- *
- * Several providers also read other providers' folders (`~/.claude/skills`, `~/.codex/skills`).
- * Each folder has exactly one owner below, so no two categories ever write the same file.
+ * Only these paths ever sync; settings, credentials, plugins and sessions stay on their machine.
+ * Providers whose rules are not file-based (Cursor user rules, Muse, ACP registry agents) have none.
+ * Each shared folder (`~/.claude/skills`, `~/.codex/skills`) has one owner, so no two categories write a file.
  */
 export const FILE_CATEGORIES: ReadonlyArray<FileCategorySpec> = [
   {

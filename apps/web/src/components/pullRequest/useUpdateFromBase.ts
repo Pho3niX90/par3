@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -16,9 +17,9 @@ import { vcsEnvironment } from "~/state/vcs";
 import { toastManager } from "../ui/toast";
 import { updateFromBaseFailureTitle, updateFromBaseToast } from "./updateFromBase.logic";
 import type { PreparedPullRequestCheckout } from "./usePullRequestActions";
-import { OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST } from "./pullRequestCheckoutToast";
+import { offHeadPullRequestCheckoutToast } from "./pullRequestCheckoutToast";
 
-type UpdateFromBaseDetail = Pick<PullRequestDetail, "headBranch" | "baseBranch">;
+type UpdateFromBaseDetail = Pick<PullRequestDetail, "headBranch" | "baseBranch" | "provider">;
 
 /**
  * "Update from base locally": merges the pull request's base branch into its head branch in a
@@ -78,7 +79,9 @@ export function useUpdateFromBase(input: {
       const prepared = await input.prepareCheckout();
       if (prepared === null) return;
       if (!prepared.isOnPullRequestHead) {
-        toastManager.add(OFF_HEAD_PULL_REQUEST_CHECKOUT_TOAST);
+        toastManager.add(
+          offHeadPullRequestCheckoutToast(sourceControlClients.get(pr.provider).changeRequest),
+        );
         return;
       }
       if (prepared.cwd === null) return;

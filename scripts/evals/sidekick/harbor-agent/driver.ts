@@ -1,18 +1,9 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalFetch:off - Standalone eval tooling; the driver runs in task containers without the monorepo's Effect runtime.
 /**
- * Runs one Terminal-Bench task through a headless Par3 server inside the task container and
- * exports per-turn usage for the lead thread and every delegated child.
- *
- *   node driver.ts --arm B --task-id <id> --workspace /app --out-dir /logs/agent/par3 \
- *     --instruction-env PAR3_TASK_INSTRUCTION
- *
- * Steps: fresh T3CODE_HOME -> `par3 serve` -> `par3 auth session issue` -> WebSocket RPC:
- * projects.mutate(project.create) -> orchestration.launchThread -> poll
- * orchestration.getThreadProjection until the lead and all children settle -> write
- * par3-export.json -> stop the server by the PID it was spawned with.
- *
- * Parts marked VERIFY have not been exercised against a live server yet.
+ * Runs one Terminal-Bench task through a headless Par3 server in the task container and exports
+ * per-turn usage for the lead and every delegated child: fresh T3CODE_HOME, `par3 serve`, create the
+ * project, launch the thread, poll until all settle, write par3-export.json. Parts marked VERIFY are untested.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";

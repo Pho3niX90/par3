@@ -7,12 +7,9 @@ import {
 } from "@t3tools/contracts";
 
 /**
- * Reconciles what several environments share. Each environment remembers, per item, the version
- * it last agreed on (its baseline). An item that changed on exactly one side moves forward to the
- * others; anything ambiguous is a conflict for a person to resolve, never a silent overwrite.
- *
- * Joining is not special: a machine with no baselines follows the same rules, so an identical
- * file is adopted, a missing one is copied, and a different one is a conflict.
+ * Reconciles what several environments share. Each remembers, per item, the version it last agreed
+ * on; a change on exactly one side moves forward, anything ambiguous is a conflict, never an overwrite.
+ * Joining follows the same rules: identical files are adopted, missing ones copied, different ones conflict.
  */
 
 export interface SyncEnvironmentView {

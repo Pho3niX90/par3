@@ -1,13 +1,7 @@
 /**
- * JiraIssues - reads one Jira issue's summary and status for the thread details panel.
- *
- * Uses the v2 REST API, which Jira Cloud, Server and Data Center all serve. Cloud signs in with
- * the account email and an API token (basic auth); Server and Data Center take a personal access
- * token as a bearer token. With no token the request goes out anonymously, which a public site
- * answers. Reads are cached briefly so every open panel does not hit the site, and a settings
- * change drops the cache so a new site or token applies straight away.
- *
- * @module jira/JiraIssues
+ * Reads one Jira issue's summary and status over the v2 REST API (Cloud, Server and Data Center).
+ * Cloud uses email + API token (basic auth); Server/DC take a PAT as bearer; no token goes anonymous.
+ * Reads are cached briefly, and a settings change drops the cache.
  */
 import {
   JiraError,
@@ -74,7 +68,7 @@ export class JiraIssues extends Context.Service<
   }
 >()("t3/jira/JiraIssues") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const client = yield* HttpClient.HttpClient;
   const settingsService = yield* Settings.ServerSettingsService;

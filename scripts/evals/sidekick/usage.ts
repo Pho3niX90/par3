@@ -1,11 +1,7 @@
 /**
- * The per-task export written by the Harbor driver, and the pure functions that read it.
- *
- * The export is a slimmed copy of each thread's `OrchestrationV2ThreadProjection`
- * (packages/contracts/src/orchestrationV2.ts) as it arrives on the wire: dates are ISO strings
- * and model selections use the wire shape `{ instanceId, model, options: [{ id, value }] }`.
- * This file stays dependency-free so the driver can run it inside a task container that has
- * Node but not the Par3 monorepo.
+ * The Harbor driver's per-task export (a slimmed wire-form `OrchestrationV2ThreadProjection`: ISO dates,
+ * `{ instanceId, model, options }` selections) and the pure functions that read it. Dependency-free
+ * so the driver can run it in a task container without the Par3 monorepo.
  */
 
 export interface WireModelSelection {

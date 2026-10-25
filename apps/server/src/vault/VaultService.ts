@@ -218,7 +218,7 @@ function importSources(settings: ServerSettings): ReadonlyArray<ImportSource> {
   return sources;
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const store = yield* ServerSecretStore.ServerSecretStore;
   const environment = yield* ServerEnvironment.ServerEnvironment;

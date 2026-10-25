@@ -1,12 +1,7 @@
 /**
- * One-shot model discovery for GitHub Copilot.
- *
- * Copilot has no documented model listing outside a session, so this opens a throwaway ACP session
- * in an empty directory, reads what it advertises, and closes it. It never answers a login prompt,
- * and any failure just means no models were discovered; models then come from the first real
- * session (see `modelDiscovery.ts`) or from custom models.
- *
- * @module provider-copilot/server/modelProbe
+ * One-shot GitHub Copilot model discovery: opens a throwaway ACP session in an empty directory, reads
+ * what it advertises and closes it, never answering a login prompt. Failure just means no models;
+ * they then come from the first real session (`modelDiscovery.ts`) or custom models.
  */
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import * as Deferred from "effect/Deferred";

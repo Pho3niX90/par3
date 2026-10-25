@@ -1,12 +1,7 @@
 /**
- * GitHub Copilot status probe and version checking.
- *
- * The probe only runs `copilot --version`. Opening an ACP session can start MCP servers
- * or hooks, so the probe never does. Models the CLI advertises are learned from sessions that
- * start for real (see `modelDiscovery.ts`) and merged in by `applyAdvertisedCopilotModels`;
- * until then only the CLI default and custom model settings are listed.
- *
- * @module provider-copilot/server/status
+ * GitHub Copilot status probe. It only runs `copilot --version`: an ACP session could start MCP servers
+ * or hooks. Advertised models come from real sessions (`modelDiscovery.ts`) via
+ * `applyAdvertisedCopilotModels`; until then only the CLI default and custom models are listed.
  */
 import type {
   CustomModelSetting,

@@ -20,6 +20,7 @@
 - [Usage and limits](./user/usage.md)
 - [Product usage data](./user/telemetry.md)
 - [Remote access](./user/remote-access.md)
+- [Guest links](./user/guest-links.md)
 - [Parity Connect troubleshooting](./user/t3-connect-troubleshooting.md)
 - [Shared MCP servers](./user/shared-mcp-servers.md)
 - [Vault and sync](./user/vault-and-sync.md)

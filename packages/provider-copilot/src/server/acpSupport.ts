@@ -62,11 +62,9 @@ export function resolveCopilotAcpBaseModelId(raw: string | undefined): string {
 }
 
 /**
- * Applies the selected model to a freshly started session and returns the model it now runs on.
- * The Copilot CLI's ACP documentation does not say how models are exposed, so this follows what
- * the session itself advertises: a `model` config option, then session model state. When the
- * session advertises neither, the request is still attempted through `session/set_model`, but a
- * rejection keeps the session on its current model and is logged instead of failing the session.
+ * Applies the selected model to a new session and returns the model it runs on, following what the
+ * session advertises (`model` config option, then model state). Otherwise `session/set_model` is
+ * still tried; a rejection keeps the current model and is logged rather than failing the session.
  */
 export function applyCopilotAcpModelSelection(input: {
   readonly runtime: Pick<

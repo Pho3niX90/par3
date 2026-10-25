@@ -1,16 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalConsole:off preferSchemaOverJson:off - Host-side benchmark driver.
 /**
- * Measures how much longer a Claude turn takes through Par3 than through the
- * `claude` CLI itself. Run from the repository root:
- *
- *   node apps/server/scripts/bench-provider-overhead.ts --workloads W1 --n 1
- *
- * Arms: A0 raw `claude -p`, A1 A0 plus Par3's configuration, B the Par3 server,
- * and the opt-in interactive arms T (`claude` in a terminal) and C (the Par3
- * web app). `--stub <dir>` replays recorded A0 output instead of calling the
- * model, so every arm sees identical model time; `--stub synthetic` replays
- * generated turns shaped like each workload and needs no earlier run. Results go to `--out`
- * (default under the OS temp dir): `results.json` and `summary.md`.
+ * Measures how much longer a Claude turn takes through Par3 than through the `claude` CLI.
+ * Run from the repo root: `node apps/server/scripts/bench-provider-overhead.ts --workloads W1 --n 1`.
+ * Arms: A0 raw `claude -p`, A1 plus Par3 config, B the Par3 server, opt-in T (terminal) and C (web).
+ * `--stub <dir|synthetic>` replays model output so every arm sees identical model time; see `--out`.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";

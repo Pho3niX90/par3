@@ -171,12 +171,9 @@ function endOfInsertedText(start: ModelPosition, text: string): ModelPosition {
 }
 
 /**
- * Moves one chunk boundary (the position before line `line`) through one change.
- *
- * Text typed exactly at a boundary belongs inside the chunk at its start, and outside it at its
- * end, because that end is the first character of the next region. A deletion that swallows a
- * boundary pulls the chunk's start to the end of the new text and its end back to the change's
- * start, so the chunk keeps only what survives.
+ * Moves one chunk boundary (the position before `line`) through one change. Text typed at a
+ * boundary belongs inside the chunk at its start and outside at its end. A deletion swallowing a
+ * boundary pulls the start to the new text's end and the end to the change's start.
  */
 function mapBoundary(
   line: number,
@@ -499,12 +496,9 @@ export function mapLine(
 }
 
 /**
- * Keeps the chunk state in step with the editor's undo history. The editor owns the text and its
- * history, so each history entry remembers the model that held after it. After a change the top
- * undo entry says what happened: one this timeline has seen is an undo or redo and restores its
- * model; an unseen one is a new edit, which is either one of our actions (planned states
- * attached) or the user typing. Typing that coalesces replaces the entry object, so it is simply
- * recorded again.
+ * Keeps chunk state in step with the editor's undo history: each history entry remembers the model
+ * after it. A seen top entry is an undo/redo and restores its model; an unseen one is a new edit
+ * (our action with planned states, or typing). Coalesced typing replaces the entry, so it is re-recorded.
  */
 export class MergeTimeline<Entry extends object> {
   readonly #initial: MergeModel;

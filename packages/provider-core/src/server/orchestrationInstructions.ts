@@ -1,20 +1,16 @@
 import type { ProviderInteractionMode } from "@t3tools/contracts";
 
-/**
- * Authored as self-contained sections so a provider that limits the size of
- * each instruction entry can deliver every one whole. Codex cuts the middle out
- * of any entry over 4,000 bytes, so start a new section before one gets close.
- */
+// Codex truncates entries over 4,000 bytes; keep each section self-contained and below that limit.
 export const T3_CODE_ORCHESTRATION_SECTIONS: ReadonlyArray<string> = [
   `## Par3 orchestration
 
 The \`t3-code\` MCP server provides app-owned orchestration. Treat these concepts distinctly:
 
-- A delegated task/subagent is child work owned by the current thread. Use \`orchestrator_capabilities\` to discover the current provider/model IDs from the same live catalog as the composer, including configured custom models. It lists a short set of models per provider; pass \`search\` to find others. Do not treat a native tool's model list as the full list of available subagent models. Prefer native subagent tools for same-provider work only when they support the chosen model and no model options are requested or inherited. Use \`delegate_task\` with that provider instance and model when native tools cannot, including for same-provider work. Also use \`delegate_task\` for cross-provider or explicitly T3-owned child tasks. For a child task that needs a separate checkout, use \`delegate_task\` with \`isolation:"worktree"\` across any provider or model. It starts from the parent local commit and runs project setup; uncommitted edits are not copied. Retain each returned \`taskId\`, and use \`task_status\` or \`task_cancel\` to manage it. The returned \`childThreadId\` is backing storage for the subagent, not the target for starting another delegated review round.
+- A delegated task/subagent is child work owned by the current thread. Use \`orchestrator_capabilities\` to discover the current provider/model IDs from the same live catalog as the composer, including configured custom models. It lists a short set of models per provider; pass \`search\` to find others. Do not treat a native tool's model list as the full list of available subagent models. Prefer native subagent tools for same-provider work only when they support the chosen model and no model options are requested or inherited. Use \`delegate_task\` with that provider instance and model when native tools cannot, including for same-provider work. Also use \`delegate_task\` for cross-provider or explicitly T3-owned child tasks. For a child task that needs a separate checkout, use \`delegate_task\` with \`isolation:"worktree"\` across any provider or model. It starts from the parent local commit and runs project setup; uncommitted edits are not copied. Retain each returned \`taskId\`, and use \`task_status\` or \`task_cancel\` to manage it.
 - \`t3_thread_launch\` and \`create_threads\` create ordinary top-level T3 conversations. Use them only when the user explicitly asks for separate/new/top-level threads or conversations. Never use them merely because the user said "subagent" or requested parallel delegated work.
 - To follow up on a finished delegated task in the same child, with its context intact, call \`delegate_task\` with \`continueTaskId\` set to that task's \`taskId\` once its result has arrived; it returns a new \`taskId\` tracked like any delegation. Use \`t3_thread_send\` on \`childThreadId\` only to steer a child that is still running. For every independent review round, call \`delegate_task\` again without \`continueTaskId\`, so the reviewer starts fresh. Include the original brief, prior findings, responses, and unresolved objections in each new task prompt. Track each round by its own \`taskId\`. Use a distinct \`clientRequestId\` per round, stable across retries of that round.`,
   `- \`schedule_task\` creates persistent recurring work in the app scheduler. Pass \`schedule\` as a structured object, never as JSON text: \`{"type":"interval","everyMs":3600000}\` for an interval, or \`{"type":"fixed_time","timeOfDay":"09:00","weekdays":[1,2,3,4,5]}\` for a wall-clock schedule, or \`{"type":"webhook"}\` to run on each request to the returned \`webhookUrl\` (the run sees the request only through \`{{body.path}}\`-style placeholders in the prompt). By default runs return to the current thread, which suits orchestrating: each trigger arrives here and you delegate or dedupe; set \`bindToCurrentThread=false\` only when the user wants a fresh thread for every run. After scheduling a timer, report the returned cadence and next run time; for a webhook, report its \`webhookUrl\`, or say Parity Connect remote access is needed if it is missing.
-- When you need a secret from the user (a token, API key, or webhook signing secret), call \`request_secret\` so they enter it privately, then pass the returned \`secretRef\` to the tool that needs it, e.g. \`signature.secretRef\` on a webhook task for a sender that signs requests such as GitHub. A \`secretRef\` works once. Never ask for a secret in chat, never invent one, and never repeat one.
+- When you need a secret from the user (a token, API key, or signing secret), call \`request_secret\` yourself so they enter it privately: its \`secretRef\` goes to a Par3 tool, and \`delivery: "file"\` gives a private file for shell commands. Never ask for a secret in chat, never invent one, and never repeat one.
 - Par3 can share third-party MCP servers (such as Linear, Sentry, or internal tools) with every agent. When the user asks about a service you have no native tool for, call \`mcp_servers\` to list them and their tools, then call one with \`mcp_call\`.
 - Par3 keeps the user's secrets in a vault. \`vault_list\` shows their names. Use a secret by reference: provider environment variables and shared MCP server headers accept \`vault:NAME\`. Call \`secret_get\` only when a value must appear in a command or file; it works only for secrets the user made readable by agents, and the value must never be echoed, committed, or handed to another agent.
 - To mention another thread to the user, link it as \`[title](t3-thread://v1/<threadId>)\` with its exact \`threadId\`, not URL-encoded. Par3 opens the thread in the app and shows its current title.`,
@@ -149,11 +145,7 @@ export interface T3AcpInstructionState {
   readonly sidekick?: T3SidekickLeadState | null;
 }
 
-/**
- * ACP has no system/developer prompt field, so send T3-owned context in the
- * first user prompt and whenever the available tools, interaction mode, or
- * sidekick change.
- */
+/** ACP lacks system/developer fields; inject context on first prompt and tool/mode changes. */
 export function t3AcpPromptWithInstructions(input: {
   readonly prompt: string;
   readonly state: T3AcpInstructionState;
@@ -195,11 +187,9 @@ export interface T3PromptInstructionState {
 }
 
 /**
- * For providers whose only channel is the user prompt: the wrapped block to
- * send, or null when the native session already has it. Orchestration goes on
- * the first prompt of each native session (or once T3 tools appear), and the
- * sidekick playbook whenever it changes. Undefined `previousState` means a
- * fresh native context.
+ * For providers whose only channel is the user prompt: the wrapped block to send, or null when the
+ * native session has it. Orchestration goes on each native session's first prompt (or once T3 tools
+ * appear), the sidekick playbook whenever it changes. Undefined `previousState` is a fresh context.
  */
 export function t3OrchestrationInstructionUpdate(
   state: T3PromptInstructionState,

@@ -4,10 +4,7 @@ import type * as AcpSchema from "effect-acp/compat";
 import type { AcpToolCallState } from "./runtimeModel.ts";
 import type { AcpAdapterV2ExtensionContext, AcpAdapterV2SubagentUpdate } from "./adapter.ts";
 
-// Only its opt-in raw event feed says who wrote a chunk: each chunk is preceded
-// by an `assistant.*_delta` carrying the spawning `task` tool call id. Both
-// arrive inline on the same reader, in wire order, so the delta just before a
-// chunk is that chunk's author.
+// The opt-in raw feed identifies each chunk by the preceding assistant.*_delta task call id.
 
 const COPILOT_META_KEY = "github.com/copilot";
 const COPILOT_SESSION_EVENT = "github.com/copilot/sessionEvent";

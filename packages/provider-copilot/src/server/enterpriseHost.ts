@@ -49,12 +49,9 @@ export function copilotUsagePageUrl(enterpriseUrl: string | null | undefined): s
 }
 
 /**
- * Environment one Copilot instance launches the CLI with, shared by the status probe and the
- * ACP session so the two cannot drift. Only an explicit token from settings is injected, as
- * `COPILOT_GITHUB_TOKEN`, which the CLI ranks above `GH_TOKEN` and `GITHUB_TOKEN`; ambient
- * variables are left alone so a missing token falls back to the CLI's own login. An enterprise
- * host sets `GH_HOST` and the token also goes out as `GH_ENTERPRISE_TOKEN`, the variable GitHub
- * documents for that host.
+ * The CLI's launch environment, shared by the status probe and ACP sessions so they cannot drift.
+ * Only an explicit settings token is injected, as `COPILOT_GITHUB_TOKEN` (ranked above `GH_TOKEN`);
+ * an enterprise host adds `GH_HOST` and `GH_ENTERPRISE_TOKEN`. Ambient variables are left alone.
  */
 export function copilotLaunchEnvironment(
   settings: Pick<CopilotSettings, "enterpriseUrl" | "enterpriseToken">,

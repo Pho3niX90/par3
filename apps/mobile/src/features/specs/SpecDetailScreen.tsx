@@ -25,6 +25,7 @@ import {
   explainSpecRoleSupport,
 } from "../../state/specs";
 import { SpecStatusBadge } from "./SpecStatusBadge";
+import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 
 export interface SpecDetailScreenProps {
   readonly environmentId: EnvironmentId;
@@ -35,6 +36,7 @@ export interface SpecDetailScreenProps {
 export function SpecDetailScreen(props: SpecDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const selectDetail = useSelectWorkspaceDetail();
   const styles = useMarkdownPreviewStyles();
 
   const [activeTab, setActiveTab] = useState<
@@ -141,9 +143,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       });
 
       // 3. Navigate to thread
-      navigation.navigate("Thread", {
-        environmentId: props.environmentId,
-        threadId: newThreadId,
+      selectDetail({
+        name: "Thread",
+        params: { environmentId: props.environmentId, threadId: newThreadId },
       });
     } catch (err: any) {
       Alert.alert(
@@ -626,9 +628,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
                   <Pressable
                     accessibilityRole="button"
                     onPress={() =>
-                      navigation.navigate("Thread", {
-                        environmentId: props.environmentId,
-                        threadId: binding.threadId,
+                      selectDetail({
+                        name: "Thread",
+                        params: { environmentId: props.environmentId, threadId: binding.threadId },
                       })
                     }
                     className="flex-1 min-w-0"

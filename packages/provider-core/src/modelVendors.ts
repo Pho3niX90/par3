@@ -1,10 +1,6 @@
 /**
- * Model vendor glyphs for providers that route to several vendors' models,
- * such as GitHub Copilot. Those providers report only a model id and name, so
- * the vendor comes from the slug. Plain data, like `ProviderIcon`, so web and
- * mobile draw the same glyphs.
- *
- * @module provider-core/modelVendors
+ * Model vendor glyphs for providers that route to several vendors (such as GitHub Copilot) and report
+ * only a model id, so the vendor comes from the slug. Plain data, so web and mobile draw the same glyphs.
  */
 import type { ProviderIcon } from "./client.ts";
 

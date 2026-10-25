@@ -1,11 +1,7 @@
 /**
- * Reads the models a live GitHub Copilot ACP session advertises.
- *
- * Copilot's ACP documentation does not describe a session-less model catalog, and health checks
- * must not open sessions, so models are learned from sessions that start for real: first from a
- * `model` config option, then from session model state.
- *
- * @module provider-copilot/server/modelDiscovery
+ * Reads the models a live GitHub Copilot ACP session advertises: first its `model` config option,
+ * then its session model state. Copilot documents no session-less catalog, and health checks must
+ * not open sessions, so models are learned only from sessions that start for real.
  */
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 

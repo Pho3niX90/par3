@@ -39,12 +39,9 @@ export function jiraIssueKeyPattern(projectKeys: ReadonlyArray<string>): RegExp 
 }
 
 /**
- * Jira issue keys mentioned in a branch name and, when the project keys are known, in other text
- * such as a pull request title, in order of first appearance and without repeats.
- *
- * With `projectKeys` set, only those projects count and matching ignores case, so
- * `feature/abc-123-login` finds `ABC-123`. Without them any uppercase key counts, but only in the
- * branch name: titles mention `UTF-8` and `SHA-256` far more often than branches do.
+ * Jira issue keys in a branch name and, when project keys are known, other text, in first-seen order.
+ * With `projectKeys`, only those projects count, case-insensitively (`feature/abc-123` finds `ABC-123`).
+ * Without them any uppercase key counts, but only in the branch: titles mention `UTF-8` far more often.
  */
 export function findJiraIssueKeys(input: {
   readonly branch: string | null | undefined;

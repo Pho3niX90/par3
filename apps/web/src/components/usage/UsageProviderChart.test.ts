@@ -16,6 +16,7 @@ describe("buildPeriodColumns", () => {
           ["claude" as const, { costUsd: 20, totalTokens: 200 }],
           ["pi" as const, { costUsd: 5, totalTokens: 50 }],
           ["copilot" as const, { costUsd: 7, totalTokens: 70 }],
+          ["muse" as const, { costUsd: 7, totalTokens: 70 }],
         ]),
       },
     ],
@@ -42,6 +43,7 @@ describe("buildPeriodColumns", () => {
       { provider: "antigravity", value: 0 },
       { provider: "pi", value: 5 },
       { provider: "copilot", value: 7 },
+      { provider: "muse", value: 7 },
     ]);
   });
 });

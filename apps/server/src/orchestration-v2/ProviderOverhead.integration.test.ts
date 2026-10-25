@@ -1,11 +1,7 @@
 /**
- * Counts what the server does for one Claude turn of each benchmark workload
- * shape, replayed through the real orchestrator, SQLite file, and git
- * checkpoints. The counts are deterministic, so they gate regressions in CI
- * without secrets; wall time only fails far above its committed budget.
- * `T3CODE_BENCH_TIMED=1` adds a non-gating report with realistic frame gaps.
- * See issue #31 and `apps/server/scripts/bench-provider-overhead.ts` for the
- * live comparison against the `claude` CLI.
+ * Counts what the server does for one Claude turn of each benchmark workload, replayed through the
+ * real orchestrator, SQLite and git checkpoints. Counts are deterministic, so they gate CI; wall time
+ * fails only far above budget. `T3CODE_BENCH_TIMED=1` adds a non-gating report (see issue #31).
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
@@ -45,11 +41,9 @@ interface Budget {
   readonly wallBudgetMs: number;
 }
 
-// Measured on the replay harness (2026-10); lower them when the server gets
-// cheaper. Streaming deltas are buffered per turn here, so W4's 208 frames
-// commit in a handful of transactions.
-// EventSink writes run with tracing off, so statements inside them are not in
-// the SQL count; the transaction count covers them.
+// Measured on the replay harness (2026-10); lower them when the server gets cheaper. Streaming
+// deltas are buffered per turn, so W4's 208 frames commit in a few transactions. EventSink writes
+// run with tracing off, so their statements are counted only through the transaction count.
 const BUDGETS: ReadonlyArray<Budget> = [
   {
     name: "W1 text reply, cold and warm",

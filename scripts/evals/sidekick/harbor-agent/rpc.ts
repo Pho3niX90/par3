@@ -1,16 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalFetch:off - Standalone eval tooling; the driver runs in task containers without the monorepo's Effect runtime.
 /**
- * Minimal client for Par3's WebSocket RPC, which is Effect RPC with JSON serialization
- * (`RpcSerialization.layerJson` in apps/server/src/ws.ts). It speaks the encoded message shapes
- * from effect/rpc/RpcMessage directly so it can run in a task container without the monorepo:
- *
- *   client -> server  {_tag:"Request", id, tag, payload, headers: []}
- *   server -> client  {_tag:"Exit", requestId, exit:{_tag:"Success", value} | {_tag:"Failure", cause}}
- *                     {_tag:"Chunk", ...} for streams (unused here), {_tag:"Defect", defect}
- *
- * Only unary RPCs are used. Payloads must already be in their encoded (wire) form.
- * VERIFY against a live server: request ids as decimal strings, and frames possibly batched as
- * JSON arrays.
+ * Minimal client for Par3's Effect RPC over WebSocket (JSON serialization), speaking the encoded
+ * RpcMessage shapes directly so it runs in a task container without the monorepo. Unary RPCs only;
+ * payloads must already be encoded. VERIFY: decimal-string request ids, possibly batched frames.
  */
 
 type ServerMessage = {

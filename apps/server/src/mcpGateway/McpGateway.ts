@@ -1,13 +1,7 @@
 /**
- * McpGateway - connects to the third-party MCP servers in settings and shares them with every
- * agent through the `t3-code` MCP server's `mcp_servers` and `mcp_call` tools.
- *
- * One connection per server serves every thread. It opens on first use, is replaced when that
- * server's settings change, and closes when the server is disabled, removed, or idle. Effect's
- * `McpServer` can neither remove tools nor filter them per caller, so upstream tools are reached
- * through those two fixed tools and every policy check happens here, when a tool is called.
- *
- * @module mcpGateway/McpGateway
+ * Shares the third-party MCP servers in settings with every agent through the `t3-code` server's
+ * `mcp_servers` and `mcp_call` tools. One lazily opened connection per server serves every thread.
+ * Effect's `McpServer` cannot remove or filter tools per caller, so every policy check happens here.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -652,7 +646,7 @@ export const makeWithTransport = Effect.fn("McpGateway.makeWithTransport")(funct
   return { listServers, listTools, callTool, test } satisfies McpGateway["Service"];
 });
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = makeWithTransport(openDefaultTransport);
 
 export const layer = Layer.effect(McpGateway, make);

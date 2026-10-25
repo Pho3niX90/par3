@@ -67,6 +67,7 @@ export const DesktopConfig = Config.all({
     allProxy: proxyVariable("all_proxy"),
     noProxy: proxyVariable("no_proxy"),
   }),
+  desktopLauncherPath: trimmedString("T3CODE_DESKTOP_LAUNCHER_PATH"),
   appImagePath: trimmedString("APPIMAGE"),
   disableAutoUpdate: optionalBoolean("T3CODE_DISABLE_AUTO_UPDATE"),
   mockUpdates: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES"),

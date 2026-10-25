@@ -13,7 +13,9 @@ import * as Planetscale from "alchemy/Planetscale";
 import { PublishClientConfig, tokenDigest } from "./src/clientConfig.ts";
 import * as RelayDb from "./src/db.ts";
 import { relayAxiomEnabled, RelayObservability } from "./src/observability.ts";
-import { ManagedEndpointZone, RelayApiZone } from "./src/zone.ts";
+import { isPreviewStage } from "./src/previewStages.ts";
+import { PreviewTunnelSweep, PreviewTunnelSweepProvider } from "./src/previewTunnelSweep.ts";
+import { ManagedEndpointZone, RelayApiZone, RelayDeploymentConfig } from "./src/zone.ts";
 import * as RelayWorker from "./src/worker.ts";
 
 export default Alchemy.Stack(
@@ -26,10 +28,12 @@ export default Alchemy.Stack(
       Drizzle.providers(),
       ...(process.env.RELAY_AXIOM_ENABLED === "false" ? [] : [Axiom.providers()]),
       ...(process.env.RELAY_DB_HOST ? [] : [Planetscale.providers()]),
+      PreviewTunnelSweepProvider(),
     ),
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
+    const { stage } = yield* Alchemy.Stack;
     const selfHostedDb = yield* RelayDb.RelaySelfHostedDatabase;
     const db = Option.isSome(selfHostedDb) ? undefined : yield* RelayDb.PlanetscaleDatabase;
     const hyperdrive = yield* RelayDb.RelayHyperdrive;
@@ -54,6 +58,14 @@ export default Alchemy.Stack(
           clientTracingDataset: "",
           clientTracingToken: Redacted.make(""),
         };
+    if (isPreviewStage(stage)) {
+      const { managedEndpointZoneName } = yield* RelayDeploymentConfig;
+      yield* PreviewTunnelSweep("PreviewTunnelSweep", {
+        stage,
+        tunnelZoneName: managedEndpointZoneName,
+        workerName: api.workerName,
+      });
+    }
     yield* PublishClientConfig({
       url: api.url,
       ...tracing,

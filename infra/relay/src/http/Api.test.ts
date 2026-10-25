@@ -1587,8 +1587,7 @@ describe("relay managed tunnel recovery limit", () => {
   );
 });
 
-// Sends a request through Effect's request handler, which applies pre-response
-// handlers to the response it sends, as the Workers runtime does.
+// Use the Workers request path so pre-response handlers apply.
 const sendRelayRequest = Effect.fnUntraced(function* <E, R>(
   httpEffect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
   request: Request,

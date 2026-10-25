@@ -7,12 +7,9 @@ export interface LineRange {
 }
 
 /**
- * - `ours` / `theirs`: only that side changed the region, so its text is applied.
- * - `both-same`: both sides made the identical change.
- * - `auto-resolved`: a line-level conflict that merges cleanly once re-merged by token.
- * - `conflict`: a real conflict. The initial result holds the base text for it.
- *
- * "Ours" and "theirs" are positional (the left and right input), not git's meaning of them.
+ * `ours`/`theirs`: only that side (the left/right input, not git's meaning) changed the region.
+ * `both-same`: identical change on both sides. `auto-resolved`: a line conflict that merges by token.
+ * `conflict`: a real conflict; the initial result holds the base text.
  */
 export type Merge3ChunkKind = "ours" | "theirs" | "both-same" | "conflict" | "auto-resolved";
 

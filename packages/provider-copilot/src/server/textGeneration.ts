@@ -1,13 +1,7 @@
 /**
- * Application text generation (commit messages, branch names, PR content, thread titles) through
- * GitHub Copilot's ACP server.
- *
- * Each request is one throwaway session in the request's directory. Permission requests are
- * always cancelled, so Copilot answers from the prompt alone and cannot change anything. A
- * request that asks the model to investigate the checkout is refused, because no read-only mode
- * is available to guarantee it.
- *
- * @module provider-copilot/server/textGeneration
+ * Commit messages, branch names, PR content and titles through GitHub Copilot's ACP server. Each request
+ * is one throwaway session whose permission requests are always cancelled, so it cannot change anything;
+ * requests to investigate the checkout are refused because no read-only mode can guarantee that.
  */
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
