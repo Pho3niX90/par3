@@ -344,8 +344,14 @@ jobs:
             node apps/web/node_modules/playwright/cli.js install-deps chromium
           fi
 
+      # The attachment preview suite times out on a 4-vCPU runner while it shares the machine.
       - name: Test
-        run: vp run --filter @t3tools/web test
+        working-directory: apps/web
+        run: vp test run --passWithNoTests --project unit --project browser --exclude '**/AttachmentFilePreview.browser.test.tsx'
+
+      - name: Test attachment previews
+        working-directory: apps/web
+        run: vp test run --project browser src/components/files/AttachmentFilePreview.browser.test.tsx
 
   # Server test files run one at a time, so more small runners beat fewer big ones.
   test_server:
