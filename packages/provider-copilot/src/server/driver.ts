@@ -177,7 +177,12 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv, Pa
       initialSnapshot: (settings) =>
         buildInitialCopilotProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
       checkProvider,
-      enrichSnapshot: ({ settings, snapshot: currentSnapshot, getSnapshot, publishSnapshot }) => {
+      enrichSnapshot: Effect.fn("CopilotDriver.enrichSnapshot")(function ({
+        settings,
+        snapshot: currentSnapshot,
+        getSnapshot,
+        publishSnapshot,
+      }) {
         const { customModels } = settings.provider;
         // Both publishers rebuild the model list from the latest advertisement, so whichever
         // publishes last never drops models the other one added.
@@ -250,7 +255,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv, Pa
           concurrency: "unbounded",
           discard: true,
         });
-      },
+      }),
     }).pipe(
       Effect.mapError(
         (cause) =>
