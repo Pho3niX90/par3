@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -46,17 +46,17 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
   const [supersedes, setSupersedes] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (existingSpec && isEditing) {
-      setTitle(existingSpec.title);
-      setSlug(existingSpec.slug);
-      setContent(existingSpec.content);
-      if (existingSpec.supersedes) {
-        setSupersedes(existingSpec.supersedes);
-      }
+  // Fill the form once per loaded spec; a refetch must not overwrite edits in progress.
+  const [loadedSlug, setLoadedSlug] = useState<string | null>(null);
+  if (existingSpec && isEditing && loadedSlug !== existingSpec.slug) {
+    setLoadedSlug(existingSpec.slug);
+    setTitle(existingSpec.title);
+    setSlug(existingSpec.slug);
+    setContent(existingSpec.content);
+    if (existingSpec.supersedes) {
+      setSupersedes(existingSpec.supersedes);
     }
-  }, [existingSpec, isEditing]);
+  }
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle);

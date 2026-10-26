@@ -3,7 +3,6 @@ import { assert, it } from "@effect/vitest";
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -37,7 +36,7 @@ const listRepositories = (input: {
             getThreadEditedPaths: () => Effect.succeed(input.editedPaths),
           }),
           Layer.mock(ProjectStore.ProjectStoreV2)({
-            getShell: () => Effect.succeed(Option.some({ workspaceRoot: root } as never)),
+            getShell: () => Effect.succeedSome({ workspaceRoot: root } as never),
           }),
           Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({
             detect: ({ cwd }) => {

@@ -91,7 +91,10 @@ export const layer: Layer.Layer<
               : Effect.void,
           ),
         );
-    const loadOverHttp = (prepared: PreparedConnection, threadId: ThreadId) => {
+    const loadOverHttp = Effect.fn("ThreadSnapshotLoader.loadOverHttp")(function (
+      prepared: PreparedConnection,
+      threadId: ThreadId,
+    ) {
       const loadFullFallback = ThreadSnapshotLoader.fetchEnvironmentThreadSnapshot({
         prepared,
         threadId,
@@ -183,16 +186,18 @@ export const layer: Layer.Layer<
           ),
         ),
       );
-    };
+    });
     return ThreadSnapshotLoader.ThreadSnapshotLoader.of({
-      load: (prepared: PreparedConnection, threadId: ThreadId) =>
-        Effect.flatMap(Clock.currentTimeMillis, (now) =>
-          now < (skipHttpUntil.get(prepared.environmentId) ?? 0)
-            ? Effect.succeed({
-                _tag: "unavailable",
-              } satisfies ThreadSnapshotLoader.ThreadSnapshotLoadResult)
-            : loadOverHttp(prepared, threadId),
-        ),
+      load: Effect.fn("ThreadSnapshotLoader.ThreadSnapshotLoader.load")(function* (
+        prepared: PreparedConnection,
+        threadId: ThreadId,
+      ) {
+        const now = yield* Clock.currentTimeMillis;
+        if (now < (skipHttpUntil.get(prepared.environmentId) ?? 0)) {
+          return { _tag: "unavailable" } satisfies ThreadSnapshotLoader.ThreadSnapshotLoadResult;
+        }
+        return yield* loadOverHttp(prepared, threadId);
+      }),
     });
   }),
 );

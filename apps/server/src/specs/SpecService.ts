@@ -903,7 +903,7 @@ const make = Effect.gen(function* () {
     }>`SELECT project_id, workspace_path, slug FROM spec_documents`,
   );
   for (const record of pending)
-    yield* persistFiles(record.workspace_path, record.slug).pipe(Effect.catch(() => Effect.void));
+    yield* persistFiles(record.workspace_path, record.slug).pipe(Effect.ignore);
   // Poll instead of fs.watch: watchers hold directory handles that block deleting worktrees on Windows,
   // and only specs bound to a thread can have work to interrupt.
   const pollBound = Effect.gen(function* () {
@@ -916,9 +916,9 @@ const make = Effect.gen(function* () {
     );
     for (const row of bound)
       yield* locked(row.workspace_path, refresh(row.project_id, row.workspace_path, row.slug)).pipe(
-        Effect.catch(() => Effect.void),
+        Effect.ignore,
       );
-  }).pipe(Effect.catch(() => Effect.void));
+  }).pipe(Effect.ignore);
   // Most servers never bind a spec, so they never poll.
   const existingBindings = yield* db(sql`SELECT 1 FROM spec_bindings LIMIT 1`).pipe(
     Effect.orElseSucceed(() => []),
@@ -955,12 +955,22 @@ export const layer = Layer.effect(SpecService, make);
 export const layerDisabled = Layer.succeed(
   SpecService,
   SpecService.of({
-    query: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
-    mutate: () => Effect.fail(failure("disabled", "Spec mode is unavailable.")),
+    query: Effect.fn("SpecService.query")(function () {
+      return Effect.fail(failure("disabled", "Spec mode is unavailable."));
+    }),
+    mutate: Effect.fn("SpecService.mutate")(function () {
+      return Effect.fail(failure("disabled", "Spec mode is unavailable."));
+    }),
     subscribe: () => Stream.fail(failure("disabled", "Spec mode is unavailable.")),
-    binding: () => Effect.succeed(undefined),
-    inherit: () => Effect.void,
-    beforeRun: () => Effect.succeed(undefined),
+    binding: Effect.fn("SpecService.binding")(function () {
+      return Effect.undefined;
+    }),
+    inherit: Effect.fn("SpecService.inherit")(function () {
+      return Effect.void;
+    }),
+    beforeRun: Effect.fn("SpecService.beforeRun")(function () {
+      return Effect.undefined;
+    }),
     invalidations: Stream.empty,
   }),
 );

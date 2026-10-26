@@ -14,13 +14,12 @@ export const readStoredSettings = Effect.fn("sync.readStoredSettings")(function*
   fs: FileSystem.FileSystem,
   settingsPath: string,
 ) {
-  const raw = yield* fs
-    .readFileString(settingsPath)
-    .pipe(
-      Effect.catch((cause) =>
-        cause.reason._tag === "NotFound" ? Effect.succeed(null) : Effect.fail(cause),
-      ),
-    );
+  const raw = yield* fs.readFileString(settingsPath).pipe(
+    Effect.catchIf(
+      (cause) => cause.reason._tag === "NotFound",
+      () => Effect.succeed(null),
+    ),
+  );
   if (raw === null) return DEFAULT_SERVER_SETTINGS;
   return yield* decodeSettings(raw);
 });

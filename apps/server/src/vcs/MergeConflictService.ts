@@ -346,10 +346,9 @@ export const make = Effect.gen(function* () {
       // onto and stage 3 ("theirs") is the commit being replayed. The API keeps ours = stage 2;
       // only these labels reflect the swap.
       const dir = detected.markerPath;
-      const [headName, onto, msgnum, end, next, last] = yield* Effect.all(
-        ["head-name", "onto", "msgnum", "end", "next", "last"].map((name) =>
-          readText(path.join(dir, name)),
-        ),
+      const [headName, onto, msgnum, end, next, last] = yield* Effect.forEach(
+        ["head-name", "onto", "msgnum", "end", "next", "last"],
+        (name) => readText(path.join(dir, name)),
       );
       const current = Number((msgnum ?? next ?? "").trim());
       const total = Number((end ?? last ?? "").trim());

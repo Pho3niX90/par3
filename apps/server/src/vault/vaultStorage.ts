@@ -80,11 +80,9 @@ export const resolveVaultValues = Effect.fn("vaultStorage.resolveValues")(functi
   for (const name of names) {
     const entry = entries[name];
     if (entry === undefined || values.has(name)) continue;
-    try {
-      values.set(name, decryptEntry(key.value, name, entry));
-    } catch {
-      // Left unresolved; the caller reports the missing name.
-    }
+    // Left unresolved on failure; the caller reports the missing name.
+    const value = yield* Effect.option(Effect.try(() => decryptEntry(key.value, name, entry)));
+    if (Option.isSome(value)) values.set(name, value.value);
   }
   return values;
 });

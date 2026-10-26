@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { SpecsPage } from "../specs/SpecsPage";
 
-interface SpecsRouteSearch {
+export interface SpecsRouteSearch {
   environment?: string;
   project?: string;
   slug?: string;

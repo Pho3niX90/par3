@@ -9,7 +9,6 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Tool } from "effect/ai";
@@ -71,7 +70,7 @@ const makeHarness = Effect.fn("makeConflictsToolkitHarness")(function* (
       getProjectThreadRecords: () => Effect.succeed(idleThreadProjection(shell)),
     }),
     Layer.mock(ProjectService.ProjectService)({
-      getById: () => Effect.succeed(Option.some({ workspaceRoot: WORKSPACE } as never)),
+      getById: () => Effect.succeedSome({ workspaceRoot: WORKSPACE } as never),
     }),
     Layer.mock(ThreadRepositories.ThreadRepositories)({
       list: () => Effect.succeed({ repositories: options.children ?? [] }),

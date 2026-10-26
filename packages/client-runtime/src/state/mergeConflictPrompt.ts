@@ -7,7 +7,6 @@ const MAX_UNTRUSTED_LENGTH = 200;
 
 /** One line of untrusted text: control characters and line breaks become spaces, length is bounded. */
 function untrustedLine(value: string): string {
-  // oxlint-disable-next-line eslint/no-control-regex -- Stripping control characters is the point.
   const flat = value.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").trim();
   return flat.length > MAX_UNTRUSTED_LENGTH ? `${flat.slice(0, MAX_UNTRUSTED_LENGTH)}…` : flat;
 }

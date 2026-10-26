@@ -21,10 +21,15 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Metric from "effect/Metric";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
+import {
+  orchestrationCommandDuration,
+  orchestrationCommandsTotal,
+} from "../observability/Metrics.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as DelegatedTaskRequestReactor from "./DelegatedTaskRequestReactor.ts";
@@ -1716,5 +1721,40 @@ it.effect("a sidekick brief reaches only the child message, and the child has no
     const taskItem = parent.turnItems.find((item) => item.type === "subagent");
     assert.equal(taskItem?.type === "subagent" ? taskItem.model : undefined, sidekick.model);
     assert.equal(taskItem?.type === "subagent" ? taskItem.prompt : undefined, "Add the parser");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("dispatch records the command outcome and its duration", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const successes = Metric.value(
+      Metric.withAttributes(orchestrationCommandsTotal, {
+        commandType: "thread.create",
+        outcome: "success",
+      }),
+    );
+    const durations = Metric.value(
+      Metric.withAttributes(orchestrationCommandDuration, { commandType: "thread.create" }),
+    );
+    const successesBefore = (yield* successes).count;
+    const durationsBefore = (yield* durations).count;
+
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-dispatch-metrics"),
+      threadId: ThreadId.make("thread:dispatch-metrics"),
+      projectId: ProjectId.make("project:dispatch-metrics"),
+      title: "Dispatch metrics",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+
+    assert.strictEqual((yield* successes).count - successesBefore, 1);
+    assert.strictEqual((yield* durations).count - durationsBefore, 1);
   }).pipe(Effect.provide(layerTest)),
 );

@@ -116,7 +116,7 @@ describe("ThreadPullRequestServiceV2 reads", () => {
           }),
           Layer.mock(ProjectStore.ProjectStoreV2)({
             listShells: () => Effect.succeed([project]),
-            getShell: () => Effect.succeed(Option.some(project)),
+            getShell: () => Effect.succeedSome(project),
           }),
           Layer.mock(GitManager.GitManager)({
             branchPullRequest: (_input, options) =>
@@ -235,7 +235,7 @@ describe("ThreadPullRequestServiceV2 reads", () => {
             }),
             Layer.mock(ProjectStore.ProjectStoreV2)({
               listShells: () => Effect.succeed([project]),
-              getShell: () => Effect.succeed(Option.some(project)),
+              getShell: () => Effect.succeedSome(project),
             }),
             Layer.mock(GitManager.GitManager)({
               branchPullRequest: () => Effect.succeed(null),

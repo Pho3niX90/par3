@@ -436,8 +436,8 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
                       <Text className="text-xs font-t3-semibold text-foreground-muted">
                         Acceptance Criteria:
                       </Text>
-                      {task.acs.map((ac, idx) => (
-                        <Text key={idx} className="text-xs text-foreground pl-2">
+                      {task.acs.map((ac) => (
+                        <Text key={ac} className="text-xs text-foreground pl-2">
                           • {ac}
                         </Text>
                       ))}
@@ -594,9 +594,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
             {spec.findings && spec.findings.length > 0 && (
               <View className="border-t border-border-subtle pt-3 gap-2">
                 <Text className="text-sm font-t3-bold text-foreground">Review Findings</Text>
-                {spec.findings.map((f, idx) => (
+                {spec.findings.map((f) => (
                   <View
-                    key={idx}
+                    key={`${f.code}:${f.criterion ?? ""}:${f.message}`}
                     className="rounded-xl bg-card p-3 border border-border-subtle gap-1"
                   >
                     <View className="flex-row items-center justify-between">

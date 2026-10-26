@@ -9,22 +9,26 @@ import {
 
 describe("T3 orchestration provider instructions", () => {
   it("distinguishes delegated subagents from ordinary top-level threads", () => {
-    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "Use `delegate_task`");
-    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "ordinary top-level T3 conversations");
-    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "Never use them merely");
-    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "cross-provider");
-    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "call `delegate_task` again");
+    assert.include(
+      T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+      "Use `delegate_task` for another provider's model",
+    );
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "make new top-level threads");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "never mean one");
+    assert.include(
+      T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+      "Every new delegate review or re-check is a new `delegate_task`",
+    );
     assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "with `continueTaskId`");
     assert.include(
       T3_CODE_ORCHESTRATION_INSTRUCTIONS,
-      "Use `t3_thread_send` on `childThreadId` only to steer a child that is still running",
+      "`t3_thread_send` on `childThreadId` only steers a child that is still running",
     );
   });
 
-  it("documents structured schedules instead of JSON strings", () => {
-    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "structured object, never as JSON text");
-    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, '"everyMs":3600000');
-    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "bindToCurrentThread=false");
+  it("points agents at the user's vault and shared MCP servers", () => {
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "`vault:NAME`");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "call `mcp_servers`");
   });
 
   it("injects prompt fallback on a fresh MCP-enabled native session only", () => {
@@ -109,7 +113,7 @@ describe("T3 orchestration provider instructions", () => {
     });
 
     assert.include(injected, "Par3 interaction mode: Default");
-    assert.include(injected, "Par3 collaborative browser");
+    assert.include(injected, "## Par3 browser");
     assert.include(injected, "Par3 orchestration");
     assert.include(injected, "<user_request>\nInspect the repository.\n</user_request>");
   });

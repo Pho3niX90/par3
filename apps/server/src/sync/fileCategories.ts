@@ -416,10 +416,9 @@ export function makeFileCategory(input: {
   );
 
   const requireHome = existingHome.pipe(
-    Effect.flatMap((home) =>
-      home === null
-        ? Effect.fail(syncFailure("category-unavailable", unavailable().unavailableReason!))
-        : Effect.succeed(home),
+    Effect.filterOrFail(
+      (home): home is string => home !== null,
+      () => syncFailure("category-unavailable", unavailable().unavailableReason!),
     ),
   );
 
@@ -585,13 +584,12 @@ export function makeFileCategory(input: {
     function* (name: string) {
       const home = yield* requireHome;
       const target = yield* guardedPath(home, name);
-      yield* fs
-        .remove(target)
-        .pipe(
-          Effect.catch((cause) =>
-            cause.reason._tag === "NotFound" ? Effect.void : Effect.fail(cause),
-          ),
-        );
+      yield* fs.remove(target).pipe(
+        Effect.catchIf(
+          (cause) => cause.reason._tag === "NotFound",
+          () => Effect.void,
+        ),
+      );
       // Leave no empty folders behind, but never remove a category root itself.
       const stops = new Set(spec.roots.map((root) => path.join(home, root.path)));
       let directory = path.dirname(target);

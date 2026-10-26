@@ -31,6 +31,19 @@ describe("buildCodexAdditionalContext", () => {
 });
 
 describe("Codex runtime context", () => {
+  it("describes Markdown media support in the runtime context in both modes", () => {
+    {
+      const instructions = runtimeInstructions({
+        model: "gpt-5.3-codex",
+        reasoningEffort: "high",
+      });
+      NodeAssert.match(
+        instructions,
+        /<runtime_info>.*embed images, video, and audio.*Markdown image syntax with absolute file paths.*Link any other file.*absolute path.*files viewer.*<\/runtime_info>/,
+      );
+    }
+  });
+
   it("flattens multiline metadata into single-line runtime info", () => {
     const instructions = runtimeInstructions({
       model: "gpt\n5.3\ncodex",
@@ -43,28 +56,28 @@ describe("Codex runtime context", () => {
 });
 
 describe("Codex orchestration context", () => {
-  it("routes finished-child follow-ups to continueTaskId and independent reviews to delegate_task", () => {
+  it("routes subagents native first, delegate_task for the rest", () => {
     const orchestration = Object.entries(buildCodexAdditionalContext({ model: "gpt-6.1-sol" }))
       .filter(([key]) => key.startsWith("t3_code_orchestration_"))
       .map(([, entry]) => entry.value)
       .join("\n");
 
+    NodeAssert.ok(orchestration.includes("use your native tool when the child uses your provider"));
+    NodeAssert.ok(orchestration.includes("`run_in_background:false`"));
+    NodeAssert.ok(orchestration.includes("A native type running another provider's model"));
     NodeAssert.ok(
-      orchestration.includes(
-        "call `delegate_task` with `continueTaskId` set to that task's `taskId` once its result has arrived",
-      ),
+      orchestration.includes("Every new delegate review or re-check is a new `delegate_task`"),
     );
     NodeAssert.ok(
       orchestration.includes(
-        "Use `t3_thread_send` on `childThreadId` only to steer a child that is still running.",
+        "call `delegate_task` with `continueTaskId` set to its `taskId`. `t3_thread_send` on `childThreadId` only steers a child that is still running.",
       ),
     );
-    NodeAssert.ok(
-      orchestration.includes(
-        "For every independent review round, call `delegate_task` again without `continueTaskId`",
-      ),
-    );
-    NodeAssert.ok(!orchestration.includes("Do not use `t3_thread_send`"));
+    NodeAssert.ok(orchestration.includes("never a `t3_thread_send`"));
+    NodeAssert.ok(!orchestration.includes("inheritedOptions"));
+    NodeAssert.ok(!orchestration.includes("Prefer native"));
+    // The ACP terminal fallback is ACP-only; Codex agents never need it.
+    NodeAssert.ok(!orchestration.includes("acp-mcp-call"));
   });
 });
 

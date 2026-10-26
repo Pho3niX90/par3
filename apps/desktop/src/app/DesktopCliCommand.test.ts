@@ -102,9 +102,15 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       const alias = path.join(home, ".local", "bin", "p3");
       const launcher = path.join(home, ".t3", "bin", "par3");
 
-      expect(yield* command.state).toEqual({ supported: true, installedPath: null, onPath: false });
+      expect(yield* command.state).toEqual({
+        supported: true,
+        installedPath: null,
+        onPath: false,
+        launcherPath: null,
+      });
       const installed = yield* command.install;
       expect(installed.installedPath).toBe(link);
+      expect(installed.launcherPath).toBe(path.join(home, ".t3", "bin", "t3"));
       expect(yield* fs.readLink(link)).toBe(launcher);
       expect(yield* fs.readLink(alias)).toBe(launcher);
       expect((yield* command.install).installedPath).toBe(link);

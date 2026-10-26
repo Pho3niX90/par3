@@ -125,22 +125,17 @@ const make = Effect.gen(function* () {
   });
 
   return ThreadSidekick.of({
-    validate: (input) =>
-      providerRegistry.getProviders.pipe(
-        Effect.flatMap((providers) => problem({ ...input, providers })),
-        Effect.flatMap((reason) =>
-          reason === null ? Effect.void : Effect.fail(new ThreadSidekickInvalidError({ reason })),
-        ),
-      ),
+    validate: Effect.fn("ThreadSidekick.validate")(function* (input) {
+      const reason = yield* problem({ ...input, providers: yield* providerRegistry.getProviders });
+      if (reason !== null) return yield* new ThreadSidekickInvalidError({ reason });
+    }),
     status,
-    leadStateForTurn: (thread) =>
-      status(thread).pipe(
-        Effect.map((current) =>
-          current === null || current.inactiveReason !== null
-            ? null
-            : { label: current.label, billingModel: current.billingModel },
-        ),
-      ),
+    leadStateForTurn: Effect.fn("ThreadSidekick.leadStateForTurn")(function* (thread) {
+      const current = yield* status(thread);
+      return current === null || current.inactiveReason !== null
+        ? null
+        : { label: current.label, billingModel: current.billingModel };
+    }),
   });
 });
 
