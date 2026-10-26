@@ -1,18 +1,9 @@
 #!/usr/bin/env node
 /**
- * A stand-in `claude` for the provider benchmark. It replays a recording of
- * real `claude -p` stdout (written by bench-provider-overhead.ts for arm A0)
- * with the recorded delays, so every arm sees identical model time and the
- * difference between arms is plumbing alone.
- *
- * It speaks stream-json on both pipes, which covers `claude -p
- * --input-format stream-json` (arms A0/A1) and the Agent SDK (arm B): it
- * answers the SDK's control requests, replays turn k on the k-th user
- * message, and in approval modes asks `can_use_tool` before each recorded
- * tool call and waits for the answer.
- *
- * The recording is the file named by T3_BENCH_STUB_RECORDING: one JSON object
- * per line, `{ "turn": 0, "ms": 812.4, "line": { ...stdout line } }`.
+ * A stand-in `claude` for the provider benchmark: replays recorded `claude -p` stdout with its delays
+ * so every arm sees identical model time. Speaks stream-json for `-p` and the Agent SDK, answers control
+ * requests, replays turn k on the k-th user message, and asks `can_use_tool` in approval modes.
+ * Recording: T3_BENCH_STUB_RECORDING, one `{ "turn", "ms", "line" }` JSON object per line.
  */
 import * as NodeFS from "node:fs";
 import * as NodeReadline from "node:readline";
