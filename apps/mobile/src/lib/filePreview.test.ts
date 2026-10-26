@@ -424,9 +424,14 @@ describe("ThreadInlineFilePreview playback", () => {
       const lookup = new Promise((resolve) => {
         finishLookup = resolve;
       });
+      // The link's own path is checked first; only a miss pays for the workspace search.
       audio.query
         .mockResolvedValue({ _tag: "Success", value: { kind: "file" } })
-        .mockReturnValueOnce(lookup);
+        .mockReturnValueOnce(lookup)
+        .mockResolvedValueOnce({
+          _tag: "Success",
+          value: { entries: [{ path: "src/target.ts", kind: "file" }] },
+        });
       audio.refresh.mockResolvedValue(uri);
       const container = document.createElement("div");
       root = createRoot(container);
@@ -498,12 +503,7 @@ describe("ThreadInlineFilePreview playback", () => {
       });
       expect(kind === "audio" ? audio.played : audio.video.play).toHaveBeenCalled();
       expect(audio.sessionOwned).toBe(true);
-      await act(async () =>
-        finishLookup({
-          _tag: "Success",
-          value: { entries: [{ path: "src/target.ts", kind: "file" }] },
-        }),
-      );
+      await act(async () => finishLookup({ _tag: "Success", value: null }));
       if (playback === "continued playback") {
         expect(audio.navigate).toHaveBeenCalledExactlyOnceWith("ThreadFile", {
           environmentId,

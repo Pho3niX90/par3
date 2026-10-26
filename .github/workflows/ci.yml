@@ -343,8 +343,15 @@ jobs:
             node apps/web/node_modules/playwright/cli.js install-deps chromium
           fi
 
+      # Upstream runs this job on 8 vCPUs; on GitHub's 4-vCPU runner the attachment preview
+      # suite times out while it shares the machine, so it runs on its own afterwards.
       - name: Test
-        run: vp run --filter @t3tools/web test
+        working-directory: apps/web
+        run: vp test run --passWithNoTests --project unit --project browser --exclude '**/AttachmentFilePreview.browser.test.tsx'
+
+      - name: Test attachment previews
+        working-directory: apps/web
+        run: vp test run --project browser src/components/files/AttachmentFilePreview.browser.test.tsx
 
   # apps/server sets `fileParallelism: false`, so its test files run strictly
   # one at a time. Sharding spreads them over separate runners instead of
