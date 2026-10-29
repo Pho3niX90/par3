@@ -35,7 +35,7 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
   const resolvedBaseEnv = {
     ...inheritedEnv,
     // SDK attribution can consume more 5h quota: anthropics/claude-code#97074.
-    CLAUDE_CODE_ENTRYPOINT: inheritedEnv.CLAUDE_CODE_ENTRYPOINT ?? "t3-code",
+    CLAUDE_CODE_ENTRYPOINT: inheritedEnv.CLAUDE_CODE_ENTRYPOINT ?? "par3",
   };
   const homePath = config.homePath.trim();
   if (homePath.length === 0) return resolvedBaseEnv;

@@ -14,22 +14,20 @@ import {
 
 it.layer(NodeServices.layer)("ClaudeHome", (it) => {
   describe("Claude home resolution", () => {
-    it.effect(
-      "identifies Claude requests as T3 Code without mutating the inherited environment",
-      () =>
-        Effect.gen(function* () {
-          const environment = Object.freeze({ PATH: "/bin" });
+    it.effect("identifies Claude requests as Par3 without mutating the inherited environment", () =>
+      Effect.gen(function* () {
+        const environment = Object.freeze({ PATH: "/bin" });
 
-          for (const homePath of ["", "~/.claude-work"]) {
-            const resolved = yield* makeClaudeEnvironment({ homePath }, environment);
+        for (const homePath of ["", "~/.claude-work"]) {
+          const resolved = yield* makeClaudeEnvironment({ homePath }, environment);
 
-            expect(resolved.CLAUDE_CODE_ENTRYPOINT).toBe("t3-code");
-            expect(resolved.PATH).toBe(environment.PATH);
-            expect(resolved).not.toBe(environment);
-          }
+          expect(resolved.CLAUDE_CODE_ENTRYPOINT).toBe("par3");
+          expect(resolved.PATH).toBe(environment.PATH);
+          expect(resolved).not.toBe(environment);
+        }
 
-          expect(environment).toEqual({ PATH: "/bin" });
-        }),
+        expect(environment).toEqual({ PATH: "/bin" });
+      }),
     );
 
     it.effect("preserves an explicitly configured Claude client identity", () =>
