@@ -11,8 +11,8 @@ provided alongside this playbook. Everything machine-specific lives there, not h
 
 ## 1. Ask what went wrong
 
-Your first message to the user: ask them to describe what went wrong, in their own
-words. Ask them to paste screenshots directly into this session if they have any.
+Unless the user already described it, your first message asks what went wrong, in
+their own words. Ask them to paste screenshots directly into this session if they have any.
 Ask follow-up questions when the description is vague. Good repro steps are the most
 valuable thing you can extract from this conversation.
 
@@ -67,7 +67,7 @@ different code depending on it:
 
 - How is Par3 running on this machine: `npx @paritylabs/par3 serve` in a terminal, the
   background service, or the desktop app?
-- Which surface is the user connecting from: the website (app.t3.codes), the
+- Which surface is the user connecting from: the website (app.paritylabs.co.za), the
   desktop app against a local server, the desktop app against a remote server,
   or the mobile app?
 

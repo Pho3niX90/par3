@@ -254,6 +254,7 @@ function ThreadDetailsJiraFiles({
   );
   const { refresh } = query;
   const seenTurn = useRef(turnCompletedAt);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- re-reads the linked Jira files from the server after each turn the agent completes
   useEffect(() => {
     if (seenTurn.current === turnCompletedAt) return;
     seenTurn.current = turnCompletedAt;

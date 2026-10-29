@@ -7,12 +7,12 @@ A Parity Connect connection goes through four parts, in this order:
 3. **The host's tunnel** (cloudflared on the host) carries the request to the host.
 4. **Par3 on the host** answers.
 
-When a connection fails, open **Settings > Connections**, find the environment,
+When a connection fails, open **Settings > Environments**, find the environment,
 and select **Details**. The first part marked as failed is the cause. Find its
 section below.
 
 To see the host's side, run `par3 connect status` on the host, or open
-**Settings > Connections** on the host. Both check the host's Parity Connect
+**Settings > Sharing & access** on the host. Both check the host's Parity Connect
 address from the host, and say why it fails. `par3 connect` runs the same check
 when it finishes setup. This check cannot test another device's network. For a
 problem on one device, use **Details** on that device.
@@ -105,14 +105,16 @@ Parity Connect does not have an active link between your account and the host.
   account on this device and on the host. On the host, run `par3 connect logout`,
   then `par3 connect`.
 - **Parity Connect is off on the host, or the host only publishes agent activity.**
-  On the host, open **Settings > Connections** and turn **Parity Connect** on, or
+  On the host, open **Settings > Sharing & access** and turn **Parity Connect** on, or
   run `par3 connect`.
 - **The host was linked, but the server did not apply the link yet.** Run
   `par3 service restart` on the host, or restart `par3 serve`.
 - **This device's sign-in expired, or the host no longer accepts this
   device.** Sign out of Parity Connect and sign in again.
 - **Your account reached its tunnel limit.** Remove an environment you do not
-  use from your T3 account's Parity Connect page, then restart Par3 on the host.
+  use from your T3 account's Parity Connect page, or
+  [link a paid T3 Chat account](./remote-access.md#more-machines-with-t3-chat)
+  for a higher limit. Then restart Par3 on the host.
 
 ## The clock is off
 

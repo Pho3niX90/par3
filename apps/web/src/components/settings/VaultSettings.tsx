@@ -157,6 +157,7 @@ function VaultMachineRow(props: {
     .filter((item) => item.categoryId === "vault")
     .map((item) => `${item.name}:${item.hash}`)
     .join(",");
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes the vault list atom when sync reports changed vault items
   useEffect(() => {
     if (vaultItemsKey !== "") registry.refresh(vaultListAtom(environmentId));
   }, [registry, environmentId, vaultItemsKey]);
@@ -509,6 +510,7 @@ function VaultImportDialog(props: {
       })),
     );
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads importable provider secrets from the server once when the import dialog opens
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- State changes only after the response arrives.
     void load();

@@ -50,6 +50,7 @@ export function MergeFileSession(props: {
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the conflicted file from the server for this session, cancelling a stale read
   useEffect(() => {
     let cancelled = false;
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Reads again for another file or an explicit reload; the command's identity is not a trigger.

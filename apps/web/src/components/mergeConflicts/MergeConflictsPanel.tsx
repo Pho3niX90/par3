@@ -83,6 +83,7 @@ export function MergeConflictsPanel(props: MergeConflictsPanelProps) {
   const openFileMerge = (cwd: string, path: string) => setMerging({ cwd, path });
   const isMerging = merging !== null;
   const reportMaximized = useEffectEvent(props.onMaximizedChange);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the parent panel whether a file merge fills it, and clears that on unmount
   useEffect(() => {
     reportMaximized(isMerging);
     return () => reportMaximized(false);
@@ -175,6 +176,7 @@ function RepositorySection(props: {
     void refreshVcsStatus(target);
     listQuery.refresh();
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- re-reads conflict status from the server on open, repository change and window focus
   useEffect(() => {
     refreshAll();
     window.addEventListener("focus", refreshAll);
@@ -183,6 +185,7 @@ function RepositorySection(props: {
   }, [environmentId, cwd]);
   // Status is pushed after every mutation, including ones made elsewhere, so the list follows it.
   const refreshList = useEffectEvent(() => listQuery.refresh());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- re-reads the conflict list when the server's pushed status reports another operation or count
   useEffect(() => {
     refreshList();
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-read when status reports a different operation or count.

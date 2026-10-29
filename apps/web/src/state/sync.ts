@@ -204,9 +204,11 @@ export function useSyncRunner() {
   const run = useEffectEvent(() => runSyncPasses(registry, runner.current));
 
   const seqKey = views.map((view) => `${view.environmentId}:${view.snapshot.seq}`).join(",");
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs a settings sync pass against the environments when a snapshot sequence advances
   useEffect(() => {
     if (seqKey !== "") void run();
   }, [seqKey]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reruns the settings sync pass when the user retries
   useEffect(() => {
     if (retryNonce === 0) return;
     runner.current.lastSignature = null;

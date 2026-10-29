@@ -212,6 +212,7 @@ it.effect(
           apply: () => Effect.void,
           getScheduledTaskFallback: () => Effect.undefined,
           getLimitRecoveryCandidates: () => Effect.die("unused getLimitRecoveryCandidates"),
+          getOpenRemoteDelegatedTasks: Effect.die("unused getOpenRemoteDelegatedTasks"),
           getShellSnapshot: () => Effect.die("unused getShellSnapshot"),
           getThreadEditedPaths: () => Effect.die("unused getThreadEditedPaths"),
           listActiveSubagentThreadIds: () => Effect.die("unused listActiveSubagentThreadIds"),
