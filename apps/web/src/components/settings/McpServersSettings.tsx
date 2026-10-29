@@ -105,6 +105,7 @@ function McpServersForm() {
     const response = await readStatus({ environmentId, input: {} });
     if (response._tag === "Success") setStatuses(response.value.servers);
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the shared MCP servers' live status from the server once when the page opens
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- State changes only after the response arrives.
     void refreshStatus();
