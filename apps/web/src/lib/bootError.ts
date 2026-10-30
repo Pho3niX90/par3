@@ -1,6 +1,6 @@
 import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
 
-const FALLBACK_TRIAGE_COMMAND = "npx @paritylabs/par3 triage";
+const FALLBACK_TRIAGE_COMMAND = "npx par3-cli triage";
 const DOWNLOAD_URL = "https://t3.codes/download";
 const ISSUE_URL = "https://github.com/Pho3niX90/par3/issues/new";
 const LAST_FAILURE_KEY = "t3code:boot-failed-at";

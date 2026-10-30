@@ -107,11 +107,13 @@ export function manualServerUpdateCommand(
 ): string {
   if (installation?.kind === "npm-global") {
     const prefix = `'${installation.prefix.replaceAll("'", "'\\''")}'`;
-    return `npm install --global --prefix ${prefix} @paritylabs/par3@${targetVersion}`;
+    // Installing the other package name into the same prefix collides on the `par3` bin.
+    const packageName = installation.packageName ?? "@paritylabs/par3";
+    return `npm install --global --prefix ${prefix} ${packageName}@${targetVersion}`;
   }
   const runner =
     installation?.kind === "pnpm-dlx" ? "pnpm dlx" : installation?.kind === "bunx" ? "bunx" : "npx";
-  return `${runner} @paritylabs/par3@${targetVersion}`;
+  return `${runner} par3-cli@${targetVersion}`;
 }
 
 export function serverUpdateGuidance(capability: ServerSelfUpdateCapability): string {

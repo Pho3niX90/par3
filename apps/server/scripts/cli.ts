@@ -6,10 +6,12 @@ import * as FileSystem from "effect/FileSystem";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { DEVELOPMENT_ICON_OVERRIDES } from "../../../scripts/lib/brand-assets.ts";
+import { NPM_LAUNCHER_PACKAGES } from "../../../scripts/build-npm-launcher.ts";
 import { findEsmImportsOfExternalPackages } from "../../../scripts/lib/cli-executable-imports.ts";
 import rootPackageJson from "../../../package.json" with { type: "json" };
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
@@ -152,6 +154,10 @@ const buildExeCmd = Command.make(
   ),
 );
 
+const decodeLauncherManifest = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ name: Schema.String, version: Schema.String })),
+);
+
 /** Publish after the GitHub release exists; the launcher downloads from it. */
 const publishCmd = Command.make(
   "publish",
@@ -169,27 +175,48 @@ const publishCmd = Command.make(
     Effect.gen(function* () {
       const path = yield* Path.Path;
       const fs = yield* FileSystem.FileSystem;
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const packagesDir = path.resolve(config.packagesDir);
-      const launcherTarball = path.join(packagesDir, "t3.tgz");
-      if (!(yield* fs.exists(launcherTarball))) {
-        return yield* new ServerCliBuildAssetMissingError({ assetPath: launcherTarball });
+      for (const { file } of NPM_LAUNCHER_PACKAGES) {
+        const launcherTarball = path.join(packagesDir, `${file}.tgz`);
+        if (!(yield* fs.exists(launcherTarball))) {
+          return yield* new ServerCliBuildAssetMissingError({ assetPath: launcherTarball });
+        }
       }
 
-      const args = ["publish", "--access", config.access, "--tag", config.tag];
-      if (config.provenance) args.push("--provenance");
-      if (config.dryRun) args.push("--dry-run");
-      const spawnCommand = yield* resolveSpawnCommand("npm", [...args, launcherTarball]);
-      yield* Effect.log(`[cli] npm ${args.join(" ")} t3.tgz`);
-      yield* runCommand(
-        ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-          cwd: packagesDir,
-          stdout: config.verbose ? "inherit" : "ignore",
-          stderr: "inherit",
-          shell: spawnCommand.shell,
-        }),
-      );
+      for (const { file } of NPM_LAUNCHER_PACKAGES) {
+        const { name, version } = yield* fs
+          .readFileString(path.join(packagesDir, file, "package.json"))
+          .pipe(Effect.flatMap(decodeLauncherManifest));
+        // A rerun after one package failed must not fail on the one that already went out.
+        const view = yield* resolveSpawnCommand("npm", ["view", `${name}@${version}`, "version"]);
+        const published = yield* spawner.string(
+          ChildProcess.make(view.command, view.args, { stderr: "ignore", shell: view.shell }),
+        );
+        if (published.trim() === version) {
+          yield* Effect.log(`[cli] ${name}@${version} is already on npm; skipping`);
+          continue;
+        }
+
+        const args = ["publish", "--access", config.access, "--tag", config.tag];
+        if (config.provenance) args.push("--provenance");
+        if (config.dryRun) args.push("--dry-run");
+        const spawnCommand = yield* resolveSpawnCommand("npm", [
+          ...args,
+          path.join(packagesDir, `${file}.tgz`),
+        ]);
+        yield* Effect.log(`[cli] npm ${args.join(" ")} ${file}.tgz (${name})`);
+        yield* runCommand(
+          ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+            cwd: packagesDir,
+            stdout: config.verbose ? "inherit" : "ignore",
+            stderr: "inherit",
+            shell: spawnCommand.shell,
+          }),
+        );
+      }
     }),
-).pipe(Command.withDescription("Publish the @paritylabs/par3 launcher to npm."));
+).pipe(Command.withDescription("Publish the @paritylabs/par3 and par3-cli launchers to npm."));
 
 const cli = Command.make("cli").pipe(
   Command.withDescription("T3 server build & publish CLI."),

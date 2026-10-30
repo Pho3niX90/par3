@@ -1006,7 +1006,7 @@ jobs:
       - name: Publish the npm launcher
         run: |
           if ! node apps/server/scripts/cli.ts publish --packages-dir npm-packages --tag "${{ needs.preflight.outputs.cli_dist_tag }}" --provenance --verbose; then
-            echo "::error::npm publish failed. Make sure package @paritylabs/par3 has a trusted publisher registered for .github/workflows/release.yml (see docs/operations/release.md)." >&2
+            echo "::error::npm publish failed. Make sure packages @paritylabs/par3 and par3-cli both have a trusted publisher registered for .github/workflows/release.yml (see docs/operations/release.md)." >&2
             exit 1
           fi
 

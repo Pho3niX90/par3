@@ -38,6 +38,9 @@ const InstallManifest = Schema.Struct({
 });
 const decodeInstallManifest = Schema.decodeUnknownEffect(Schema.fromJsonString(InstallManifest));
 
+// `par3-cli` is the same launcher published unscoped so `npx par3-cli` works.
+const NPM_LAUNCHER_PACKAGE_NAMES = new Set(["@paritylabs/par3", "par3-cli"]);
+
 /**
  * `T3CODE_NPM_LAUNCHER_PATH` is inherited by child shells, so accept it only for this package
  * version to avoid claiming another `t3` invocation is the npm install.
@@ -52,7 +55,7 @@ export const resolveEntryPath = Effect.gen(function* () {
       .pipe(Effect.flatMap(decodeInstallManifest), Effect.option);
     if (
       Option.isSome(manifest) &&
-      manifest.value.name === "@paritylabs/par3" &&
+      NPM_LAUNCHER_PACKAGE_NAMES.has(manifest.value.name) &&
       manifest.value.version === packageJson.version
     ) {
       return npmLauncher;
@@ -68,7 +71,9 @@ export const resolveServerInstallation = Effect.gen(function* () {
   const platform = yield* HostProcess.Platform;
   const entry = yield* fs.realPath(yield* resolveEntryPath);
   const match =
-    /^(.*)\/lib\/node_modules\/@paritylabs\/par3\/(?:dist\/bin\.mjs|bin\/t3\.mjs)$/.exec(entry);
+    /^(.*)\/lib\/node_modules\/(@paritylabs\/par3|par3-cli)\/(?:dist\/bin\.mjs|bin\/t3\.mjs)$/.exec(
+      entry,
+    );
   if (!match) {
     const runner = detectCliRunner(entry);
     return runner === null
@@ -77,6 +82,7 @@ export const resolveServerInstallation = Effect.gen(function* () {
   }
   if (platform === "win32") return null;
   const prefix = match[1] || "/";
+  const packageName = match[2] === "par3-cli" ? "par3-cli" : "@paritylabs/par3";
   if (
     prefix.includes("/node_modules/") ||
     /\/(?:Cellar|Caskroom)\//i.test(prefix) ||
@@ -84,21 +90,21 @@ export const resolveServerInstallation = Effect.gen(function* () {
   )
     return null;
 
-  const packageRoot = path.join(prefix, "lib/node_modules/@paritylabs/par3");
+  const packageRoot = path.join(prefix, "lib/node_modules", packageName);
   const manifest = yield* fs
     .readFileString(path.join(packageRoot, "package.json"))
     .pipe(Effect.flatMap(decodeInstallManifest));
-  if (manifest.name !== "@paritylabs/par3" || !manifest.bin) return null;
+  if (manifest.name !== packageName || !manifest.bin) return null;
   const bin = yield* fs.realPath(path.join(packageRoot, manifest.bin.par3));
   const globalBin = yield* fs.realPath(path.join(prefix, "bin/par3"));
   if (globalBin !== bin || bin !== entry) return null;
-  return { kind: "npm-global", prefix } satisfies ServerInstallation;
+  return { kind: "npm-global", prefix, packageName } satisfies ServerInstallation;
 }).pipe(Effect.orElseSucceed(() => null));
 
 /** The original package spec is unavailable at startup; infer its channel from the version. */
 function suggestedPackageSpec(version: string): string {
   const channel = /^[^-+]+-(nightly|preview)\./.exec(version)?.[1];
-  return channel === undefined ? "@paritylabs/par3" : `@paritylabs/par3@${channel}`;
+  return channel === undefined ? "par3-cli" : `par3-cli@${channel}`;
 }
 
 function formatCliCommand(input: {

@@ -43,15 +43,15 @@ the version.
   - Automatically generated release notes are pinned to the previous tag in the same channel, so stable compares to the previous stable tag and nightly compares to the previous nightly tag.
 - Includes Electron auto-update metadata (for example `latest*.yml`, `nightly*.yml`, and `*.blockmap`) in release assets.
 - Builds a self-contained CLI archive per platform (`t3-<version>-<platform>-<arch>.tar.gz`, `.zip` on Windows) in the same job as that target's desktop artifact and attaches them to the GitHub Release with a `SHA256SUMS` file, on every channel, for five targets: macOS arm64, Linux x64 and arm64, Windows x64 and arm64. Every archive is smoke-tested on hardware of its own architecture, and every one but the Windows archives is also built and signed there. There is no macOS x64 archive: Node single-executables are unsupported on x64 macOS (the SEA docs list macOS as arm64 only) and the binary segfaults on start; the x64 desktop app is Electron and unaffected.
-  - The archive holds the server as a Node single-executable (`scripts/build-cli-archive.ts`), so unpacking it needs neither Node, npm, nor a compiler. It is the only form in which T3 Code manages a runtime: the desktop's SSH environments, the boot service, `par3 update`, and the install scripts all download and verify this archive against `SHA256SUMS`. The `@paritylabs/par3` npm package exists for people who run `npx @paritylabs/par3` or `npm install -g @paritylabs/par3` themselves, and it downloads this same archive too; nothing in the product installs from npm. The `curl | sh` installers are `scripts/install.sh` and `scripts/install.ps1`; the marketing site copies them into its `public/` at build time (`apps/marketing/scripts/stage-install-scripts.mjs`) and serves them at `t3.codes/install.sh` and `/install.ps1`.
+  - The archive holds the server as a Node single-executable (`scripts/build-cli-archive.ts`), so unpacking it needs neither Node, npm, nor a compiler. It is the only form in which T3 Code manages a runtime: the desktop's SSH environments, the boot service, `par3 update`, and the install scripts all download and verify this archive against `SHA256SUMS`. The `@paritylabs/par3` npm package, also published unscoped as `par3-cli`, exists for people who run `npx par3-cli` or `npm install -g @paritylabs/par3` themselves, and it downloads this same archive too; nothing in the product installs from npm. The `curl | sh` installers are `scripts/install.sh` and `scripts/install.ps1`; the marketing site copies them into its `public/` at build time (`apps/marketing/scripts/stage-install-scripts.mjs`) and serves them at `t3.codes/install.sh` and `/install.ps1`.
   - The root `package.json` pins `engines.node` to the exact Node version used by development, CI and standalone executables. Keep it exact: cross-target builds download that version, and native executable builds reject a different host Node version. Runtime changes need a new Par3 release version because installed runtimes are cached by that version.
   - macOS archives are signed with the Developer ID certificate and notarized when the Apple secrets are present (ad hoc otherwise, which still runs from `curl`/`tar` installs). Windows executables use the same Azure Trusted Signing setup as the installer. Every native addon in the macOS archive is signed too, since the hardened runtime refuses unsigned libraries.
   - Each archive is extracted and executed (`scripts/smoke-cli-archive.ts`) on its build runner, or on the `verify_runner` for Windows.
-- After the GitHub Release is published, publishes the `@paritylabs/par3` npm package with OIDC trusted publishing from the same workflow file. It is only a launcher (`scripts/npm-launcher/t3.mjs`): on first run it downloads its exact version's CLI archive from the GitHub Release, verifies it against `SHA256SUMS`, and unpacks it into `<T3 home>/runtime/versions/<version>`, the layout the install scripts and `par3 update` share. The executables are not on npm: npm's publish-time scanning held 80-250 MB per-platform packages back for up to an hour after the launcher was live, so every install in that window got a launcher with no executable. Because the launcher reads from the release, `publish_cli` runs after `release`, never before.
+- After the GitHub Release is published, publishes the `@paritylabs/par3` npm package, and the identical unscoped `par3-cli` so `npx par3-cli` works, with OIDC trusted publishing from the same workflow file. It is only a launcher (`scripts/npm-launcher/t3.mjs`): on first run it downloads its exact version's CLI archive from the GitHub Release, verifies it against `SHA256SUMS`, and unpacks it into `<T3 home>/runtime/versions/<version>`, the layout the install scripts and `par3 update` share. The executables are not on npm: npm's publish-time scanning held 80-250 MB per-platform packages back for up to an hour after the launcher was live, so every install in that window got a launcher with no executable. Because the launcher reads from the release, `publish_cli` runs after `release`, never before.
   - stable releases publish npm dist-tag `latest`
   - nightly releases publish npm dist-tag `nightly`
   - preview releases publish npm dist-tag `preview`, which nothing resolves unless asked for by name
-  - one-time setup: package `@paritylabs/par3` needs a trusted publisher registered for this workflow file (see below).
+  - one-time setup: packages `@paritylabs/par3` and `par3-cli` each need a trusted publisher registered for this workflow file (see below).
 - Builds the hosted web app on Vercel while the desktop jobs run, and makes it live only after a release is published:
   - stable releases are aliased to the `latest` hosted app channel
   - nightly releases are aliased to the `nightly` hosted app channel
@@ -531,12 +531,18 @@ blockmaps, with a 60 MB maximum for a representative sidecar-to-sidecar update.
 
 After the GitHub Release is published, the workflow runs `node scripts/build-npm-launcher.ts`, then
 `node apps/server/scripts/cli.ts publish --packages-dir npm-packages`, which runs `npm publish` on
-`t3.tgz`. That is the only package published per release.
+`t3.tgz` (`@paritylabs/par3`) and then `par3-cli.tgz` (`par3-cli`). Both hold the same launcher. A version
+already on npm is skipped, so rerunning `publish_cli` after one of them failed finishes the other.
 
 Checklist:
 
-1. Confirm the `@paritylabs` npm org owns package `@paritylabs/par3`.
-2. For `@paritylabs/par3`, configure a Trusted Publisher in the npm package settings:
+1. Confirm the `@paritylabs` npm org owns package `@paritylabs/par3`, and that the maintainers'
+   npm account owns the unscoped `par3-cli`. npm refused `par3` itself as too similar to
+   `path`, `tar` and other short packages. npm only allows a trusted publisher on a package that
+   already exists, so a new package name is published once by hand first:
+   `node scripts/build-npm-launcher.ts --version <current release>`, then
+   `npm publish --access public npm-packages/par3-cli.tgz`.
+2. For both packages, configure a Trusted Publisher in the npm package settings:
    - Provider: GitHub Actions
    - Repository: this repo
    - Workflow file: `.github/workflows/release.yml`

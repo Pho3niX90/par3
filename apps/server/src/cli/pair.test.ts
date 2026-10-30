@@ -276,8 +276,8 @@ describe("par3 pair", () => {
         typeof error === "object" && error !== null && "cause" in error ? error.cause : error,
       );
       assert.include(rendered, "No running Par3 server found.");
-      assert.include(rendered, "npx @paritylabs/par3 serve");
-      assert.include(rendered, "npx @paritylabs/par3 connect");
+      assert.include(rendered, "npx par3-cli serve");
+      assert.include(rendered, "npx par3-cli connect");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 

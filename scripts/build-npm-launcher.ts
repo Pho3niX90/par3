@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// GitHub archives avoid npm scanning delays; output <output-dir>/t3/ and publishable t3.tgz.
+// GitHub archives avoid npm scanning delays; output <output-dir>/<file>/ and publishable <file>.tgz
+// for each package in NPM_LAUNCHER_PACKAGES.
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -17,7 +18,13 @@ import serverPackageJson from "../apps/server/package.json" with { type: "json" 
 
 import { windowsSystemTar } from "./lib/windows-tar.ts";
 
-export const NPM_LAUNCHER_PACKAGE_NAME = "@paritylabs/par3";
+// The same launcher under two names. npm refused unscoped `par3` as too similar to `path`,
+// `tar` and others, so the short name is `par3-cli`.
+// `file` is fixed so the scoped name doesn't nest output under `@paritylabs/`.
+export const NPM_LAUNCHER_PACKAGES = [
+  { name: "@paritylabs/par3", file: "t3" },
+  { name: "par3-cli", file: "par3-cli" },
+] as const;
 
 const encodePackageJson = Schema.encodeEffect(fromJsonStringPretty(Schema.Unknown));
 
@@ -31,22 +38,29 @@ export class NpmLauncherCommandFailedError extends Schema.TaggedError<NpmLaunche
 }
 
 /** engines requires import.meta.dirname and fetch. */
-export function npmLauncherPackageManifest(version: string) {
+export function npmLauncherPackageManifest(name: string, version: string) {
   return {
-    name: NPM_LAUNCHER_PACKAGE_NAME,
+    name,
     version,
     description:
       "Par3 CLI. Downloads the self-contained executable for this platform from the GitHub Release.",
     license: serverPackageJson.license,
     // npm provenance requires the repository that runs the publishing workflow.
     repository: { type: "git", url: "git+https://github.com/Pho3niX90/par3.git" },
-    bin: { par3: "./bin/t3.mjs", p3: "./bin/t3.mjs" },
+    // `npx <name>` runs only the bin named after the package; the scoped name resolves to `par3`.
+    bin: {
+      par3: "./bin/t3.mjs",
+      p3: "./bin/t3.mjs",
+      [name.replace(/^@[^/]+\//, "")]: "./bin/t3.mjs",
+    },
     files: ["bin", "dist"],
     engines: { node: ">=20.11" },
   };
 }
 
-export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: {
+const buildNpmLauncherPackage = Effect.fn("buildNpmLauncherPackage")(function* (input: {
+  readonly name: string;
+  readonly file: string;
   readonly version: string;
   readonly outputDir: string;
 }) {
@@ -55,7 +69,6 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const sourceDir = yield* path.fromFileUrl(new URL("./npm-launcher/", import.meta.url));
 
-  yield* fs.makeDirectory(input.outputDir, { recursive: true });
   const scratch = yield* fs.makeTempDirectoryScoped({
     directory: input.outputDir,
     prefix: ".launcher-",
@@ -65,7 +78,8 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
   yield* fs.makeDirectory(path.join(stageDir, "dist"));
   yield* fs.writeFileString(
     path.join(stageDir, "package.json"),
-    `${yield* encodePackageJson(npmLauncherPackageManifest(input.version))}\n`,
+    `${yield* encodePackageJson(npmLauncherPackageManifest(input.name, input.version))}
+`,
   );
   yield* fs.copyFile(path.join(sourceDir, "t3.mjs"), path.join(stageDir, "bin/t3.mjs"));
   yield* fs.chmod(path.join(stageDir, "bin/t3.mjs"), 0o755);
@@ -75,10 +89,8 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
     yield* fs.copyFile(readme, path.join(stageDir, "README.md"));
   }
 
-  // Fixed file names: the scoped package name would nest them under `@paritylabs/`, and
-  // `cli.ts publish` reads `t3.tgz`.
-  const packageDir = path.join(input.outputDir, "t3");
-  const tarball = path.join(input.outputDir, "t3.tgz");
+  const packageDir = path.join(input.outputDir, input.file);
+  const tarball = path.join(input.outputDir, `${input.file}.tgz`);
   yield* fs.remove(tarball, { force: true });
   const tar = (yield* HostProcess.Platform) === "win32" ? windowsSystemTar() : "tar";
   // npm tarballs root everything under `package/`.
@@ -95,8 +107,19 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
   yield* fs.remove(packageDir, { recursive: true, force: true });
   yield* fs.rename(stageDir, packageDir);
   yield* Effect.log(`[npm-launcher] Wrote ${packageDir} and ${tarball}`);
-  return { packageDir, tarball };
+  return { name: input.name, packageDir, tarball };
 }, Effect.scoped);
+
+export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: {
+  readonly version: string;
+  readonly outputDir: string;
+}) {
+  const fs = yield* FileSystem.FileSystem;
+  yield* fs.makeDirectory(input.outputDir, { recursive: true });
+  return yield* Effect.forEach(NPM_LAUNCHER_PACKAGES, (pkg) =>
+    buildNpmLauncherPackage({ ...pkg, ...input }),
+  );
+});
 
 const command = Command.make(
   "build-npm-launcher",
@@ -107,7 +130,7 @@ const command = Command.make(
     outputDir: Flag.String("output-dir").pipe(Flag.withDefault("npm-packages")),
   },
   buildNpmLauncher,
-).pipe(Command.withDescription("Build the t3 npm launcher package."));
+).pipe(Command.withDescription("Build the Par3 npm launcher packages."));
 
 if (import.meta.main) {
   Command.run(command, { version: "0.0.0" }).pipe(

@@ -128,7 +128,7 @@ export const layer = Layer.effect(
                 Ref.set(
                   preflightErrorRef,
                   Option.some(
-                    "Another Par3 server is using this distro's T3 home, or an older background service is set up for it. Stop that server or pair with it, or try `par3 update` in the distro. If the older launcher cannot update, run `par3 service uninstall` and optionally reinstall with `par3 service install` from a current CLI in the distro. Use `npx @paritylabs/par3@latest` if `par3` is missing or outdated, and pass `--base-dir` with the service's T3 home to each command.",
+                    "Another Par3 server is using this distro's T3 home, or an older background service is set up for it. Stop that server or pair with it, or try `par3 update` in the distro. If the older launcher cannot update, run `par3 service uninstall` and optionally reinstall with `par3 service install` from a current CLI in the distro. Use `npx par3-cli@latest` if `par3` is missing or outdated, and pass `--base-dir` with the service's T3 home to each command.",
                   ),
                 ),
               ),

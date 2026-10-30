@@ -18,7 +18,7 @@ import { buildNpmLauncher, npmLauncherPackageManifest } from "./build-npm-launch
 const VERSION = "1.2.3";
 
 it("identifies the publishing repository for npm provenance", () => {
-  assert.deepStrictEqual(npmLauncherPackageManifest(VERSION).repository, {
+  assert.deepStrictEqual(npmLauncherPackageManifest("par3-cli", VERSION).repository, {
     type: "git",
     url: "git+https://github.com/Pho3niX90/par3.git",
   });
@@ -112,19 +112,33 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-npm-launcher-test-" });
-        const output = yield* buildNpmLauncher({
+        const outputs = yield* buildNpmLauncher({
           version: VERSION,
           outputDir: path.join(root, "out"),
         });
 
-        const manifest = yield* decodeManifest(
-          yield* fs.readFileString(path.join(output.packageDir, "package.json")),
+        assert.deepStrictEqual(
+          outputs.map((built) => path.basename(built.tarball)),
+          ["t3.tgz", "par3-cli.tgz"],
         );
-        assert.equal(manifest.name, "@paritylabs/par3");
-        assert.equal(manifest.version, VERSION);
-        assert.deepStrictEqual(manifest.bin, { par3: "./bin/t3.mjs", p3: "./bin/t3.mjs" });
-        assert.isUndefined(manifest.dependencies);
-        assert.isUndefined(manifest.optionalDependencies);
+        for (const [built, name, bin] of [
+          [outputs[0]!, "@paritylabs/par3", { par3: "./bin/t3.mjs", p3: "./bin/t3.mjs" }],
+          [
+            outputs[1]!,
+            "par3-cli",
+            { par3: "./bin/t3.mjs", p3: "./bin/t3.mjs", "par3-cli": "./bin/t3.mjs" },
+          ],
+        ] as const) {
+          const manifest = yield* decodeManifest(
+            yield* fs.readFileString(path.join(built.packageDir, "package.json")),
+          );
+          assert.equal(manifest.name, name);
+          assert.equal(manifest.version, VERSION);
+          assert.deepStrictEqual(manifest.bin, bin);
+          assert.isUndefined(manifest.dependencies);
+          assert.isUndefined(manifest.optionalDependencies);
+        }
+        const output = outputs[0]!;
 
         const installed = path.join(root, "installed");
         yield* fs.makeDirectory(installed);
