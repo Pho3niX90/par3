@@ -71,7 +71,7 @@ export class NoRunningServerError extends Schema.TaggedError<NoRunningServerErro
       ...(this.inLinkedWorktree
         ? ["In a linked worktree, pass --base-dir to pair with a server outside it."]
         : []),
-      "Start one with `npx @paritylabs/par3 serve`, or connect this machine with Parity Connect: `npx @paritylabs/par3 connect`.",
+      "Start one with `npx par3-cli serve`, or connect this machine with Parity Connect: `npx par3-cli connect`.",
     ].join("\n");
   }
 }

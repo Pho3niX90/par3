@@ -27,6 +27,14 @@ describe("versionSkew", () => {
     expect(
       manualServerUpdateCommand("0.0.45", { kind: "npm-global", prefix: "/opt/maria's node" }),
     ).toBe("npm install --global --prefix '/opt/maria'\\''s node' @paritylabs/par3@0.0.45");
+    expect(
+      manualServerUpdateCommand("0.0.45", {
+        kind: "npm-global",
+        prefix: "/opt/node",
+        packageName: "par3-cli",
+      }),
+    ).toBe("npm install --global --prefix '/opt/node' par3-cli@0.0.45");
+    expect(manualServerUpdateCommand("0.0.45", { kind: "npx" })).toBe("npx par3-cli@0.0.45");
   });
   beforeEach(() => {
     branding.APP_VERSION = "0.0.34";

@@ -58,7 +58,12 @@ export type ServerSelfUpdateMethod = typeof ServerSelfUpdateMethod.Type;
 
 export const ServerInstallation = Schema.Union([
   Schema.Struct({ kind: Schema.Literals(["npx", "pnpm-dlx", "bunx"]) }),
-  Schema.Struct({ kind: Schema.Literal("npm-global"), prefix: TrimmedNonEmptyString }),
+  Schema.Struct({
+    kind: Schema.Literal("npm-global"),
+    prefix: TrimmedNonEmptyString,
+    // Goes into a shell command, so only known names; absent from servers before `par3-cli` existed.
+    packageName: Schema.optionalKey(Schema.Literals(["@paritylabs/par3", "par3-cli"])),
+  }),
 ]);
 export type ServerInstallation = typeof ServerInstallation.Type;
 

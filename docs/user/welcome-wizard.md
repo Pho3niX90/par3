@@ -4,7 +4,7 @@ Par3 shows a setup flow when you open a new installation. Existing
 workspaces skip this flow.
 
 The hosted app at app.t3.codes does not open setup. With no computer connected,
-it asks you to sign in to Parity Connect, then to run `npx @paritylabs/par3 connect` on your
+it asks you to sign in to Parity Connect, then to run `npx par3-cli connect` on your
 computer. From home, it adds compatible computers linked to your account and
 opens the app.
 

@@ -231,7 +231,7 @@ sudo par3 browser setup
 ```
 
 The server shows the exact line for how you started it, such as
-`sudo npx @paritylabs/par3 browser setup`, and keeps your `PATH` when Node is installed only
+`sudo npx par3-cli browser setup`, and keeps your `PATH` when Node is installed only
 for your user. Where `par3` is not on your `PATH`, such as with only the
 desktop app installed, it names the full path of the app's own `par3` instead. It allows Chrome's sandbox with an AppArmor profile and installs
 any missing libraries and system fonts with apt; pages that load without text
@@ -260,11 +260,11 @@ expires.
 To choose a token's permissions, pass `--scope` once for each scope you want:
 
 ```sh
-npx @paritylabs/par3 pair --scope orchestration:read --scope relay:read
+npx par3-cli pair --scope orchestration:read --scope relay:read
 ```
 
 The selected scopes replace the default permissions. The same option works with
-`npx @paritylabs/par3 auth pairing create` and `npx @paritylabs/par3 auth session issue`; each command's
+`npx par3-cli auth pairing create` and `npx par3-cli auth session issue`; each command's
 `--help` lists the available scopes. Without `--scope`, pairing tokens and issued
 bearer sessions get every permission, including managing access and Parity Connect.
 A terminal or a full-access agent on the host can reach those as well, so a

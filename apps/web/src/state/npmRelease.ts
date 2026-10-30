@@ -6,8 +6,9 @@ import { AsyncResult, Atom } from "effect/reactivity";
 export const npmReleasePublishedAtom = Atom.family((version: string) =>
   Atom.make(
     Effect.gen(function* () {
+      // `par3-cli` publishes after `@paritylabs/par3`, so once it is up both are.
       const response = yield* HttpClient.get(
-        `https://registry.npmjs.org/@paritylabs%2fpar3/${encodeURIComponent(version)}`,
+        `https://registry.npmjs.org/par3-cli/${encodeURIComponent(version)}`,
       );
       if (response.status === 404) return false;
       const body = yield* HttpClientResponse.filterStatusOk(response).pipe(

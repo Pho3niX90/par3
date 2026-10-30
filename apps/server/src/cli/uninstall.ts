@@ -146,7 +146,7 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
     yield* Console.log(`Nothing to remove: Par3 is not installed for ${input.baseDir}.`);
     if (!(yield* HostProcess.IsExecutable)) {
       yield* Console.log(
-        "  This Par3 runs from a Node script, so it was installed by npm or built from source. Remove it the same way (`npm uninstall -g @paritylabs/par3`, or delete the checkout).",
+        "  This Par3 runs from a Node script, so it was installed by npm or built from source. Remove it the same way (`npm uninstall -g par3-cli` or `npm uninstall -g @paritylabs/par3`, whichever you installed, or delete the checkout).",
       );
     }
     return;

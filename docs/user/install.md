@@ -42,7 +42,7 @@ If `par3` or `par3 start` reports an already running server, connect to that ser
 instead. Stop it before starting a replacement, or use a different `--base-dir`
 for an independent server.
 
-To try Par3 once without installing it, run `npx @paritylabs/par3@latest` instead (needs
+To try Par3 once without installing it, run `npx par3-cli@latest` instead (needs
 Node.js for `npx`).
 
 ### Intel Macs
