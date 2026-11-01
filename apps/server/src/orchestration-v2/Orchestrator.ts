@@ -2438,7 +2438,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const projection = yield* projectionStore
       .getThreadRecords(
         command.parentThreadId,
-        ["subagents", "runs", "messages", "nodes", "attempts", "turnItems"],
+        ["subagents", "runs", "nodes", "attempts", "turnItems"],
         { turnItemTypes: [] },
       )
       .pipe(
@@ -2488,10 +2488,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       return;
     }
     if (state === "disposed") {
+      const { messages } = yield* projectionStore
+        .getThreadRecords(command.parentThreadId, ["messages"])
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new OrchestratorProjectionError({
+                threadId: command.parentThreadId,
+                cause,
+              }),
+          ),
+        );
       yield* cancelQueuedDelegatedRequests({
         command,
         events,
-        projection,
+        projection: { ...projection, messages },
         taskIds: [task.id],
         now,
       });

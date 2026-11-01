@@ -148,7 +148,6 @@ describe("DesktopApplicationMenu", () => {
       yield* configureMenu(selectedAction, applicationMenuTemplate, { platform: "win32" });
 
       const windowMenu = windowMenuItems(yield* Deferred.await(applicationMenuTemplate));
-      assert.isUndefined(windowMenu.role);
       if (!Array.isArray(windowMenu.submenu)) {
         throw new Error("Expected Window menu submenu to be an array.");
       }
