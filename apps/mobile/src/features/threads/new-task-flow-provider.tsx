@@ -222,6 +222,16 @@ type NewTaskFlowContextValue = {
 
 const NewTaskFlowContext = React.createContext<NewTaskFlowContextValue | null>(null);
 
+// The compiler treats a hook's result as frozen. A plain call's result stays mutable for as long as
+// anything reads it, which silently drops the cache around buildModelOptions below.
+function useNewThreadSeed(
+  logicalProjectKey: string | null,
+  defaults: Omit<Parameters<typeof resolveNewThreadSeed>[0], "lastUsed">,
+) {
+  const lastUsed = useLastUsedThreadSelection(logicalProjectKey);
+  return resolveNewThreadSeed({ lastUsed, ...defaults });
+}
+
 export function NewTaskFlowProvider(
   props: React.PropsWithChildren<{
     active?: boolean;
@@ -391,9 +401,7 @@ export function NewTaskFlowProvider(
   const selectedLogicalProjectKey = selectedProject
     ? deriveLogicalProjectKeyFromSettings(selectedProject, groupingSettings)
     : null;
-  const storedLastUsed = useLastUsedThreadSelection(selectedLogicalProjectKey);
-  const newThreadSeed = resolveNewThreadSeed({
-    lastUsed: storedLastUsed,
+  const newThreadSeed = useNewThreadSeed(selectedLogicalProjectKey, {
     defaultModelSelection: projectSettings.settings.defaultModelSelection ?? null,
     defaultModelSelectionSource: projectSettings.sources.defaultModelSelection,
     defaultRuntimeMode: projectSettings.settings.defaultRuntimeMode,
