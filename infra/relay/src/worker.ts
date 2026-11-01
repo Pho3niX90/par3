@@ -142,7 +142,7 @@ export const layer = Api.make(
     const relayApiZone = yield* RelayApiZone;
     const managedEndpointZone = yield* ManagedEndpointZone;
     const randomApnsDeliveryJobSigningSecret = yield* ApnsDeliveryJobSigningSecret;
-    // Self-hosted relays run without Axiom, so they also serve no mobile telemetry route.
+    // Self-hosted relays run without Axiom, so their mobile telemetry route answers 404.
     const observability = (yield* Observability.relayAxiomEnabled)
       ? yield* RelayObservability
       : undefined;
@@ -386,7 +386,7 @@ export const layer = Api.make(
 
     const layerMobileTelemetryApi = yield* Effect.gen(function* () {
       const resources = mobileTelemetryResources;
-      if (resources === undefined) return Layer.empty;
+      if (resources === undefined) return MobileTelemetry.layerApiDisabled;
       // `fetch` rebuilds its layers per request; the source map cache must outlive one.
       const mobileSourceMapLookups = yield* MobileTelemetry.SourceMaps.pipe(
         Effect.provide(MobileTelemetry.layerSourceMaps),

@@ -337,3 +337,12 @@ export const layerApi = HttpApiBuilder.group(
     return handlers.handleRaw("ingest", ({ request, params }) => telemetry.handle(request, params));
   }),
 );
+
+/** `RelayApi` declares this group, so a relay without Axiom must still answer for it or no route builds. */
+export const layerApiDisabled = HttpApiBuilder.group(RelayApi, "mobileTelemetry", (handlers) =>
+  Effect.succeed(
+    handlers.handleRaw("ingest", () =>
+      Effect.succeed(errorResponse(404, "mobile_telemetry_disabled")),
+    ),
+  ),
+);

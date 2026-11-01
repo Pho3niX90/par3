@@ -46,6 +46,8 @@ interface Harness {
   ) => Effect.Effect<HttpClientResponse.HttpClientResponse, HttpClientError.HttpClientError>;
   /** The source maps bucket, by key. */
   readonly objects?: Readonly<Record<string, string>>;
+  /** A relay deployed without Axiom. */
+  readonly disabled?: boolean;
 }
 
 const makeHarness = (options: Harness = {}) => {
@@ -95,7 +97,11 @@ const makeHarness = (options: Harness = {}) => {
   const httpEffect = HttpRouter.toHttpEffect(
     Layer.mergeAll(
       HttpApiBuilder.layer(HttpApi.make("RelayApi").add(RelayApi.groups.mobileTelemetry)).pipe(
-        Layer.provide(MobileTelemetry.layerApi.pipe(Layer.provide(layerTelemetry))),
+        Layer.provide(
+          options.disabled
+            ? MobileTelemetry.layerApiDisabled
+            : MobileTelemetry.layerApi.pipe(Layer.provide(layerTelemetry)),
+        ),
         Layer.provide([NodeServices.layer, NodeHttpPlatform.layer, Etag.layerWeak]),
       ),
       RelayHttpApi.layerNotFoundRoute,
@@ -344,6 +350,14 @@ describe("MobileTelemetry", () => {
       const harness = makeHarness();
       const tooLarge = "x".repeat(MobileTelemetry.MOBILE_TELEMETRY_MAX_BODY_BYTES + 1);
       expect((yield* harness.send(ingest("logs", tooLarge))).status).toBe(413);
+      expect(harness.sent).toEqual([]);
+    }),
+  );
+
+  it.effect("answers 404 without forwarding on a relay deployed without Axiom", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness({ disabled: true });
+      expect((yield* harness.send(ingest("logs", "{}"))).status).toBe(404);
       expect(harness.sent).toEqual([]);
     }),
   );
