@@ -1042,6 +1042,8 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               if (yield* Ref.get(listed)) break;
               yield* setDeleted();
               if (yield* reviveIfListed) break;
+              // A 404 also means "not created yet". Only a delete event may outlive this mount.
+              if (resumeCache?.owner === owner) resumeCache.snapshot = undefined;
               return yield* Effect.never;
             }
             case "unavailable": {

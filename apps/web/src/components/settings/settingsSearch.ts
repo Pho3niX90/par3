@@ -1,5 +1,5 @@
 import { HOSTED_APP_CHANNEL } from "~/branding";
-import { isElectron } from "~/env";
+import { isElectron, isSecretsFeatureEnabled } from "~/env";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -35,6 +35,7 @@ export type SettingsPath =
   | "/settings/worktrees"
   | "/settings/connections"
   | "/settings/access"
+  | "/settings/secrets"
   | "/settings/maintenance"
   | "/settings/labs"
   | "/settings/about"
@@ -59,6 +60,7 @@ export interface SettingsSearchItem {
   readonly macOnly?: boolean;
   readonly windowsOnly?: boolean;
   readonly releaseChannelOnly?: boolean;
+  readonly secretsFeatureOnly?: boolean;
   readonly cloudOnly?: boolean;
   readonly environmentOnly?: boolean;
   readonly providerSettingsOnly?: boolean;
@@ -105,6 +107,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/worktrees": "Worktrees",
   "/settings/connections": "Environments",
   "/settings/access": "Sharing & access",
+  "/settings/secrets": "Secrets",
   "/settings/maintenance": "Maintenance",
   "/settings/labs": "Labs",
   "/settings/about": "About",
@@ -144,7 +147,12 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   },
   {
     heading: "Connections",
-    paths: ["/settings/connections", "/settings/access", "/settings/sync"],
+    paths: [
+      "/settings/connections",
+      "/settings/access",
+      "/settings/sync",
+      ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
+    ],
   },
   {
     heading: null,
@@ -275,6 +283,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["new thread project provider reasoning effort"],
   },
   {
+    id: "fallback-model",
+    title: "Fallback model",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    searchTerms: ["fallback agent provider out of usage new threads"],
+    environmentOnly: true,
+  },
+  {
     id: "default-permissions",
     title: "Permissions",
     to: "/settings/threads",
@@ -322,6 +338,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Chat width",
     to: "/settings/appearance",
     searchTerms: ["wide full width column layout messages composer monitor"],
+  },
+  {
+    id: "thread-details-items",
+    title: "Thread details",
+    to: "/settings/appearance",
+    searchTerms: [
+      "customize show hide panel card environment editor scripts branch pull request git changes servers automations lineage usage limits 5 hour weekly quota tokens context window",
+    ],
   },
   {
     id: "effort-display",
@@ -446,12 +470,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta boring sidebar folder rows multiline branch pull request details"],
   },
   {
-    id: "thread-details-usage",
-    title: "Usage in thread details",
-    to: "/settings/labs",
-    searchTerms: ["beta limits 5 hour weekly context window tokens quota rate limit"],
-  },
-  {
     id: "guest-links",
     title: "Guest links",
     to: "/settings/labs",
@@ -558,9 +576,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "proactive-panels",
-    title: "Proactive panels",
+    title: "Open pull requests and changes panels proactively",
     to: "/settings/diffs",
-    searchTerms: ["automatically open diff pull request pr right panel agent completion"],
+    searchTerms: ["proactive automatically open diff pull request pr right panel agent completion"],
   },
   {
     id: "skills-in-slash-menu",
@@ -919,7 +937,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Open pull requests in Par3",
     to: "/settings/diffs",
     searchTerms: [
-      `pr links ${SOURCE_CONTROL_HOST_LABELS} browser external click default pull request view panel`,
+      `pr commit links ${SOURCE_CONTROL_HOST_LABELS} browser external click default pull request view panel`,
     ],
   },
   {
@@ -1196,6 +1214,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "secret-providers",
+    title: "Secret providers",
+    to: "/settings/secrets",
+    searchTerms: ["1password vault credentials api key"],
+    secretsFeatureOnly: true,
+  },
+  {
+    id: "secret-providers-add",
+    title: "Add secret provider",
+    to: "/settings/secrets",
+    targetId: "secret-providers",
+    searchTerms: ["new 1password vault op cli account"],
+    secretsFeatureOnly: true,
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
@@ -1226,6 +1259,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/worktrees": "project-defaults",
   "/settings/connections": "connections",
   "/settings/access": "connections",
+  "/settings/secrets": null,
   "/settings/scheduled-tasks": null,
   "/settings/maintenance": null,
   "/settings/labs": null,
@@ -1369,6 +1403,7 @@ export function settingsForThisPlatform(
     (item) =>
       (isElectron || item.desktopOnly !== true) &&
       (!item.releaseChannelOnly || isElectron || HOSTED_APP_CHANNEL !== null) &&
+      (!item.secretsFeatureOnly || isSecretsFeatureEnabled) &&
       (!item.macOnly || isMacPlatform(platform)) &&
       (!item.windowsOnly || isWindowsPlatform(platform)),
   );

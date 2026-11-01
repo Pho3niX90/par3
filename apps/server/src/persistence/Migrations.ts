@@ -81,6 +81,11 @@ import Migration0071 from "./Migrations/069_ThreadMessageSearch.ts";
 import Migration0072 from "./Migrations/070_PeerLinks.ts";
 import Migration0073 from "./Migrations/071_PeerLinkFence.ts";
 import Migration0074 from "./Migrations/072_WaitingLinkRequestIndex.ts";
+// Upstream numbers these 73 to 76; Par3 runs them as 75 to 78, after its own 70 and 71.
+import Migration0075 from "./Migrations/073_ActiveTurnItemIndexes.ts";
+import Migration0076 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSearch.ts";
+import Migration0077 from "./Migrations/075_SubagentDeliveryState.ts";
+import Migration0078 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -158,6 +163,10 @@ const migrationEntries = [
   [72, "PeerLinks", Migration0072],
   [73, "PeerLinkFence", Migration0073],
   [74, "WaitingLinkRequestIndex", Migration0074],
+  [75, "ActiveTurnItemIndexes", Migration0075],
+  [76, "ExcludeAttachmentPlaceholdersFromSearch", Migration0076],
+  [77, "SubagentDeliveryState", Migration0077],
+  [78, "ProjectionProjectsPinArchive", Migration0078],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

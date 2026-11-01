@@ -15,6 +15,15 @@ lists each repository inside it that the thread edited, with its branch, changes
 and the diff can switch between them. Only uncommitted and branch changes are shown there; turn diffs
 and restore need the project folder itself to be a repository. Repositories changed only through
 shell commands are not listed.
+On web and desktop, open the Diff pane source picker and choose **Commits** to review one local
+commit at a time. The list shows the newest 100 commits in the branch comparison. A merge commit
+shows its changes against its first parent.
+
+A commit link from a supported code host opens in the Diff pane when the thread's repository has
+that commit locally, on any branch. Otherwise a pull request commit link opens the pull request. Other
+commit links follow your **Open links in** setting; on web, when that opens a new tab, Par3 first
+shows an **Open link** button. Command/Ctrl+Click always opens the link in your browser. Commit links follow the **Open pull requests in Par3**
+setting in **Settings → Diffs**.
 
 ## Connect an account
 

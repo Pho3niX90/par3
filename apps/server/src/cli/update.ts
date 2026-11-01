@@ -26,7 +26,9 @@ import {
   pinnedRuntimeCommand,
   PinnedRuntimeInstallError,
   pinnedRuntimePaths,
+  pinnedRuntimeVersionsDir,
   prunePinnedRuntimes,
+  recordPinnedRuntimeLauncher,
   windowsShimTarget,
 } from "../cloud/pinnedRuntime.ts";
 import { compareExactServiceVersions, isExactServiceVersion } from "../cloud/serviceProtocol.ts";
@@ -109,19 +111,26 @@ export const launcherAliasPath = (path: Path.Path, launcher: string) =>
 /**
  * Repoints the install scripts' launcher (`<bin>/par3` symlink, or `par3.cmd` on Windows) at the
  * new version. Only a launcher already pointing into this home's `runtime/versions` is touched;
- * a plain copy of the executable or another install's launcher is left alone.
+ * a plain copy of the executable or another install's launcher is left alone. It is
+ * recorded before it moves, so prune never meets a repointed launcher it does not know about.
  */
 export const repointLauncher = Effect.fn("cli.update.repoint_launcher")(function* (input: {
   readonly launchedAs: string | undefined;
-  readonly versionsDir: string;
+  readonly baseDir: string;
   readonly targetEntryPath: string;
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
   if (input.launchedAs === undefined) return Option.none<string>();
-  const ownsTarget = (candidate: string) =>
-    launcherOwnsVersionsDir(path, input.versionsDir, candidate);
+  const versionsDir = pinnedRuntimeVersionsDir(path, input.baseDir);
+  const ownsTarget = (candidate: string) => launcherOwnsVersionsDir(path, versionsDir, candidate);
+  const remember = (launcher: string) =>
+    recordPinnedRuntimeLauncher({ baseDir: input.baseDir, launcher }).pipe(
+      Effect.mapError(
+        () => new CliUpdateError({ reason: `Could not record the t3 launcher at ${launcher}.` }),
+      ),
+    );
 
   if (platform === "win32") {
     const shimPath = yield* findWindowsShim(input.launchedAs);
@@ -129,6 +138,7 @@ export const repointLauncher = Effect.fn("cli.update.repoint_launcher")(function
     const current = yield* fs.readFileString(shimPath).pipe(Effect.option);
     const quoted = Option.isSome(current) ? windowsShimTarget(current.value) : undefined;
     if (quoted === undefined || !ownsTarget(quoted)) return Option.none<string>();
+    yield* remember(shimPath);
     yield* fs
       .writeFileString(shimPath, `@echo off\r\n"${input.targetEntryPath}" %*`)
       .pipe(
@@ -144,6 +154,7 @@ export const repointLauncher = Effect.fn("cli.update.repoint_launcher")(function
   if (Option.isNone(linkTarget)) return Option.none<string>();
   const resolvedTarget = path.resolve(path.dirname(input.launchedAs), linkTarget.value);
   if (!ownsTarget(resolvedTarget)) return Option.none<string>();
+  yield* remember(input.launchedAs);
   const tempLink = `${input.launchedAs}.${process.pid}.tmp`;
   yield* fs.symlink(input.targetEntryPath, tempLink).pipe(
     Effect.andThen(fs.rename(tempLink, input.launchedAs)),
@@ -500,7 +511,7 @@ const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   const launchedAs = (yield* HostProcess.IsExecutable) ? yield* resolveLauncherPath : undefined;
   const repointed = yield* repointLauncher({
     launchedAs,
-    versionsDir: path.dirname(runtime.versionDir),
+    baseDir: input.baseDir,
     targetEntryPath: runtime.entryPath,
   });
 

@@ -131,6 +131,7 @@ describe("managed endpoint provisioning errors", () => {
           Layer.mock(ManagedEndpointProvider.ManagedEndpointProvider, {}),
           Layer.mock(Devices.Devices, {}),
           Layer.mock(T3ChatAccounts.T3ChatAccounts, { available: false }),
+          Layer.mock(ManagedTunnelLimits.ManagedTunnelLimits, {}),
         ),
       ),
       Layer.provideMerge(
@@ -242,6 +243,7 @@ describe("device listing compatibility", () => {
             },
           }),
           Layer.mock(T3ChatAccounts.T3ChatAccounts, { available: false }),
+          Layer.mock(ManagedTunnelLimits.ManagedTunnelLimits, {}),
         ),
       ),
       Layer.provideMerge(
@@ -323,6 +325,7 @@ describe("Cloudflare rate-limit retry hint", () => {
           Layer.mock(ManagedEndpointProvider.ManagedEndpointProvider, {}),
           Layer.mock(Devices.Devices, {}),
           Layer.mock(T3ChatAccounts.T3ChatAccounts, { available: false }),
+          Layer.mock(ManagedTunnelLimits.ManagedTunnelLimits, {}),
         ),
       ),
       Layer.provideMerge(

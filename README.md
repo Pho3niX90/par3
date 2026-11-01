@@ -2,7 +2,7 @@
 
 Par3 is an "agent harness control surface" for teams. It lets you control the coding agents on your machines from a desktop app, a web app and a mobile app.
 
-Works with your subscriptions on Claude Code, Codex, Cursor, GitHub Copilot, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, Par3 can control them.
+Works with your subscriptions on Claude Code, Codex, Cursor, GitHub Copilot, Grok Build, OpenCode, Google Antigravity, and fx. If they're set up on your computer, Par3 can control them.
 
 ## Why Par3 exists
 
@@ -17,7 +17,7 @@ We still merge T3 Code's improvements regularly and are grateful for the work be
 ## Installation
 
 > [!WARNING]
-> Par3 currently supports Codex, Claude, Cursor, GitHub Copilot, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
+> Par3 currently supports Codex, Claude, Cursor, GitHub Copilot, Grok Build, OpenCode, Antigravity, and fx. Install and authenticate at least one provider before use:
 >
 > - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
 > - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
@@ -26,6 +26,7 @@ We still merge T3 Code's improvements regularly and are grateful for the work be
 > - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
 > - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 > - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
+> - fx: install [fx](https://fx.sh) and run `fx login` on the machine running the Par3 server ([setup guide](./docs/user/providers-fx.md))
 
 ### Command line
 

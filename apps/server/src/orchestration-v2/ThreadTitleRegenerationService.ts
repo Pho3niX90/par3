@@ -1,5 +1,6 @@
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
 import { truncate } from "@t3tools/shared/String";
 import {
   CommandId,
@@ -154,7 +155,10 @@ const make = Effect.gen(function* () {
         context =
           message === undefined
             ? { message: "", attachments: [] }
-            : { message: message.text, attachments: message.attachments };
+            : {
+                message: isAttachmentOnlyBootstrapPrompt(message.text) ? "" : message.text,
+                attachments: message.attachments,
+              };
       } else {
         context = formatThreadTitleContext(
           projection.messages.filter((message) => !message.streaming),

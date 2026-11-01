@@ -25,7 +25,7 @@ import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { useComposerMenuState } from "./useComposerMenuState";
-import { TraitsMenuContent, shouldRenderTraitsControls } from "./TraitsPicker";
+import { TraitsMenuContent, getTraitsSectionVisibility } from "./TraitsPicker";
 
 const NONE_VALUE = "none";
 
@@ -145,14 +145,14 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
       })}
       {selection &&
       selectedProvider &&
-      shouldRenderTraitsControls({
+      getTraitsSectionVisibility({
         provider: selectedProvider.driverKind,
         models: selectedProvider.models,
         model: selection.model,
         modelOptions: selection.options,
         allowPromptInjectedEffort: false,
         planModeEnabled: false,
-      }) ? (
+      }).hasAnyControls ? (
         <>
           <MenuSeparator />
           <MenuSub>

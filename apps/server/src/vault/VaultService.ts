@@ -152,6 +152,8 @@ function importSources(settings: ServerSettings): ReadonlyArray<ImportSource> {
   const sources: ImportSource[] = [];
   for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
     for (const variable of instance.environment ?? []) {
+      // A secret provider reference holds no value to import.
+      if (typeof variable.value !== "string") continue;
       if (!variable.sensitive || parseVaultReference(variable.value) !== null) continue;
       if (variable.valueRedacted !== true && variable.value.length === 0) continue;
       sources.push({

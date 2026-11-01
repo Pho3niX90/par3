@@ -106,6 +106,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/worktrees": FolderTreeIcon,
   "/settings/connections": ServerIcon,
   "/settings/access": ShieldCheckIcon,
+  "/settings/secrets": KeyRoundIcon,
   "/settings/maintenance": WrenchIcon,
   "/settings/labs": FlaskConicalIcon,
   "/settings/about": InfoIcon,

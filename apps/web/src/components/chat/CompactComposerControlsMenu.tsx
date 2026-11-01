@@ -19,7 +19,6 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   showInteractionModeToggle: boolean;
-  traitsMenuContent?: ReactNode;
   sidekickMenuContent?: ReactNode;
   showPermissions?: boolean;
   size?: "sm" | "xs";
@@ -49,7 +48,6 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             data-composer-shortcut={
               [
                 props.showPermissions !== false ? "composer.mode" : null,
-                props.traitsMenuContent ? "composer.effort" : null,
                 props.sidekickMenuContent ? "composer.sidekick" : null,
               ]
                 .filter(Boolean)
@@ -61,14 +59,6 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
         <ComposerControlIcon icon={EllipsisIcon} size={size} />
       </MenuTrigger>
       <MenuPopup align="start" {...composerFloatingLayerProps}>
-        {props.traitsMenuContent ? (
-          <>
-            {props.traitsMenuContent}
-            {props.showInteractionModeToggle || props.showPermissions !== false ? (
-              <MenuDivider />
-            ) : null}
-          </>
-        ) : null}
         {props.showInteractionModeToggle ? (
           <>
             <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Mode</div>

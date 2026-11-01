@@ -91,7 +91,7 @@ import {
   useVcsInitAction,
   useVcsPullAction,
 } from "../state/sourceControlActions";
-import { useThreadProjection, useQuietThreadShell } from "~/state/entities";
+import { useQuietThreadProjection, useQuietThreadShell } from "~/state/entities";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
@@ -119,6 +119,8 @@ interface GitActionsControlProps {
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
   compact?: boolean;
+  showActions?: boolean;
+  showChanges?: boolean;
   onOpenChanges?: () => void;
   /**
    * Names a child repository of the thread's folder, shown on the changes row. Its branch is not
@@ -935,6 +937,8 @@ export default function GitActionsControl({
   activeThreadRef,
   draftId,
   compact = false,
+  showActions = true,
+  showChanges = true,
   onOpenChanges,
   repositoryLabel,
 }: GitActionsControlProps) {
@@ -964,7 +968,7 @@ export default function GitActionsControl({
         ? store.getDraftThreadByRef(activeThreadRef)
         : null,
   );
-  const activeServerThreadProjection = useThreadProjection(
+  const activeServerThreadProjection = useQuietThreadProjection(
     activeDraftThread !== null && activeServerThreadShell === null ? null : activeThreadRef,
   );
   const activeServerThread =
@@ -1491,7 +1495,7 @@ export default function GitActionsControl({
 
   return (
     <>
-      {!isRepo ? (
+      {!showActions ? null : !isRepo ? (
         <ThreadDetailsControl
           size="xs"
           variant="ghost"
@@ -1633,7 +1637,7 @@ export default function GitActionsControl({
         </div>
       )}
 
-      {isRepo && !quietEmptyDraft ? (
+      {showChanges && isRepo && !quietEmptyDraft ? (
         <ThreadDetailsControl
           type="button"
           variant="ghost"
@@ -1859,13 +1863,16 @@ export default function GitActionsControl({
         </DialogPopup>
       </Dialog>
 
-      <PublishRepositoryDialog
-        open={isPublishDialogOpen}
-        onOpenChange={setIsPublishDialogOpen}
-        environmentId={activeEnvironmentId}
-        threadRef={activeThreadRef}
-        gitCwd={gitCwd}
-      />
+      {/* Its discovery query should stop when the Git actions row that opens it is hidden. */}
+      {showActions ? (
+        <PublishRepositoryDialog
+          open={isPublishDialogOpen}
+          onOpenChange={setIsPublishDialogOpen}
+          environmentId={activeEnvironmentId}
+          threadRef={activeThreadRef}
+          gitCwd={gitCwd}
+        />
+      ) : null}
 
       <Dialog
         open={pendingDefaultBranchAction !== null}

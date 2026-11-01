@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
-import { ProviderInstanceEnvironment } from "./providerInstance.ts";
+import { ProviderInstanceEnvironmentVariableName } from "./providerInstance.ts";
 
 /** What agents type to reach the server, so it stays short and shell- and JSON-friendly. */
 export const McpServerName = TrimmedNonEmptyString.check(
@@ -37,6 +37,14 @@ export const McpServerHeader = Schema.Struct({
 });
 export type McpServerHeader = typeof McpServerHeader.Type;
 
+/** Plain values only: a shared server's secrets live in the sensitive store, not a secret provider. */
+const McpServerEnvironmentVariable = Schema.Struct({
+  name: ProviderInstanceEnvironmentVariableName,
+  value: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  sensitive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  valueRedacted: Schema.optionalKey(Schema.Boolean),
+});
+
 /**
  * `tools` applies only in `allow` mode; it is kept in `all` mode so switching back restores the
  * list. A read-only MCP client may call only tools whose upstream annotations set `readOnlyHint`.
@@ -61,7 +69,9 @@ export const McpServerConfig = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   description: Schema.optionalKey(TrimmedString),
   transport: McpServerTransport,
-  environment: ProviderInstanceEnvironment.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  environment: Schema.Array(McpServerEnvironmentVariable).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   headers: Schema.Array(McpServerHeader).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   toolPolicy: McpServerToolPolicy.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });

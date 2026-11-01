@@ -37,8 +37,12 @@ export class NpmLauncherCommandFailedError extends Schema.TaggedError<NpmLaunche
   }
 }
 
-/** engines requires import.meta.dirname and fetch. */
-export function npmLauncherPackageManifest(name: string, version: string) {
+/** engines requires import.meta.dirname and fetch. `t3code` is read back by npmReleaseDatabaseMigration. */
+export function npmLauncherPackageManifest(
+  name: string,
+  version: string,
+  databaseMigration: number,
+) {
   return {
     name,
     version,
@@ -55,8 +59,25 @@ export function npmLauncherPackageManifest(name: string, version: string) {
     },
     files: ["bin", "dist"],
     engines: { node: ">=20.11" },
+    t3code: { databaseMigration },
   };
 }
+
+/** Highest id in the server's migration list. Par3 runs some of upstream's migrations under ids
+ * other than the `NNN_Name.ts` file number, so the file names understate it. */
+const latestServerMigrationId = Effect.fn("latestServerMigrationId")(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const migrations = yield* fs.readFileString(
+    yield* path.fromFileUrl(
+      new URL("../apps/server/src/persistence/Migrations.ts", import.meta.url),
+    ),
+  );
+  const ids = Array.from(migrations.matchAll(/^\s*\[(\d+), "\w+", Migration\d+\],$/gm), (match) =>
+    Number(match[1]),
+  );
+  return Math.max(0, ...ids);
+});
 
 const buildNpmLauncherPackage = Effect.fn("buildNpmLauncherPackage")(function* (input: {
   readonly name: string;
@@ -78,7 +99,9 @@ const buildNpmLauncherPackage = Effect.fn("buildNpmLauncherPackage")(function* (
   yield* fs.makeDirectory(path.join(stageDir, "dist"));
   yield* fs.writeFileString(
     path.join(stageDir, "package.json"),
-    `${yield* encodePackageJson(npmLauncherPackageManifest(input.name, input.version))}
+    `${yield* encodePackageJson(
+      npmLauncherPackageManifest(input.name, input.version, yield* latestServerMigrationId()),
+    )}
 `,
   );
   yield* fs.copyFile(path.join(sourceDir, "t3.mjs"), path.join(stageDir, "bin/t3.mjs"));
