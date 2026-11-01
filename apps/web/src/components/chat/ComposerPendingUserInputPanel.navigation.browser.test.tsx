@@ -19,9 +19,11 @@ import { act, fakeTimers, render } from "../../../test/render";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
 import { usePendingThreadRequests } from "./usePendingThreadRequests";
 import { useState } from "react";
-import { type PendingUserInputDraftAnswer } from "../../pendingUserInput";
+import {
+  type PendingUserInputDraftAnswer,
+  togglePendingUserInputOptionSelection,
+} from "@t3tools/client-runtime/state/pending-user-input";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
-import { togglePendingUserInputOptionSelection } from "../../pendingUserInput";
 
 const threadRef = { environmentId: EnvironmentId.make("env"), threadId: ThreadId.make("thread") };
 

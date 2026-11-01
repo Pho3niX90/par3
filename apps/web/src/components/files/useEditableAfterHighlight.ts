@@ -33,6 +33,7 @@ export function useEditableAfterHighlight(file: FileContents) {
   const needsHighlight = needsWorkerHighlight(workerPool, file);
   const ready = !needsHighlight || highlightedFile === file;
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- primes the highlighter worker pool's cache for this file
   useEffect(() => {
     if (ready || workerPool === undefined) return;
     workerPool.primeFileHighlightCache(file).catch(() => setHighlightedFile(file));

@@ -21,12 +21,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  ComposerControl,
-  ComposerControlChevron,
-  ComposerControlIcon,
-  ComposerControlSeparator,
-} from "./ComposerControl";
+import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { useComposerMenuState } from "./useComposerMenuState";
@@ -196,42 +191,38 @@ export const ComposerSidekickControl = memo(function ComposerSidekickControl(
   const active = props.pairing !== null && !inactive;
   const tooltip = sidekickTriggerTooltip(props.pairing);
   return (
-    <>
-      <ComposerControlSeparator size={size} />
-      <Menu open={open} onOpenChange={setOpen}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <MenuTrigger
-                render={
-                  <ComposerControl
-                    size={size}
-                    className="shrink-0 whitespace-nowrap"
-                    aria-pressed={active}
-                    aria-label="Sidekick"
-                    aria-description={tooltip}
-                    data-composer-shortcut="composer.sidekick"
-                  />
-                }
-              />
-            }
-          >
-            <ComposerControlIcon
-              icon={inactive ? CircleAlertIcon : UsersIcon}
-              size={size}
-              {...(inactive ? { className: "text-warning" } : {})}
+    <Menu open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              render={
+                <ComposerControl
+                  size={size}
+                  className="shrink-0 whitespace-nowrap"
+                  aria-pressed={active}
+                  aria-label="Sidekick"
+                  aria-description={tooltip}
+                  data-composer-shortcut="composer.sidekick"
+                />
+              }
             />
-            <span data-composer-control-label className="max-w-40 truncate">
-              {props.pairing ? props.pairing.label : "Sidekick"}
-            </span>
-            <ComposerControlChevron size={size} />
-          </TooltipTrigger>
-          <TooltipPopup side="top">{tooltip}</TooltipPopup>
-        </Tooltip>
-        <MenuPopup align="start" {...composerFloatingLayerProps}>
-          <SidekickMenuContent {...props} />
-        </MenuPopup>
-      </Menu>
-    </>
+          }
+        >
+          <ComposerControlIcon
+            icon={inactive ? CircleAlertIcon : UsersIcon}
+            size={size}
+            {...(inactive ? { className: "text-warning" } : {})}
+          />
+          <span data-composer-control-label className="max-w-40 truncate">
+            {props.pairing ? props.pairing.label : "Sidekick"}
+          </span>
+        </TooltipTrigger>
+        <TooltipPopup side="top">{tooltip}</TooltipPopup>
+      </Tooltip>
+      <MenuPopup align="start" {...composerFloatingLayerProps}>
+        <SidekickMenuContent {...props} />
+      </MenuPopup>
+    </Menu>
   );
 });

@@ -23,7 +23,7 @@ export function SettingsAboutRouteScreen() {
   const insets = useSafeAreaInsets();
 
   return (
-    <SettingsScreen title="About Par3">
+    <SettingsScreen title="About">
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}

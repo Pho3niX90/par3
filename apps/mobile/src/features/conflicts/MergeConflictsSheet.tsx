@@ -175,11 +175,13 @@ function RepositoryConflicts(props: {
     void refreshVcsStatus(target);
     listQuery.refresh();
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- re-reads the repository's conflict status from the server when the sheet opens or the repository changes
   useEffect(() => {
     refreshAll();
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-read when the repository changes.
   }, [environmentId, cwd]);
   const refreshList = useEffectEvent(() => listQuery.refresh());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- re-reads the conflict list when the server's pushed status reports another operation or count
   useEffect(() => {
     refreshList();
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Re-read when status reports a different operation or count.

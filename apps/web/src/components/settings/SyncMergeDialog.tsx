@@ -63,6 +63,7 @@ function SyncMergeBody(props: {
   const conflict = plan.conflicts.find(({ key }) => key === props.conflictKey);
   const sides = conflict === undefined ? null : syncMergeSides(conflict);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads both sides' versions from their environments when the dialog opens
   useEffect(() => {
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Reads the versions the plan shows when opened or reloaded; a newer version mid-merge surfaces as stale on apply instead of discarding edits.
     if (conflict === undefined || sides === null) return;

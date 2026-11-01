@@ -80,6 +80,7 @@ export function useProactivePanels(input: {
   const planItemId = input.proposedPlan?.itemId;
   const threadKey = threadRef ? scopedThreadKey(threadRef) : null;
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens proactive surfaces in the right panel store as runs and linked PRs change
   useEffect(() => {
     if (threadKey === null || threadRef === null) {
       proactivePanelObservationRef.current = null;

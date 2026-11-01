@@ -2073,6 +2073,8 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
           } else {
             const instructionState = {
               hasT3Mcp: sessionHasT3Mcp,
+              // Upstream's Muse adapter sends no device instructions either.
+              hasDeviceTools: false,
               sidekick: turnInput.sidekick ?? null,
             } satisfies T3PromptInstructionState;
             const instructionUpdate = t3OrchestrationInstructionUpdate(

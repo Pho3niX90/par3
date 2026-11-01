@@ -3058,7 +3058,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       }
       const instructions = [
         buildRuntimeInstructions({ harness: "OpenCode", model: turnInput.modelSelection.model }),
-        t3OrchestrationSystemPrompt(mcpAvailable),
+        t3OrchestrationSystemPrompt(mcpAvailable, mcpSession?.capabilities?.has("device") === true),
         // The entry replaces its previous value, so turning the sidekick off just drops it.
         mcpAvailable && turnInput.sidekick != null
           ? sidekickInstructions(turnInput.sidekick)

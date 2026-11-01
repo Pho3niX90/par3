@@ -185,6 +185,7 @@ export function ThreadSpecModeControl({
   const runMutation = useRunSpecMutation();
 
   const registered = state.available && !hidden;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this control as the spec mode shortcut handler while it is shown
   useEffect(() => {
     if (!registered) return;
     return registerSpecModeToggleHandler(() => setOpen((current) => !current));

@@ -77,6 +77,10 @@ import Migration0069 from "./Migrations/067_WebhookDedupe.ts";
 import Migration0070 from "./Migrations/068_ShellStopRequestIndex.ts";
 // Upstream numbers this 69; Par3 runs it as 71, after its own 67 to 70.
 import Migration0071 from "./Migrations/069_ThreadMessageSearch.ts";
+// Upstream numbers these 70 to 72; Par3 runs them as 72 to 74, after its own 70 and 71.
+import Migration0072 from "./Migrations/070_PeerLinks.ts";
+import Migration0073 from "./Migrations/071_PeerLinkFence.ts";
+import Migration0074 from "./Migrations/072_WaitingLinkRequestIndex.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -151,6 +155,9 @@ const migrationEntries = [
   [69, "WebhookDedupe", Migration0069],
   [70, "ShellStopRequestIndex", Migration0070],
   [71, "ThreadMessageSearch", Migration0071],
+  [72, "PeerLinks", Migration0072],
+  [73, "PeerLinkFence", Migration0073],
+  [74, "WaitingLinkRequestIndex", Migration0074],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -44,10 +44,16 @@ export interface ProviderClientDefinition {
   readonly driverKind: ProviderDriverKind;
   readonly label: string;
   readonly icon?: ProviderIcon;
+  /** Model-name family prefixes the provider's own icon already shows, e.g. "Claude ". */
+  readonly modelFamilies?: ReadonlyArray<string>;
   readonly settingsSchema: ProviderSettingsSchema;
   readonly environmentFields?: ReadonlyArray<ProviderEnvironmentField>;
   readonly hasDefaultInstance?: boolean;
   readonly badgeLabel?: string;
+  /** `false` lists the provider under Add provider's "Show more" instead of up front. */
+  readonly featured?: boolean;
+  /** ACP Registry entries for this same agent, left out of Add provider's Registry list. */
+  readonly acpRegistryAgentIds?: ReadonlyArray<string>;
   /**
    * The driver routes to several vendors' models, so clients draw each
    * model's vendor glyph and keep the driver glyph as a corner badge.

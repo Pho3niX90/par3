@@ -20,16 +20,19 @@
       // Knip loads its preprocessor through a CLI option; native verification and
       // worktree setup (from t3.json) run directly. release-desktop.yml bundles the
       // Windows verify script with esbuild through a path knip does not trace,
-      // electron-builder loads the macOS signer by path, mobile-e2e.ts runs
-      // agent-device's CLI by path, and the Harbor adapter uploads the sidekick
-      // eval driver into its container.
+      // electron-builder loads the macOS signer by path, and mobile-e2e.ts runs
+      // agent-device's CLI by path, and mobile-behavior.ts spawns its runner by path.
+      // release-desktop.yml runs the desktop launch check through xvfb-run, which knip
+      // does not trace.
       "entry": [
         // These fixture scripts are injected into a browser page by path.
         "fixtures/*/*.js",
         "knip-schemas.ts",
+        "mobile-behavior/run.ts",
         "mobile-native-client.ts",
         "setup-worktree.ts",
         "sign-macos.ts",
+        "smoke-desktop-app.ts",
         "verify-windows-desktop-artifact.ts",
         "evals/sidekick/harbor-agent/driver.ts",
       ],
@@ -47,7 +50,6 @@
         "scripts/bench-provider-overhead.ts",
         "scripts/bench/stubClaude.mjs",
         "scripts/cli.ts",
-        "scripts/evaluate-thread-titles.ts",
         "scripts/fetch-expo-schema.ts",
         "scripts/probe-claude-fork-local-rollback-replay.ts",
         "scripts/update-test-shard-weights.ts",
@@ -134,8 +136,14 @@
       ],
     },
     "infra/relay": {
-      // drizzle.self-hosted.config.ts is run by deploy-relay.yml through drizzle-kit.
-      "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!", "drizzle.self-hosted.config.ts!"],
+      // drizzle.self-hosted.config.ts is run by deploy-relay.yml through drizzle-kit; Alchemy loads
+      // src/worker.ts as the Worker entry and reads its default export.
+      "entry": [
+        "alchemy.run.ts!",
+        "src/persistence/schema.ts!",
+        "src/worker.ts!",
+        "drizzle.self-hosted.config.ts!",
+      ],
     },
     "packages/*": {
       // These workspace packages are private to this monorepo.

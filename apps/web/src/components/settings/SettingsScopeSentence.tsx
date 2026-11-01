@@ -43,11 +43,17 @@ import {
 } from "./settingsScopeAxis";
 
 export const SETTINGS_DEVICE_ONLY_PATHS: ReadonlySet<string> = new Set([
+  "/settings/general",
   "/settings/appearance",
+  "/settings/chat",
+  "/settings/diffs",
   "/settings/snap-shot",
   "/settings/connections",
   // Lists every connected machine itself, since the vault and sync span them.
   "/settings/sync",
+  // Network access and authorized clients belong to the environment serving this app.
+  "/settings/access",
+  "/settings/about",
 ]);
 
 interface SettingsScopeMenuProps {

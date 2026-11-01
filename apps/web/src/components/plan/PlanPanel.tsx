@@ -176,6 +176,7 @@ function PlanDocument({
   const deferredMarkdown = useDeferredValue(draft.markdown);
   const sections = planSectionsWithDefinitions(deferredMarkdown);
   const preparing = usePlanDraftStore((state) => (state.preparing[key] ?? 0) > 0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- cancels the plan draft store's pending preparations for this plan on unmount
   useEffect(() => () => usePlanDraftStore.getState().cancelPreparations(key), [key]);
   const edited = draft.markdown !== draft.baseMarkdown;
   const missingImages = collectReferencedPlanImages(

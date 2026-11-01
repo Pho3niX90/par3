@@ -27,7 +27,7 @@ it("tells a per-request sidekick's lead to batch, and fits one Codex instruction
 });
 
 it("adds only the sidekick change to an ACP prompt whose other instructions were sent", () => {
-  const base = { interactionMode: "default", hasT3Mcp: true } as const;
+  const base = { interactionMode: "default", hasT3Mcp: true, hasDeviceTools: false } as const;
   const prompt = t3AcpPromptWithInstructions({
     prompt: "Next step",
     previousState: { ...base, sidekick: null },
@@ -47,7 +47,7 @@ it("adds only the sidekick change to an ACP prompt whose other instructions were
   assert.notInclude(
     t3AcpPromptWithInstructions({
       prompt: "Next step",
-      state: { interactionMode: "default", hasT3Mcp: false, sidekick: luna },
+      state: { interactionMode: "default", hasT3Mcp: false, hasDeviceTools: false, sidekick: luna },
     }),
     "sidekick mode",
   );

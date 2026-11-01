@@ -152,6 +152,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
   const { ready: editable, onPostRender: onEditablePostRender } =
     useEditableAfterHighlight(resultFile);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- activates the imperative merge editor controller while mounted and disposes it on unmount
   useEffect(() => {
     controller.activate();
     return () => {
@@ -160,6 +161,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
     };
   }, [controller, session.editStateKey]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes the merge model into the imperative editor controller
   useEffect(() => {
     controller.setModel(
       model,
