@@ -1,7 +1,7 @@
 import * as DocumentText from "../../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { expect, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import {
   DEFAULT_SERVER_SETTINGS,
   ChatImageAttachment,
@@ -15,7 +15,9 @@ import {
   ScheduledTaskError,
   ScheduledTask,
   RuntimeRequestId,
+  type ThreadCost,
   ThreadId,
+  UsageReadError,
   TurnItemId,
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2ThreadShell,
@@ -51,6 +53,7 @@ import * as RemoteDelegation from "../../peer/RemoteDelegation.ts";
 import * as ScheduledTaskService from "../../scheduledTasks/ScheduledTaskService.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as McpHttpServer from "../McpHttpServer.ts";
+import * as ThreadCostService from "../../usage/ThreadCostService.ts";
 import * as McpInvocationContext from "../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../McpToolAccess.testkit.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
@@ -62,6 +65,7 @@ import * as PeerLinkRequests from "../../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../../peer/PeerLinks.ts";
 
 const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
+  Layer.provide(Layer.mock(ThreadCostService.ThreadCostService)({})),
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
 );
@@ -1203,3 +1207,86 @@ it.effect(
     );
   },
 );
+
+describe("t3_thread_cost", () => {
+  const threadCost: ThreadCost = {
+    threadId,
+    readAt: "2026-08-02T00:00:00.000Z",
+    totalCostUsd: 1.5,
+    thread: { threadCount: 1, costUsd: 1.5, models: [] },
+    subagents: { threadCount: 0, costUsd: 0, models: [] },
+    coverage: {
+      complete: true,
+      untrackedConversations: 0,
+      conversationsWithoutUsage: 0,
+      unreadableSources: 0,
+      unpricedRecords: 0,
+    },
+    pricing: null,
+  };
+  const callCost = (read: ThreadCostService.ThreadCostService["Service"]["read"]) =>
+    Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      return yield* server
+        .callTool({ name: "t3_thread_cost", arguments: { threadId } })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+    }).pipe(
+      Effect.provide(
+        McpHttpServer.layerOrchestratorToolkit.pipe(
+          Layer.provide(Layer.succeed(ThreadCostService.ThreadCostService, { read })),
+          Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
+          Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+          Layer.provideMerge(McpServer.McpServer.layer),
+          Layer.provide(NodeCrypto.layer),
+          Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+          Layer.provide(ServerSettings.layerTest()),
+          Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+          Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),
+          Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+          Layer.provide(Layer.mock(PeerForwarding.PeerForwarding)({})),
+          Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
+          Layer.provide(Layer.mock(PeerLinks.PeerLinks)({})),
+          Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
+          Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
+          Layer.provide(Layer.mock(RemoteDelegation.RemoteDelegation)({})),
+        ),
+      ),
+    );
+
+  it.effect("returns the estimate for the requested thread", () => {
+    const seen: Array<unknown> = [];
+    return callCost((input) => {
+      seen.push(input);
+      return Effect.succeed(threadCost);
+    }).pipe(
+      Effect.map((result) => {
+        expect(seen).toEqual([{ threadId }]);
+        expect(result.isError).toBe(false);
+        expect(result.structuredContent).toMatchObject({ threadId, totalCostUsd: 1.5 });
+      }),
+    );
+  });
+
+  it.effect("reports a missing thread as thread_not_found", () =>
+    callCost(() =>
+      Effect.fail(new UsageReadError({ reason: "threadNotFound", detail: "gone" })),
+    ).pipe(
+      Effect.map((result) => {
+        expect(result.isError).toBe(true);
+        expect(declaredFailure(result)).toMatchObject({ code: "thread_not_found" });
+      }),
+    ),
+  );
+
+  it.effect("reports a failed scan as an orchestration error", () =>
+    callCost(() => Effect.fail(new UsageReadError({ reason: "scanFailed", detail: "disk" }))).pipe(
+      Effect.map((result) => {
+        expect(result.isError).toBe(true);
+        expect(declaredFailure(result)).toMatchObject({ code: "orchestration_error" });
+      }),
+    ),
+  );
+});

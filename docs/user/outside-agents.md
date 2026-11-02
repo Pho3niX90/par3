@@ -101,6 +101,7 @@ without a sign-in:
 id=$(par3 thread start . "Find why the tests are slow")
 par3 thread send "$id" "Now fix it" --wait
 par3 thread show "$id"
+par3 thread cost "$id"
 par3 thread list
 ```
 

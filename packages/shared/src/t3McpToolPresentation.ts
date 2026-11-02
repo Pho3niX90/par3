@@ -163,6 +163,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_start: tool(["Start", "Starting", "Started", "a Par3 thread"], "thread-create"),
   t3_thread_list: tool(["List", "Listing", "Listed", "Par3 threads"], "thread-list"),
   t3_thread_read: tool(["Read", "Reading", "Read", "a Par3 thread"], "thread-read"),
+  t3_thread_cost: tool(
+    ["Estimate", "Estimating", "Estimated", "a Par3 thread's cost"],
+    "thread-read",
+  ),
   t3_thread_send: tool(["Send", "Sending", "Sent", "to a Par3 thread"], "thread-send"),
   t3_thread_wait: tool(["Wait", "Waiting", "Waited", "for a Par3 thread"], "thread-wait"),
   t3_workflow_stop: tool(

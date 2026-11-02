@@ -1,6 +1,11 @@
 import * as Schema from "effect/Schema";
 
-import { ForwardCompatibleArray, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleArray,
+  NonNegativeInt,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 
 /** Bump for incompatible UsageSummary changes; skipped unknown array variants need no bump. */
 export const USAGE_CONTRACT_VERSION = 6 as const;
@@ -134,8 +139,54 @@ export const UsageSummary = Schema.Struct({
 });
 export type UsageSummary = typeof UsageSummary.Type;
 
+export const ThreadCostInput = Schema.Struct({ threadId: ThreadId });
+export type ThreadCostInput = typeof ThreadCostInput.Type;
+
+export const ThreadCostLine = Schema.Struct({
+  provider: UsageProviderKind,
+  model: TrimmedNonEmptyString,
+  totals: UsageTokenTotals,
+  costUsd: Schema.Number,
+  costSource: UsageCostSource,
+  records: NonNegativeInt,
+  unpricedRecords: NonNegativeInt,
+});
+export type ThreadCostLine = typeof ThreadCostLine.Type;
+
+export const ThreadCostScope = Schema.Struct({
+  threadCount: NonNegativeInt,
+  costUsd: Schema.Number,
+  models: ForwardCompatibleArray(ThreadCostLine),
+});
+export type ThreadCostScope = typeof ThreadCostScope.Type;
+
+/** Each count is a reason `costUsd` can be lower than what the thread really used. */
+export const ThreadCostCoverage = Schema.Struct({
+  complete: Schema.Boolean,
+  /** Provider conversations on a driver that has no readable usage history. */
+  untrackedConversations: NonNegativeInt,
+  /** Conversations with no usage in history: nothing billed yet, or the history is gone. */
+  conversationsWithoutUsage: NonNegativeInt,
+  unreadableSources: NonNegativeInt,
+  unpricedRecords: NonNegativeInt,
+});
+export type ThreadCostCoverage = typeof ThreadCostCoverage.Type;
+
+/** An API-equivalent estimate for one thread, not a subscription bill. Forks are not rolled up. */
+export const ThreadCost = Schema.Struct({
+  threadId: ThreadId,
+  readAt: Schema.String,
+  totalCostUsd: Schema.Number,
+  thread: ThreadCostScope,
+  subagents: ThreadCostScope,
+  coverage: ThreadCostCoverage,
+  /** Null when the thread has no history to price, so no scan ran. */
+  pricing: Schema.NullOr(UsagePricing),
+});
+export type ThreadCost = typeof ThreadCost.Type;
+
 export class UsageReadError extends Schema.TaggedError<UsageReadError>()("UsageReadError", {
-  reason: Schema.Literals(["scanFailed", "invalidWindow"]),
+  reason: Schema.Literals(["scanFailed", "invalidWindow", "threadNotFound"]),
   detail: TrimmedNonEmptyString,
   cause: Schema.optional(Schema.Defect()),
 }) {

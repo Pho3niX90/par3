@@ -62,6 +62,18 @@ saved totals first, then updates them when Cursor's API responds.
 If recent work is missing or a new model shows no cost, refresh to rescan session history and
 update model pricing.
 
+## See what a thread cost
+
+In a thread's details, choose **Estimate cost**. On mobile it's under the thread's model settings.
+Agents can ask with `t3_thread_cost`, and scripts on the host with `par3 thread cost <thread>`.
+
+The figure uses the same API-equivalent prices as **Usage**, including your custom prices, so it
+isn't your subscription bill. It covers the thread and its sub-agent threads, shown separately.
+A fork counts only what it used after forking, and isn't added to the thread it came from.
+
+A `+` means the real figure may be higher, and the notes say why: a provider keeps no usage history
+Par3 can read, or that history is gone from the machine. **Unknown** means no usage could be found.
+
 ## Set custom model prices
 
 On web or desktop, open the environment dropdown on **Usage**, then choose **Model prices** to add,

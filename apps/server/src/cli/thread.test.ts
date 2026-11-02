@@ -1,8 +1,21 @@
 import { assert, it } from "@effect/vitest";
-import { RunId, ThreadId } from "@t3tools/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { RunId, ThreadId, type ThreadCost } from "@t3tools/contracts";
+import * as NetService from "@t3tools/shared/Net";
+import { Command } from "effect/cli";
+import * as FileSystem from "effect/FileSystem";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as TestConsole from "effect/testing/TestConsole";
 
-import { readLatestMessages, type ThreadTools, waitForRun } from "./thread.ts";
+import {
+  printThreadCost,
+  readLatestMessages,
+  threadCommand,
+  threadCostLines,
+  type ThreadTools,
+  waitForRun,
+} from "./thread.ts";
 
 const threadId = ThreadId.make("thread-1");
 const runId = RunId.make("run-1");
@@ -159,4 +172,142 @@ it.effect("show returns a --messages count larger than one call can spread", () 
       latest(200_000),
     );
   }),
+);
+
+const emptyCostScope = { threadCount: 0, costUsd: 0, models: [] };
+
+it("cost prints the figure, its split, its models, and why it may be low", () => {
+  assert.deepStrictEqual(
+    threadCostLines({
+      threadId,
+      readAt: "2026-08-02T00:00:00.000Z",
+      totalCostUsd: 1.5,
+      thread: {
+        threadCount: 1,
+        costUsd: 1.5,
+        models: [
+          {
+            provider: "claude",
+            model: "claude-fable-5",
+            totals: {
+              uncachedInputTokens: 1000,
+              cachedInputTokens: 0,
+              cacheCreationTokens: 0,
+              outputTokens: 500,
+              reasoningTokens: 100,
+            },
+            costUsd: 1.5,
+            costSource: "modelPriced",
+            records: 2,
+            unpricedRecords: 0,
+          },
+        ],
+      },
+      subagents: { threadCount: 1, costUsd: 0, models: [] },
+      coverage: {
+        complete: false,
+        untrackedConversations: 1,
+        conversationsWithoutUsage: 0,
+        unreadableSources: 0,
+        unpricedRecords: 0,
+      },
+      pricing: null,
+    }),
+    [
+      "$1.50+",
+      "This thread: $1.50",
+      "1 sub-agent thread: $0.00",
+      "claude-fable-5: $1.50 (1.50K tokens)",
+      "Note: 1 conversation uses a provider with no usage history.",
+    ],
+  );
+});
+
+it("cost says the figure is unknown when a thread has no usage to read", () => {
+  assert.deepStrictEqual(
+    threadCostLines({
+      threadId,
+      readAt: "2026-08-02T00:00:00.000Z",
+      totalCostUsd: 0,
+      thread: { ...emptyCostScope, threadCount: 1 },
+      subagents: emptyCostScope,
+      coverage: {
+        complete: false,
+        untrackedConversations: 0,
+        conversationsWithoutUsage: 0,
+        unreadableSources: 0,
+        unpricedRecords: 0,
+      },
+      pricing: null,
+    }),
+    ["Unknown", "Note: This thread has not used a provider yet."],
+  );
+});
+
+const knownThreadCost: ThreadCost = {
+  threadId,
+  readAt: "2026-08-02T00:00:00.000Z",
+  totalCostUsd: 1,
+  thread: { threadCount: 1, costUsd: 1, models: [] },
+  subagents: emptyCostScope,
+  coverage: {
+    complete: true,
+    untrackedConversations: 0,
+    conversationsWithoutUsage: 0,
+    unreadableSources: 0,
+    unpricedRecords: 0,
+  },
+  pricing: null,
+};
+
+it.effect("cost asks the tool for that thread and prints plain lines", () => {
+  const { tools, calls } = scriptedTools({ t3_thread_cost: [knownThreadCost] });
+  return Effect.gen(function* () {
+    yield* printThreadCost(threadId, false)(tools);
+    assert.deepStrictEqual(calls, [{ tool: "t3_thread_cost", args: { threadId } }]);
+    assert.deepStrictEqual(yield* TestConsole.logLines, ["$1.00"]);
+  }).pipe(Effect.provide(Layer.fresh(TestConsole.layer)));
+});
+
+it.effect("cost --json prints the whole estimate", () => {
+  const { tools } = scriptedTools({ t3_thread_cost: [knownThreadCost] });
+  return Effect.gen(function* () {
+    yield* printThreadCost(threadId, true)(tools);
+    const [line] = yield* TestConsole.logLines;
+    assert.deepStrictEqual(JSON.parse(String(line)), knownThreadCost);
+  }).pipe(Effect.provide(Layer.fresh(TestConsole.layer)));
+});
+
+it.effect("cost refuses an id that is not a thread id, before contacting a server", () =>
+  Effect.gen(function* () {
+    const exit = yield* Command.runWith(threadCommand, { version: "0.0.0" })(["cost", "   "]).pipe(
+      Effect.exit,
+    );
+    assert.isTrue(exit._tag === "Failure");
+    assert.isTrue(
+      (yield* TestConsole.errorLines).some((line) => String(line).includes("is not a thread id")),
+    );
+  }).pipe(Effect.provide(Layer.mergeAll(TestConsole.layer, NodeServices.layer, NetService.layer))),
+);
+
+it.effect("cost reports that no server is running in that home", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const baseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-thread-cost-" });
+    const exit = yield* Command.runWith(threadCommand, { version: "0.0.0" })([
+      "cost",
+      "thread-1",
+      "--base-dir",
+      baseDir,
+    ]).pipe(Effect.exit);
+    assert.isTrue(exit._tag === "Failure");
+    assert.isTrue(
+      (yield* TestConsole.errorLines).some((line) =>
+        String(line).includes("No running Par3 server"),
+      ),
+    );
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(Layer.mergeAll(TestConsole.layer, NodeServices.layer, NetService.layer)),
+  ),
 );

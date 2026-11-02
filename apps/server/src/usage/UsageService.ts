@@ -139,10 +139,21 @@ const decodeCachedSources = Schema.decodeUnknownOption(
   Schema.Struct({ sources: Schema.Record(Schema.String, CachedSource) }),
 );
 
+/**
+ * Limits a scan to known conversations: provider, then session, then the first instant to count.
+ * Buckets then carry the session in `sourcePath`. A fork's transcript starts with its parent's
+ * usage under older timestamps, so the instant keeps that history out of the fork's total.
+ */
+export type UsageSessionScope = ReadonlyMap<UsageProviderKind, ReadonlyMap<string, number>>;
+
 export class UsageService extends Context.Service<
   UsageService,
   {
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
+    readonly readSessions: (
+      input: UsageSummaryInput,
+      scope: UsageSessionScope,
+    ) => Effect.Effect<UsageSummary, UsageReadError>;
     readonly refreshRates: Effect.Effect<UsagePricing>;
   }
 >()("t3/usage/UsageService") {}
@@ -329,11 +340,13 @@ export const make = Effect.gen(function* () {
   const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
     settings: ServerSettingsValue,
     retentionCutoffMs: number,
+    scope: UsageSessionScope | undefined,
   ) {
     const dirs: Array<TranscriptSource> = [];
     const seen = new Set<string>();
     for (const { driver, reader } of transcriptReaders) {
       const { provider, format } = reader;
+      if (scope !== undefined && !scope.has(provider)) continue;
       const directories = yield* Effect.forEach(
         yield* usageInstances(driver, settings),
         (instance) => reader.directories(instance),
@@ -616,13 +629,17 @@ export const make = Effect.gen(function* () {
     settings: ServerSettingsValue,
     retentionCutoffMs: number,
     awaitRefresh: boolean,
+    scope: UsageSessionScope | undefined,
   ) {
-    const dirs = yield* resolveTranscriptDirs(settings, retentionCutoffMs).pipe(
+    const dirs = yield* resolveTranscriptDirs(settings, retentionCutoffMs, scope).pipe(
       Effect.provideContext(readerContext),
     );
 
     const scans = Effect.forEach(
-      scanReaders,
+      // Some scan readers call a provider's account API, which a scoped read must not wake.
+      scope === undefined
+        ? scanReaders
+        : scanReaders.filter(({ reader }) => scope.has(reader.provider)),
       ({ driver, reader }) =>
         usageInstances(driver, settings).pipe(
           Effect.flatMap((instances) =>
@@ -660,6 +677,7 @@ export const make = Effect.gen(function* () {
   const scanSummary = Effect.fn("UsageService.scanSummary")(function* (
     input: UsageSummaryInput,
     settings: ServerSettingsValue,
+    scope: UsageSessionScope | undefined,
   ) {
     if (input.sinceDay > input.untilDay) {
       return yield* new UsageReadError({
@@ -710,7 +728,7 @@ export const make = Effect.gen(function* () {
     const [, scannedDirs] = yield* Effect.all(
       [
         ensureRates(false),
-        collectDirs(windowStartMs, settings, retentionCutoffMs, input.awaitRefresh === true),
+        collectDirs(windowStartMs, settings, retentionCutoffMs, input.awaitRefresh === true, scope),
       ],
       { concurrency: 2 },
     );
@@ -815,6 +833,10 @@ export const make = Effect.gen(function* () {
         const eventOccurrences = new Map<string, number>();
         for (const rawRecord of file.records) {
           const record = correctedRecord(rawRecord);
+          if (scope !== undefined) {
+            const firstCountedMs = scope.get(record.provider)?.get(record.sessionId);
+            if (firstCountedMs === undefined || record.timestampMs < firstCountedMs) continue;
+          }
           let usageRecord = record;
           if (
             sharedSessionProviders.has(record.provider) &&
@@ -832,7 +854,8 @@ export const make = Effect.gen(function* () {
             eventOccurrences.set(key, occurrence);
             usageRecord = { ...record, dedupeKey: key + ":" + occurrence };
           }
-          if (aggregator.add(usageRecord, dir) && record.sessionId.length > 0) {
+          const bucketSource = scope === undefined ? dir : record.sessionId;
+          if (aggregator.add(usageRecord, bucketSource) && record.sessionId.length > 0) {
             sessionIds.add(record.sessionId);
           }
         }
@@ -887,7 +910,11 @@ export const make = Effect.gen(function* () {
 
   const inflightScans = new Map<string, Deferred.Deferred<UsageSummary, UsageReadError>>();
 
-  const scanKey = (input: UsageSummaryInput, settings: ServerSettingsValue): string =>
+  const scanKey = (
+    input: UsageSummaryInput,
+    settings: ServerSettingsValue,
+    scope: UsageSessionScope | undefined,
+  ): string =>
     JSON.stringify([
       input.timeZone,
       input.sinceDay,
@@ -897,11 +924,17 @@ export const make = Effect.gen(function* () {
       input.untilTime ?? null,
       settings,
       input.awaitRefresh === true,
+      scope === undefined
+        ? null
+        : [...scope].map(([provider, sessions]) => [provider, [...sessions]]),
     ]);
 
-  const readSummary = Effect.fn("UsageService.readSummary")(function* (input: UsageSummaryInput) {
+  const readSharedScan = Effect.fnUntraced(function* (
+    input: UsageSummaryInput,
+    scope: UsageSessionScope | undefined,
+  ) {
     const settings = yield* readSettings;
-    const key = scanKey(input, settings);
+    const key = scanKey(input, settings, scope);
     const deferred = yield* Effect.uninterruptible(
       Effect.gen(function* () {
         const existing = inflightScans.get(key);
@@ -912,7 +945,7 @@ export const make = Effect.gen(function* () {
         inflightScans.set(key, created);
         // Detach so caller departure cannot cancel shared scans; finished scans warm the cache.
         // Register writes before releasing waiters, but start writing after delivering their summary.
-        yield* scanSummary(input, settings).pipe(
+        yield* scanSummary(input, settings, scope).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => inflightScans.delete(key)).pipe(
               Effect.andThen(Exit.isSuccess(exit) ? schedulePersist : Effect.void),
@@ -927,7 +960,18 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates, awaitPersisted } as const;
+  const readSummary = Effect.fn("UsageService.readSummary")(function* (input: UsageSummaryInput) {
+    return yield* readSharedScan(input, undefined);
+  });
+
+  const readSessions = Effect.fn("UsageService.readSessions")(function* (
+    input: UsageSummaryInput,
+    scope: UsageSessionScope,
+  ) {
+    return yield* readSharedScan(input, scope);
+  });
+
+  return { readSummary, readSessions, refreshRates, awaitPersisted } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);

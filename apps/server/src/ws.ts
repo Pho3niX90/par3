@@ -244,6 +244,7 @@ import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { commandFeatureUsage, featureUsage } from "./telemetry/FeatureUsage.ts";
 import type { TelemetryOwner } from "./telemetry/Identify.ts";
+import * as ThreadCostService from "./usage/ThreadCostService.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as TriageService from "./triage/TriageService.ts";
@@ -1336,6 +1337,7 @@ type WsRpcServices =
   | TraceDiagnostics.TraceDiagnostics
   | TriageService.TriageService
   | UsageLimitSources.UsageLimitSources
+  | ThreadCostService.ThreadCostService
   | UsageService.UsageService
   | VcsProvisioningService.VcsProvisioningService
   | VcsStatusBroadcaster.VcsStatusBroadcaster
@@ -1447,6 +1449,7 @@ const makeWsRpcHandlers = (
               Effect.orElseSucceed(() => null),
             );
       const usage = yield* UsageService.UsageService;
+      const threadCost = yield* ThreadCostService.ThreadCostService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
       const jiraIssues = yield* JiraIssues.JiraIssues;
       const mcpGateway = yield* McpGateway.McpGateway;
@@ -2699,6 +2702,7 @@ const makeWsRpcHandlers = (
           resourceTelemetry.readHistory(input),
         [WS_METHODS.serverGetUsageSummary]: (input) => usage.readSummary(input),
         [WS_METHODS.serverRefreshUsageRates]: (_input) => usage.refreshRates,
+        [WS_METHODS.serverGetThreadCost]: (input) => threadCost.read(input),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) => resourceTelemetry.retry,
         [WS_METHODS.serverCheckOtlpEndpoint]: (input) => otlpEndpointCheck.check(input),
         [WS_METHODS.serverPrepareTriage]: (input) => triage.prepare(input),

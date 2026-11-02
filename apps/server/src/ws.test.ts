@@ -10,6 +10,7 @@ import {
   ProviderInstanceId,
   WS_METHODS,
   WsServerRefreshProvidersRpc,
+  WsServerGetThreadCostRpc,
   WsSubscribeServerConfigRpc,
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadShell,
@@ -17,10 +18,13 @@ import {
   type ServerConfig,
   type ServerConfigStreamEvent,
   type ServerProvider,
+  type ThreadCost,
+  UsageReadError,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -97,6 +101,7 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
+import * as ThreadCostService from "./usage/ThreadCostService.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
@@ -590,6 +595,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ThreadManagement.ThreadManagementService)({}),
   Layer.mock(ThreadRepositories.ThreadRepositories)({}),
   Layer.mock(ThreadSearch.ThreadSearch)({}),
+  Layer.mock(ThreadCostService.ThreadCostService)({}),
   Layer.mock(UsageService.UsageService)({}),
   Layer.mock(VcsProvisioningService.VcsProvisioningService)({}),
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
@@ -935,6 +941,100 @@ it.effect("on-demand clients get provider config without workspace snapshots", (
     ),
     Effect.scoped,
   ),
+);
+
+it.effect(
+  "server.getThreadCost answers through the thread cost service and returns its errors",
+  () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("cost-thread");
+      const threadCost: ThreadCost = {
+        threadId,
+        readAt: "2026-08-02T00:00:00.000Z",
+        totalCostUsd: 1.5,
+        thread: { threadCount: 1, costUsd: 1.5, models: [] },
+        subagents: { threadCount: 0, costUsd: 0, models: [] },
+        coverage: {
+          complete: true,
+          untrackedConversations: 0,
+          conversationsWithoutUsage: 0,
+          unreadableSources: 0,
+          unpricedRecords: 0,
+        },
+        pricing: null,
+      };
+      const exits = yield* Queue.unbounded<unknown>();
+      const server = yield* RpcServer.makeNoSerialization(RpcGroup.make(WsServerGetThreadCostRpc), {
+        ...WS_RPC_SERVER_OPTIONS,
+        onFromServer: (response) =>
+          response._tag === "Exit" ? Queue.offer(exits, response.exit) : Effect.void,
+      }).pipe(
+        Effect.provide(
+          layerWsRpc(
+            {
+              sessionId: AuthSessionId.make("cost-test"),
+              subject: "cost-test",
+              method: "browser-session-cookie",
+              scopes: [],
+            },
+            {},
+            yield* ServerBrowser.ServerBrowser,
+            () => Effect.void,
+          ).pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                layerUnusedConfigRpcServices,
+                Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+                  scratchRoot: Effect.succeedNone,
+                  namedProjectsRoot: process.cwd(),
+                }),
+                Layer.mock(ScratchThreadPromotion.ScratchThreadPromotion)({}),
+                Layer.mock(ServerEnvironment.ServerEnvironment)({}),
+                Layer.mock(EnvironmentAuth.EnvironmentAuth)({}),
+                Layer.mock(ExternalLauncher.ExternalLauncher)({}),
+                Layer.mock(ProviderRegistry.ProviderRegistry)({}),
+                Layer.mock(UsageLimitSources.UsageLimitSources)({}),
+                Layer.mock(RemoteOpenTargets.RemoteOpenTargets)({}),
+                Layer.mock(DirectEndpoints.DirectEndpoints)({}),
+                Layer.succeed(ThreadCostService.ThreadCostService, {
+                  read: (input) =>
+                    input.threadId === threadId
+                      ? Effect.succeed(threadCost)
+                      : Effect.fail(
+                          new UsageReadError({ reason: "threadNotFound", detail: "gone" }),
+                        ),
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+      const request = (id: string, requested: string) =>
+        server.write(0, {
+          _tag: "Request",
+          id: RpcMessage.RequestId(id),
+          tag: WS_METHODS.serverGetThreadCost,
+          payload: { threadId: ThreadId.make(requested) },
+          headers: Headers.empty,
+        });
+
+      yield* request("found", threadId);
+      const found = (yield* Queue.take(exits)) as Exit.Exit<ThreadCost, UsageReadError>;
+      assert.isTrue(Exit.isSuccess(found) && found.value.totalCostUsd === 1.5);
+
+      yield* request("missing", "other-thread");
+      const missing = (yield* Queue.take(exits)) as Exit.Exit<ThreadCost, UsageReadError>;
+      assert.isTrue(Exit.isFailure(missing));
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.fresh(layerConfigSources),
+          Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
+          Layer.mock(ServerBrowser.ServerBrowser)({}),
+        ),
+      ),
+      Effect.scoped,
+    ),
 );
 
 // Compaction keeps the oldest and newest event per message, so a cursor older

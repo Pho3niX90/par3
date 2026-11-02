@@ -1,8 +1,19 @@
 // @effect-diagnostics globalDate:off -- A fixed instant keeps calendar-window assertions deterministic.
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { UsageSource } from "@t3tools/contracts";
+import {
+  ThreadId,
+  type ThreadCost,
+  type ThreadCostLine,
+  type UsageSource,
+} from "@t3tools/contracts";
 
-import { formatHourShort, makeWindow, usageSourceMessages } from "./usageFormat.ts";
+import {
+  describeThreadCost,
+  formatHourShort,
+  formatTokens,
+  makeWindow,
+  usageSourceMessages,
+} from "./usageFormat.ts";
 
 function malformedSource(count: number, overrides: Partial<UsageSource> = {}): UsageSource {
   return {
@@ -175,5 +186,196 @@ describe("hourly usage formatting", () => {
     } finally {
       resolvedOptions.mockRestore();
     }
+  });
+});
+
+describe("describeThreadCost", () => {
+  const line = (overrides: Partial<ThreadCostLine> = {}): ThreadCostLine => ({
+    provider: "claude",
+    model: "claude-fable-5",
+    totals: {
+      uncachedInputTokens: 100,
+      cachedInputTokens: 200,
+      cacheCreationTokens: 300,
+      outputTokens: 400,
+      reasoningTokens: 50,
+    },
+    costUsd: 1,
+    costSource: "modelPriced",
+    records: 1,
+    unpricedRecords: 0,
+    ...overrides,
+  });
+  const coverage = (overrides: Partial<ThreadCost["coverage"]> = {}): ThreadCost["coverage"] => ({
+    complete: true,
+    untrackedConversations: 0,
+    conversationsWithoutUsage: 0,
+    unreadableSources: 0,
+    unpricedRecords: 0,
+    ...overrides,
+  });
+  const cost = (overrides: Partial<ThreadCost> = {}): ThreadCost => ({
+    threadId: ThreadId.make("thread"),
+    readAt: "2026-08-02T00:00:00.000Z",
+    totalCostUsd: 1,
+    thread: { threadCount: 1, costUsd: 1, models: [line()] },
+    subagents: { threadCount: 0, costUsd: 0, models: [] },
+    coverage: coverage(),
+    pricing: null,
+    ...overrides,
+  });
+
+  it("states a complete figure plainly, with no split or notes", () => {
+    expect(describeThreadCost(cost())).toEqual({
+      amount: "$1.00",
+      breakdown: [],
+      models: [
+        {
+          key: "claude:claude-fable-5",
+          label: "claude-fable-5",
+          amount: "$1.00",
+          // reasoningTokens is inside outputTokens, so it is not counted twice.
+          tokens: formatTokens(1000),
+        },
+      ],
+      notes: [],
+    });
+  });
+
+  it("marks an incomplete figure as a lower bound", () => {
+    const description = describeThreadCost(
+      cost({ coverage: coverage({ complete: false, unreadableSources: 1 }) }),
+    );
+    expect(description.amount).toBe("$1.00+");
+  });
+
+  it("does not round real spend down to zero", () => {
+    expect(describeThreadCost(cost({ totalCostUsd: 0.004 })).amount).toBe("<$0.01");
+  });
+
+  it("states a complete zero as zero and an incomplete zero as unknown", () => {
+    expect(describeThreadCost(cost({ totalCostUsd: 0 })).amount).toBe("$0.00");
+    expect(
+      describeThreadCost(cost({ totalCostUsd: 0, coverage: coverage({ complete: false }) })).amount,
+    ).toBe("Unknown");
+  });
+
+  it("splits out sub-agents only when the thread has some", () => {
+    expect(
+      describeThreadCost(cost({ subagents: { threadCount: 2, costUsd: 0.5, models: [] } }))
+        .breakdown,
+    ).toEqual([
+      { label: "This thread", amount: "$1.00" },
+      { label: "2 sub-agent threads", amount: "$0.50" },
+    ]);
+    expect(
+      describeThreadCost(cost({ subagents: { threadCount: 1, costUsd: 0, models: [] } }))
+        .breakdown[1]?.label,
+    ).toBe("1 sub-agent thread");
+  });
+
+  it("merges a model used by the thread and a sub-agent, ordered by cost", () => {
+    const description = describeThreadCost(
+      cost({
+        thread: {
+          threadCount: 1,
+          costUsd: 1.5,
+          models: [line(), line({ model: "b-model", costUsd: 0.5 })],
+        },
+        subagents: {
+          threadCount: 1,
+          costUsd: 2,
+          models: [line({ costUsd: 2 })],
+        },
+      }),
+    );
+    expect(description.models.map(({ label, amount, tokens }) => [label, amount, tokens])).toEqual([
+      ["claude-fable-5", "$3.00", formatTokens(2000)],
+      ["b-model", "$0.50", formatTokens(1000)],
+    ]);
+  });
+
+  it("orders equal costs by model name", () => {
+    const description = describeThreadCost(
+      cost({
+        thread: {
+          threadCount: 1,
+          costUsd: 2,
+          models: [line({ model: "b-model" }), line({ model: "a-model" })],
+        },
+      }),
+    );
+    expect(description.models.map(({ label }) => label)).toEqual(["a-model", "b-model"]);
+  });
+
+  it("keeps one model from two providers apart", () => {
+    const keys = describeThreadCost(
+      cost({
+        thread: {
+          threadCount: 1,
+          costUsd: 2,
+          models: [line(), line({ provider: "cursor" })],
+        },
+      }),
+    ).models.map(({ key }) => key);
+    expect(keys).toEqual(["claude:claude-fable-5", "cursor:claude-fable-5"]);
+  });
+
+  it("says a model has no price rather than that it was free", () => {
+    const description = describeThreadCost(
+      cost({
+        thread: {
+          threadCount: 1,
+          costUsd: 0,
+          models: [line({ costUsd: 0, unpricedRecords: 1, costSource: "unpriced" })],
+        },
+      }),
+    );
+    expect(description.models[0]?.amount).toBe("No price");
+  });
+
+  it("explains each reason the figure may be low, with counts", () => {
+    expect(
+      describeThreadCost(
+        cost({
+          coverage: coverage({
+            complete: false,
+            untrackedConversations: 1,
+            conversationsWithoutUsage: 1,
+            unreadableSources: 1,
+            unpricedRecords: 1,
+          }),
+        }),
+      ).notes,
+    ).toEqual([
+      "1 conversation uses a provider with no usage history.",
+      "1 conversation has no usage in this machine's history.",
+      "1 usage source could not be fully read.",
+      "1 usage record has no known price.",
+    ]);
+    expect(
+      describeThreadCost(
+        cost({
+          coverage: coverage({
+            complete: false,
+            untrackedConversations: 2,
+            conversationsWithoutUsage: 2,
+            unreadableSources: 2,
+            unpricedRecords: 2,
+          }),
+        }),
+      ).notes,
+    ).toEqual([
+      "2 conversations use a provider with no usage history.",
+      "2 conversations have no usage in this machine's history.",
+      "2 usage sources could not be fully read.",
+      "2 usage records have no known price.",
+    ]);
+  });
+
+  it("says when a thread has not used a provider", () => {
+    expect(
+      describeThreadCost(cost({ totalCostUsd: 0, coverage: coverage({ complete: false }) })).notes,
+    ).toEqual(["This thread has not used a provider yet."]);
   });
 });

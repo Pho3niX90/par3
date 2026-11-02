@@ -11,8 +11,10 @@ import {
   type OrchestratorMcpThreadListItem,
   type OrchestratorMcpThreadStatus,
   type OrchestratorMcpThreadTimelineItem,
+  ThreadCost,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { describeThreadCost } from "@t3tools/shared/usageFormat";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -757,6 +759,45 @@ const threadShowCommand = Command.make("show", {
   ),
 );
 
+export function threadCostLines(cost: ThreadCost): readonly string[] {
+  const description = describeThreadCost(cost);
+  return [
+    description.amount,
+    ...description.breakdown.map((entry) => `${entry.label}: ${entry.amount}`),
+    ...description.models.map(
+      (model) => `${model.label}: ${model.amount} (${model.tokens} tokens)`,
+    ),
+    ...description.notes.map((note) => `Note: ${note}`),
+  ];
+}
+
+export const printThreadCost = (threadId: ThreadId, json: boolean) =>
+  Effect.fn("cli.thread.cost")(function* (tools: ThreadTools) {
+    const cost = yield* tools.call("t3_thread_cost", { threadId }, ThreadCost);
+    if (json) {
+      return yield* printJson(cost);
+    }
+    for (const line of threadCostLines(cost)) {
+      yield* Console.log(line);
+    }
+  });
+
+const threadCostCommand = Command.make("cost", {
+  ...projectLocationFlags,
+  thread: threadArgument,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription(
+    "Estimate what a thread used, in API-equivalent USD. Not a subscription bill.",
+  ),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const threadId = yield* decodeThreadId(flags.thread);
+      yield* withThreadTools(flags, printThreadCost(threadId, flags.json));
+    }).pipe(reportThreadErrors),
+  ),
+);
+
 export const threadCommand = Command.make("thread").pipe(
   Command.withDescription("Start, message, and read threads on the running server."),
   Command.withSubcommands([
@@ -764,5 +805,6 @@ export const threadCommand = Command.make("thread").pipe(
     threadStartCommand,
     threadSendCommand,
     threadShowCommand,
+    threadCostCommand,
   ]),
 );
