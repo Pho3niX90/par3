@@ -1,5 +1,7 @@
 // @effect-diagnostics globalDate:off -- Usage windows are calendar days in the viewer's zone, derived from wall-clock "now" via Intl.
 import {
+  type ThreadCost,
+  type ThreadCostLine,
   UsageDay,
   type UsageResolution,
   type UsageSource,
@@ -293,5 +295,122 @@ export function makeWindow(
     untilDay: UsageDay.make(untilDay),
     timeZone,
     resolution,
+  };
+}
+
+export interface ThreadCostDescription {
+  /** The headline figure. A trailing `+` means the real figure may be higher. */
+  readonly amount: string;
+  readonly breakdown: readonly { readonly label: string; readonly amount: string }[];
+  readonly models: readonly {
+    /** Two providers can serve one model, so the label alone is not unique. */
+    readonly key: string;
+    readonly label: string;
+    readonly amount: string;
+    readonly tokens: string;
+  }[];
+  readonly notes: readonly string[];
+}
+
+// Most threads cost cents, where two decimals round real spend down to a misleading $0.00.
+function formatThreadUsd(value: number): string {
+  return value > 0 && value < 0.01 ? "<$0.01" : formatUsd(value);
+}
+
+const countOf = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
+
+function threadCostNotes({ coverage }: ThreadCost): readonly string[] {
+  const notes: string[] = [];
+  if (coverage.untrackedConversations > 0) {
+    notes.push(
+      `${countOf(coverage.untrackedConversations, "conversation uses", "conversations use")} a provider with no usage history.`,
+    );
+  }
+  if (coverage.conversationsWithoutUsage > 0) {
+    notes.push(
+      `${countOf(coverage.conversationsWithoutUsage, "conversation has", "conversations have")} no usage in this machine's history.`,
+    );
+  }
+  if (coverage.unreadableSources > 0) {
+    notes.push(
+      `${countOf(coverage.unreadableSources, "usage source", "usage sources")} could not be fully read.`,
+    );
+  }
+  if (coverage.unpricedRecords > 0) {
+    notes.push(
+      `${countOf(coverage.unpricedRecords, "usage record has", "usage records have")} no known price.`,
+    );
+  }
+  if (notes.length === 0 && !coverage.complete) {
+    notes.push("This thread has not used a provider yet.");
+  }
+  return notes;
+}
+
+function mergeThreadCostModels(
+  cost: ThreadCost,
+): readonly ThreadCostDescription["models"][number][] {
+  const lines = new Map<string, ThreadCostLine>();
+  for (const line of [...cost.thread.models, ...cost.subagents.models]) {
+    const key = `${line.provider}\u0000${line.model}`;
+    const previous = lines.get(key);
+    lines.set(
+      key,
+      previous === undefined
+        ? line
+        : {
+            ...line,
+            costUsd: previous.costUsd + line.costUsd,
+            records: previous.records + line.records,
+            unpricedRecords: previous.unpricedRecords + line.unpricedRecords,
+            totals: {
+              uncachedInputTokens:
+                previous.totals.uncachedInputTokens + line.totals.uncachedInputTokens,
+              cachedInputTokens: previous.totals.cachedInputTokens + line.totals.cachedInputTokens,
+              cacheCreationTokens:
+                previous.totals.cacheCreationTokens + line.totals.cacheCreationTokens,
+              outputTokens: previous.totals.outputTokens + line.totals.outputTokens,
+              reasoningTokens: previous.totals.reasoningTokens + line.totals.reasoningTokens,
+            },
+          },
+    );
+  }
+  return [...lines.values()]
+    .sort((a, b) => b.costUsd - a.costUsd || a.model.localeCompare(b.model))
+    .map((line) => ({
+      key: `${line.provider}:${line.model}`,
+      label: line.model,
+      amount: line.records === line.unpricedRecords ? "No price" : formatThreadUsd(line.costUsd),
+      // reasoningTokens is a subset of outputTokens and must not be added again.
+      tokens: formatTokens(
+        line.totals.uncachedInputTokens +
+          line.totals.cachedInputTokens +
+          line.totals.cacheCreationTokens +
+          line.totals.outputTokens,
+      ),
+    }));
+}
+
+/** Shared wording, so web, mobile, and the CLI state the same figure and the same caveats. */
+export function describeThreadCost(cost: ThreadCost): ThreadCostDescription {
+  const { totalCostUsd, coverage, thread, subagents } = cost;
+  return {
+    amount:
+      totalCostUsd === 0 && !coverage.complete
+        ? "Unknown"
+        : `${formatThreadUsd(totalCostUsd)}${coverage.complete ? "" : "+"}`,
+    breakdown:
+      subagents.threadCount === 0
+        ? []
+        : [
+            { label: "This thread", amount: formatThreadUsd(thread.costUsd) },
+            {
+              label: countOf(subagents.threadCount, "sub-agent thread", "sub-agent threads"),
+              amount: formatThreadUsd(subagents.costUsd),
+            },
+          ],
+    models: mergeThreadCostModels(cost),
+    notes: threadCostNotes(cost),
   };
 }

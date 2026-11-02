@@ -1,6 +1,9 @@
 import {
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
+  ThreadId,
+  type ThreadCost,
+  type ThreadCostInput,
   UsageDay,
   UsageReadError,
   USAGE_CONTRACT_VERSION,
@@ -44,6 +47,22 @@ const TARGET = new PrimaryConnectionTarget({
   wsBaseUrl: "wss://environment.example.test",
 });
 
+const THREAD_COST: ThreadCost = {
+  threadId: ThreadId.make("thread-1"),
+  readAt: "2026-09-04T12:00:00Z",
+  totalCostUsd: 1,
+  thread: { threadCount: 1, costUsd: 1, models: [] },
+  subagents: { threadCount: 0, costUsd: 0, models: [] },
+  coverage: {
+    complete: true,
+    untrackedConversations: 0,
+    conversationsWithoutUsage: 0,
+    unreadableSources: 0,
+    unpricedRecords: 0,
+  },
+  pricing: null,
+};
+
 const INPUT: UsageSummaryInput = {
   sinceDay: UsageDay.make("2026-09-01"),
   untilDay: UsageDay.make("2026-09-04"),
@@ -85,9 +104,16 @@ const makeHarness = Effect.fn("ServerUsageTest.makeHarness")(function* (
   const events = yield* Queue.unbounded<ServerConfigStreamEvent>();
   let settings = DEFAULT_SERVER_SETTINGS;
   let requests = 0;
+  let threadCostRequests = 0;
   const inputs: UsageSummaryInput[] = [];
   const client = {
     [WS_METHODS.serverRefreshUsageRates]: () => Effect.succeed(PRICING),
+    [WS_METHODS.serverGetThreadCost]: (input: ThreadCostInput) => {
+      threadCostRequests += 1;
+      return input.threadId === THREAD_COST.threadId
+        ? Effect.succeed(THREAD_COST)
+        : Effect.fail(new UsageReadError({ reason: "threadNotFound", detail: "gone" }));
+    },
     [WS_METHODS.subscribeServerConfig]: () =>
       Stream.concat(
         Stream.make({ version: 1 as const, type: "snapshot" as const, config: CONFIG }),
@@ -202,15 +228,16 @@ const makeHarness = Effect.fn("ServerUsageTest.makeHarness")(function* (
     registry,
     atoms,
     requests: () => requests,
+    threadCostRequests: () => threadCostRequests,
     inputs: () => inputs,
     updateSettings,
     summary: (input = INPUT) => atoms.usageSummary({ environmentId: TARGET.environmentId, input }),
   };
 });
 
-function settledSummary<E>(
+function settledSummary<A, E>(
   registry: AtomRegistry.AtomRegistry,
-  atom: Atom.Atom<AsyncResult.AsyncResult<UsageSummary, E>>,
+  atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>,
 ) {
   return AtomRegistry.toStream(registry, atom).pipe(
     Stream.filterMap((result) =>
@@ -297,6 +324,43 @@ it.effect("keeps the cached usage summary when the awaited refresh fails", () =>
       expect(AsyncResult.isSuccess(harness.registry.get(summary))).toBe(true);
       expect(harness.requests()).toBe(2);
       unmount();
+    }),
+  ),
+);
+
+it.effect("reads a thread's cost once while it is fresh", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const atom = () =>
+        harness.atoms.threadCost({
+          environmentId: TARGET.environmentId,
+          input: { threadId: THREAD_COST.threadId },
+        });
+      const first = yield* settledSummary(harness.registry, atom());
+      const second = yield* settledSummary(harness.registry, atom());
+      expect(first).toEqual(THREAD_COST);
+      expect(second).toEqual(THREAD_COST);
+      expect(harness.threadCostRequests()).toBe(1);
+    }),
+  ),
+);
+
+it.effect("reports a thread cost failure", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const result = yield* AtomRegistry.toStream(
+        harness.registry,
+        harness.atoms.threadCost({
+          environmentId: TARGET.environmentId,
+          input: { threadId: ThreadId.make("missing") },
+        }),
+      ).pipe(
+        Stream.filter((current) => AsyncResult.isFailure(current)),
+        Stream.runHead,
+      );
+      expect(Option.isSome(result)).toBe(true);
     }),
   ),
 );

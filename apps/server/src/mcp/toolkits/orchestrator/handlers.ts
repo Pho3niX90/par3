@@ -1,15 +1,22 @@
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, type UsageReadError } from "@t3tools/contracts";
 import { OrchestratorToolkit } from "./tools.ts";
 import * as Effect from "effect/Effect";
 
 import * as PeerForwarding from "../../../peer/PeerForwarding.ts";
 import * as PeerLinkRequests from "../../../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../../../peer/PeerLinks.ts";
+import * as ThreadCostService from "../../../usage/ThreadCostService.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 import * as ThreadMetadataMcpService from "../../ThreadMetadataMcpService.ts";
+
+const threadCostFailure = (error: UsageReadError) =>
+  new OrchestratorMcpFailure({
+    code: error.reason === "threadNotFound" ? "thread_not_found" : "orchestration_error",
+    message: error.message,
+  });
 
 const handlers = {
   orchestrator_capabilities: McpToolAccess.reads((input) =>
@@ -166,6 +173,12 @@ const handlers = {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.readThread(scope, input);
+    }),
+  ),
+  t3_thread_cost: McpToolAccess.reads(({ threadId }) =>
+    Effect.gen(function* () {
+      const threadCost = yield* ThreadCostService.ThreadCostService;
+      return yield* threadCost.read({ threadId }).pipe(Effect.mapError(threadCostFailure));
     }),
   ),
   t3_thread_update: McpToolAccess.writesThreads(

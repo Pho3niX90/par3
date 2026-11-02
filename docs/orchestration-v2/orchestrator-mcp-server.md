@@ -402,6 +402,11 @@ reasoning, checkpoint, handoff, and runtime-request items. Large item text is
 bounded and reports whether it was truncated. `afterPosition` and
 `nextPosition` support incremental reads.
 
+`t3_thread_cost` estimates what a thread used. It rolls up `subagent` children but
+not forks, and counts a conversation only from its provider thread's creation, so a
+fork leaves out the history it inherited. `coverage` lists every reason the figure
+may be low.
+
 Thread and message results include required `createdBy` and `creationSource`
 provenance. MCP-created threads and user-role messages use `createdBy: "agent"`
 and `creationSource: "mcp"`; provider output uses `creationSource: "provider"`.

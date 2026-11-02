@@ -8,8 +8,18 @@ import {
 
 const usage = THREAD_DETAILS_ITEMS.find((item) => item.id === "usage")!;
 const servers = THREAD_DETAILS_ITEMS.find((item) => item.id === "servers")!;
+const cost = THREAD_DETAILS_ITEMS.find((item) => item.id === "cost")!;
 
 describe("thread details items", () => {
+  it("shows the cost row by default and honours turning it off", () => {
+    const settings = { threadDetailsItems: {}, threadDetailsUsageEnabled: false };
+    expect(resolveThreadDetailsVisibility(settings).cost).toBe(true);
+    const threadDetailsItems = setThreadDetailsItem(settings, cost, false);
+    expect(threadDetailsItems).toEqual({ cost: false });
+    expect(resolveThreadDetailsVisibility({ ...settings, threadDetailsItems }).cost).toBe(false);
+    expect(setThreadDetailsItem({ ...settings, threadDetailsItems }, cost, true)).toEqual({});
+  });
+
   it.each([
     { legacy: false, items: {}, usage: false, context: false },
     { legacy: true, items: {}, usage: true, context: true },

@@ -96,6 +96,7 @@ import { useQuietThreadStructure } from "../../state/use-thread-detail";
 import { activeComposerDraftKey, useQueuedRunEdit } from "../../state/queued-run-edit";
 import { updateThreadDraftModelSelection } from "../../state/use-thread-composer-state";
 import { useThreadSelection } from "../../state/use-thread-selection";
+import { ThreadCostSection } from "./ThreadCostSection";
 import { threadAllowsProviderSwitch } from "../../state/thread-provider-switching";
 import { environmentServerConfigsAtom, serverEnvironment } from "../../state/server";
 import { mobilePreferencesAtom } from "../../state/preferences";
@@ -968,6 +969,8 @@ function ThreadSettingsOptionsItem(props: {
           Sidekick not in use: {session.sidekick.row.problem}
         </Text>
       ) : null}
+
+      <ThreadCostSection />
 
       <Text className="px-5 pb-2 pt-7 text-sm font-t3-medium text-foreground-muted">Catalog</Text>
       <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">

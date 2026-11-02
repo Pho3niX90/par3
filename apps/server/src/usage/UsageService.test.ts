@@ -17,6 +17,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   UsageDay,
+  type UsageProviderKind,
   type UsageSource,
   type UsageSummary,
   type UsageSummaryInput,
@@ -2946,6 +2947,199 @@ describe("UsageService", () => {
         orphanedAt,
         `interruption left the next matching request pending at scheduler check ${orphanedAt}`,
       );
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("UsageService.readSessions", () => {
+  const sessionLine = (input: {
+    readonly id: number;
+    readonly sessionId: string;
+    readonly timestamp?: string;
+    readonly outputTokens?: number;
+  }) =>
+    `${JSON.stringify({
+      type: "assistant",
+      timestamp: input.timestamp ?? "2026-08-01T10:00:00Z",
+      requestId: `req_${input.id}`,
+      sessionId: input.sessionId,
+      message: {
+        id: `msg_${input.id}`,
+        model: "claude-fable-5",
+        usage: { input_tokens: 10, output_tokens: input.outputTokens ?? 100 },
+      },
+    })}\n`;
+
+  const scopeOf = (sessions: Record<string, number>, provider: UsageProviderKind = "claude") =>
+    new Map([[provider, new Map(Object.entries(sessions))]]);
+
+  const outputBySession = (summary: UsageSummary) =>
+    Object.fromEntries(
+      summary.buckets.map((bucket) => [bucket.sourcePath, bucket.totals.outputTokens]),
+    );
+
+  it.effect("counts only the scoped sessions and labels each bucket with its session", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(
+          transcript,
+          sessionLine({ id: 1, sessionId: "wanted", outputTokens: 100 }) +
+            sessionLine({ id: 2, sessionId: "other", outputTokens: 900 }) +
+            sessionLine({ id: 3, sessionId: "also-wanted", outputTokens: 50 }),
+        ),
+      );
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSessions(WINDOW, scopeOf({ wanted: 0, "also-wanted": 0 }));
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-scope", home, settings })));
+      assert.deepStrictEqual(outputBySession(summary), { wanted: 100, "also-wanted": 50 });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("leaves out usage before a session's first counted instant, keeping that instant", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(
+          transcript,
+          sessionLine({
+            id: 1,
+            sessionId: "forked",
+            timestamp: "2026-08-01T09:59:59Z",
+            outputTokens: 900,
+          }) +
+            sessionLine({
+              id: 2,
+              sessionId: "forked",
+              timestamp: "2026-08-01T10:00:00Z",
+              outputTokens: 100,
+            }),
+        ),
+      );
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSessions(
+          WINDOW,
+          scopeOf({ forked: Date.parse("2026-08-01T10:00:00Z") }),
+        );
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-since", home, settings })));
+      assert.deepStrictEqual(outputBySession(summary), { forked: 100 });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("counts a copied record once, and a copy in another session not at all", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      const line = sessionLine({ id: 1, sessionId: "wanted" });
+      yield* Effect.promise(async () => {
+        await NodeFSP.writeFile(transcript, line + sessionLine({ id: 1, sessionId: "other" }));
+        await NodeFSP.writeFile(NodePath.join(NodePath.dirname(transcript), "resume.jsonl"), line);
+      });
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSessions(WINDOW, scopeOf({ wanted: 0 }));
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-dedupe", home, settings })));
+      assert.deepStrictEqual(outputBySession(summary), { wanted: 100 });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("returns nothing when no record matches a scoped session", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(transcript, sessionLine({ id: 1, sessionId: "other" })),
+      );
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSessions(WINDOW, scopeOf({ wanted: 0 }));
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-none", home, settings })));
+      assert.lengthOf(summary.buckets, 0);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("reads only the scoped providers' sources", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(transcript, sessionLine({ id: 1, sessionId: "wanted" })),
+      );
+      const providers = (summary: UsageSummary) =>
+        [...new Set(summary.sources.map((source) => source.fingerprint.provider))].toSorted();
+      const [scoped, codexOnly, everything] = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return [
+          yield* service.readSessions(WINDOW, scopeOf({ wanted: 0 })),
+          yield* service.readSessions(WINDOW, scopeOf({ wanted: 0 }, "codex")),
+          yield* service.readSummary(WINDOW),
+        ] as const;
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-sources", home, settings })));
+      assert.deepStrictEqual(providers(scoped), ["claude"]);
+      assert.deepStrictEqual(providers(codexOnly), ["codex"]);
+      assert.lengthOf(codexOnly.buckets, 0);
+      assert.isAbove(providers(everything).length, 1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not wake a scan reader's account API unless its provider is in scope", () =>
+    Effect.gen(function* () {
+      const { settings, home } = yield* setup;
+      yield* writeCursorLogin(home);
+      const cursor = makeFakeCursor();
+      yield* Effect.gen(function* () {
+        const service = yield* makeWithCursor(cursor.read);
+        yield* service.readSessions({ ...WINDOW, awaitRefresh: true }, scopeOf({ wanted: 0 }));
+        assert.lengthOf(cursor.state.calls, 0);
+        yield* service.readSessions(
+          { ...WINDOW, awaitRefresh: true },
+          scopeOf({ wanted: 0 }, "cursor"),
+        );
+        assert.isAbove(cursor.state.calls.length, 0);
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-cursor", home, settings })));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("keeps a concurrent scoped read and full read apart", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(
+          transcript,
+          sessionLine({ id: 1, sessionId: "wanted", outputTokens: 100 }) +
+            sessionLine({ id: 2, sessionId: "other", outputTokens: 900 }),
+        ),
+      );
+      const [scoped, otherScope, full] = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* Effect.all(
+          [
+            service.readSessions(WINDOW, scopeOf({ wanted: 0 })),
+            service.readSessions(WINDOW, scopeOf({ other: 0 })),
+            service.readSummary(WINDOW),
+          ],
+          { concurrency: "unbounded" },
+        );
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-keys", home, settings })));
+      assert.deepStrictEqual(outputBySession(scoped), { wanted: 100 });
+      assert.deepStrictEqual(outputBySession(otherScope), { other: 900 });
+      assert.strictEqual(totalOutputTokens(full), 1000);
+      assert.isFalse(full.buckets.some((bucket) => bucket.sourcePath === "wanted"));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("rejects an inverted window like a full read", () =>
+    Effect.gen(function* () {
+      const { settings, home } = yield* setup;
+      const error = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* Effect.flip(
+          service.readSessions(
+            { ...WINDOW, sinceDay: WINDOW.untilDay, untilDay: WINDOW.sinceDay },
+            scopeOf({ wanted: 0 }),
+          ),
+        );
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-window", home, settings })));
+      assert.strictEqual(error.reason, "invalidWindow");
     }).pipe(Effect.scoped),
   );
 });

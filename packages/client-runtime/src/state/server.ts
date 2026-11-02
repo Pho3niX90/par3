@@ -1324,6 +1324,12 @@ export function createServerEnvironmentAtoms<R, E>(
           ),
         ),
     }),
+    // Reads only when asked for. A minute's staleness keeps reopening a thread from rescanning.
+    threadCost: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:thread-cost",
+      tag: WS_METHODS.serverGetThreadCost,
+      staleTimeMs: 60_000,
+    }),
     resourceTelemetry: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:resource-telemetry",
       tag: WS_METHODS.subscribeResourceTelemetry,

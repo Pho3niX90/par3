@@ -4,6 +4,8 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   EnvironmentId,
+  type ThreadCost,
+  UsageReadError,
   type OrchestrationV2Run,
   type OrchestrationV2ThreadShell,
   type SourceControlCloneRepositoryInput,
@@ -36,6 +38,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as RemoteDelegation from "./RemoteDelegation.ts";
 import * as ThreadSidekick from "../orchestration-v2/ThreadSidekick.ts";
 import * as McpHttpServer from "../mcp/McpHttpServer.ts";
+import * as ThreadCostService from "../usage/ThreadCostService.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { liveThreadShell } from "../mcp/McpToolAccess.testkit.ts";
 import * as PeerForwarding from "./PeerForwarding.ts";
@@ -202,6 +205,28 @@ const boxProjects = (seen: Ref.Ref<Seen>) =>
  * OAuth. `linkSession` is filled in once A links, so B's fixture thread reads
  * as one that link started.
  */
+const boxThreadCost: ThreadCost = {
+  threadId: boxThread,
+  readAt: "2026-08-02T00:00:00.000Z",
+  totalCostUsd: 2.5,
+  thread: { threadCount: 1, costUsd: 2.5, models: [] },
+  subagents: { threadCount: 0, costUsd: 0, models: [] },
+  coverage: {
+    complete: true,
+    untrackedConversations: 0,
+    conversationsWithoutUsage: 0,
+    unreadableSources: 0,
+    unpricedRecords: 0,
+  },
+  pricing: null,
+};
+const layerThreadCost = Layer.succeed(ThreadCostService.ThreadCostService, {
+  read: ({ threadId }) =>
+    threadId === boxThread
+      ? Effect.succeed(boxThreadCost)
+      : Effect.fail(new UsageReadError({ reason: "threadNotFound", detail: "Not on the box." })),
+});
+
 const serveBox = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>) =>
   servePeer(
     box,
@@ -211,6 +236,7 @@ const serveBox = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>) =>
       McpHttpServer.layerThreadToolkit,
     ).pipe(
       Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+      Layer.provide(layerThreadCost),
       Layer.provide(NodeCrypto.layer),
       Layer.provide(boxThreads(seen, linkSession)),
       Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
@@ -266,7 +292,10 @@ const mcpClient = McpSchema.McpServerClient.of({
 const makeLaptop = Effect.gen(function* () {
   const linking = yield* layerLinkingEnvironment(laptop).pipe(Layer.build);
   const layerHere = Layer.mergeAll(
-    McpHttpServer.layerOrchestratorToolkit,
+    // Left unimplemented: a forwarded cost read must not run on the laptop.
+    McpHttpServer.layerOrchestratorToolkit.pipe(
+      Layer.provide(Layer.mock(ThreadCostService.ThreadCostService)({})),
+    ),
     McpHttpServer.layerProjectRegistration,
     McpHttpServer.layerThreadToolkit,
   ).pipe(
@@ -394,6 +423,19 @@ it.effect("an agent here works on a linked environment's threads within its own 
         projectId: boxProject,
         threads: [{ threadId: boxThread, runtimeMode: "auto" }],
       });
+
+      // Cost is read where the provider history lives, which is the box.
+      const cost = yield* a.call("thread:laptop-full", "t3_thread_cost", {
+        environmentId: box.environmentId,
+        threadId: boxThread,
+      });
+      expect(cost.isError).toBe(false);
+      expect(cost.structuredContent).toMatchObject({ threadId: boxThread, totalCostUsd: 2.5 });
+      const missingCost = yield* a.call("thread:laptop-full", "t3_thread_cost", {
+        environmentId: box.environmentId,
+        threadId: usersThread,
+      });
+      expect(failureOf(missingCost)).toMatchObject({ code: "thread_not_found" });
 
       // A full-access agent here is held to the link's `auto` there, which
       // the box's `auto` thread is within.
@@ -653,6 +695,7 @@ it.effect("refuses what a linked environment cannot take before anything leaves"
         ["t3_project_list", { environmentId: box.environmentId }],
         ["t3_thread_list", { environmentId: box.environmentId, projectId: boxProject }],
         ["t3_thread_read", { environmentId: box.environmentId, threadId: boxThread }],
+        ["t3_thread_cost", { environmentId: box.environmentId, threadId: boxThread }],
         ["t3_thread_wait", { environmentId: box.environmentId, threadId: boxThread }],
         [
           "t3_thread_send",

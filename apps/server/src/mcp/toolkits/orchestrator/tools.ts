@@ -28,6 +28,8 @@ import {
   OrchestratorMcpThreadInterruptResult,
   OrchestratorMcpThreadListInput,
   OrchestratorMcpThreadListResult,
+  OrchestratorMcpThreadCostInput,
+  ThreadCost,
   OrchestratorMcpThreadReadInput,
   OrchestratorMcpThreadReadResult,
   OrchestratorMcpThreadSendInput,
@@ -44,6 +46,7 @@ import * as Struct from "effect/Struct";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as PeerForwarding from "../../../peer/PeerForwarding.ts";
+import * as ThreadCostService from "../../../usage/ThreadCostService.ts";
 import * as PeerLinkRequests from "../../../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../../../peer/PeerLinks.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -57,6 +60,7 @@ const dependencies = [
 ];
 /** Listing this environment's links. */
 const linkDependencies = [...dependencies, PeerForwarding.PeerForwarding];
+const threadCostDependencies = [...dependencies, ThreadCostService.ThreadCostService];
 /** Making and forgetting links. */
 const linkingDependencies = [
   ...dependencies,
@@ -249,6 +253,20 @@ const ThreadReadTool = Tool.make("t3_thread_read", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true);
 
+const ThreadCostTool = Tool.make("t3_thread_cost", {
+  description:
+    "Estimate what a thread used: USD, tokens, and models, with its sub-agent threads split out. An API-equivalent estimate, not a subscription bill. `coverage.complete: false` means the real figure may be higher. Scans provider history, so call it once rather than in a loop.",
+  parameters: OrchestratorMcpThreadCostInput,
+  success: ThreadCost,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: threadCostDependencies,
+})
+  .annotate(Tool.Title, "Estimate a Par3 thread's cost")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
+
 const ThreadUpdateTool = Tool.make("t3_thread_update", {
   description:
     "Rename a thread (`action:'rename'` with `title`) or regenerate its title. Omit `threadId` for this thread. Workspace and branch cannot change here.",
@@ -361,6 +379,7 @@ export const OrchestratorToolkit = Toolkit.make(
   CreateThreadsTool,
   ThreadListTool,
   ThreadReadTool,
+  ThreadCostTool,
   ThreadUpdateTool,
   ThreadSendTool,
   ThreadWaitTool,

@@ -445,6 +445,12 @@ export const OrchestratorMcpThreadReadInput = Schema.Struct({
 });
 export type OrchestratorMcpThreadReadInput = typeof OrchestratorMcpThreadReadInput.Type;
 
+export const OrchestratorMcpThreadCostInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
+  threadId: ThreadId,
+});
+export type OrchestratorMcpThreadCostInput = typeof OrchestratorMcpThreadCostInput.Type;
+
 export const OrchestratorMcpThreadDetail = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
