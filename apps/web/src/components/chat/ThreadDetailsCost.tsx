@@ -64,24 +64,32 @@ function ThreadCostEstimate({ environmentId, threadId }: ThreadDetailsCostProps)
   );
 }
 
+function ThreadCostRequest({ environmentId, threadId }: ThreadDetailsCostProps) {
+  const [requested, setRequested] = useState(false);
+  return requested ? (
+    <ThreadCostEstimate environmentId={environmentId} threadId={threadId} />
+  ) : (
+    <ThreadDetailsControl
+      size="xs"
+      variant="ghost"
+      part="row"
+      panel
+      onClick={() => setRequested(true)}
+    >
+      Estimate cost
+    </ThreadDetailsControl>
+  );
+}
+
 /** Asks only on request: an estimate scans provider history, which opening a thread must not do. */
 export function ThreadDetailsCost({ environmentId, threadId }: ThreadDetailsCostProps) {
-  const [requestedThreadId, setRequestedThreadId] = useState<ThreadId | null>(null);
   return (
     <ThreadDetailsSection headingId="thread-details-cost-heading" title="Cost" showHeading={false}>
-      {requestedThreadId === threadId ? (
-        <ThreadCostEstimate environmentId={environmentId} threadId={threadId} />
-      ) : (
-        <ThreadDetailsControl
-          size="xs"
-          variant="ghost"
-          part="row"
-          panel
-          onClick={() => setRequestedThreadId(threadId)}
-        >
-          Estimate cost
-        </ThreadDetailsControl>
-      )}
+      <ThreadCostRequest
+        key={`${environmentId}:${threadId}`}
+        environmentId={environmentId}
+        threadId={threadId}
+      />
     </ThreadDetailsSection>
   );
 }

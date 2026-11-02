@@ -151,3 +151,27 @@ it("asks again for a different thread", () => {
   expect(view.container.textContent).toContain("Estimate cost");
   expect(view.container.textContent).not.toContain("$2.00+");
 });
+
+it("asks again when coming back to a thread, without reading it", () => {
+  using view = mount({ thread, result: AsyncResult.success(estimate) });
+  view.press(/Estimate cost/);
+  expect(view.container.textContent).toContain("$2.00+");
+  state.thread = { environmentId, id: ThreadId.make("thread-b") };
+  view.rerender();
+  state.requests.length = 0;
+  state.thread = thread;
+  view.rerender();
+  expect(view.container.textContent).toContain("Estimate cost");
+  expect(state.requests).toEqual([]);
+});
+
+it("asks again for the same thread id on another environment", () => {
+  using view = mount({ thread, result: AsyncResult.success(estimate) });
+  view.press(/Estimate cost/);
+  expect(view.container.textContent).toContain("$2.00+");
+  state.requests.length = 0;
+  state.thread = { environmentId: EnvironmentId.make("other"), id: threadId };
+  view.rerender();
+  expect(view.container.textContent).toContain("Estimate cost");
+  expect(state.requests).toEqual([]);
+});

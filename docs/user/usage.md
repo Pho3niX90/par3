@@ -72,7 +72,8 @@ isn't your subscription bill. It covers the thread and its sub-agent threads, sh
 A fork counts only what it used after forking, and isn't added to the thread it came from.
 
 A `+` means the real figure may be higher, and the notes say why: a provider keeps no usage history
-Par3 can read, or that history is gone from the machine. **Unknown** means no usage could be found.
+Par3 can read, that history is gone from the machine, or a model has no known price. **Unknown** means
+no cost could be estimated from the usage Par3 could read.
 
 ## Set custom model prices
 

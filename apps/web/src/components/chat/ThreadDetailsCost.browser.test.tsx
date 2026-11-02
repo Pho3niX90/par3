@@ -151,3 +151,39 @@ it("asks again for a different thread instead of showing the last one's figure",
   await expect.element(page.getByRole("button", { name: "Estimate cost" })).toBeVisible();
   await expect.element(page.getByText("$1.50")).not.toBeInTheDocument();
 });
+
+it("asks again when coming back to a thread, without reading it", async () => {
+  setup(AsyncResult.success(estimate()));
+  await using screen = await render(
+    <ThreadDetailsCost environmentId={environmentId} threadId={threadId} />,
+  );
+  await askForEstimate();
+  await expect.element(page.getByText("$1.50")).toBeVisible();
+  await screen.rerender(
+    <ThreadDetailsCost environmentId={environmentId} threadId={ThreadId.make("thread-b")} />,
+  );
+  await expect.element(page.getByRole("button", { name: "Estimate cost" })).toBeVisible();
+  state.requests.length = 0;
+
+  await screen.rerender(<ThreadDetailsCost environmentId={environmentId} threadId={threadId} />);
+
+  await expect.element(page.getByRole("button", { name: "Estimate cost" })).toBeVisible();
+  expect(state.requests).toEqual([]);
+});
+
+it("asks again for the same thread id on another environment", async () => {
+  setup(AsyncResult.success(estimate()));
+  await using screen = await render(
+    <ThreadDetailsCost environmentId={environmentId} threadId={threadId} />,
+  );
+  await askForEstimate();
+  await expect.element(page.getByText("$1.50")).toBeVisible();
+  state.requests.length = 0;
+
+  await screen.rerender(
+    <ThreadDetailsCost environmentId={EnvironmentId.make("other")} threadId={threadId} />,
+  );
+
+  await expect.element(page.getByRole("button", { name: "Estimate cost" })).toBeVisible();
+  expect(state.requests).toEqual([]);
+});

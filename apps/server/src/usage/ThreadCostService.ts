@@ -20,7 +20,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { BUILT_IN_USAGE_DRIVERS } from "../provider/builtInDrivers.ts";
-import { UsageService, type UsageSessionScope } from "./UsageService.ts";
+import * as UsageService from "./UsageService.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -50,7 +50,7 @@ export interface ThreadConversationRow {
 }
 
 export interface ThreadConversations {
-  readonly scope: UsageSessionScope;
+  readonly scope: UsageService.UsageSessionScope;
   readonly ownSessions: ReadonlySet<string>;
   readonly untrackedConversations: number;
   readonly firstCountedMs: number | null;
@@ -212,7 +212,7 @@ const scanFailed = (cause: unknown) =>
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const usage = yield* UsageService;
+  const usage = yield* UsageService.UsageService;
 
   // Sub-agent threads are spend the thread caused. A fork is its own line of work, so it stops here.
   const readThreadTree = (threadId: ThreadId) =>

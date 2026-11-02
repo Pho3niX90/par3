@@ -15,7 +15,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as ThreadCostService from "./ThreadCostService.ts";
-import { UsageService, type UsageSessionScope } from "./UsageService.ts";
+import * as UsageService from "./UsageService.ts";
 
 const ROOT = ThreadId.make("thread-root");
 const PRICING = {
@@ -338,7 +338,7 @@ describe("summarizeThreadCost", () => {
 });
 
 describe("ThreadCostService.read", () => {
-  type ReadCall = { input: UsageSummaryInput; scope: UsageSessionScope };
+  type ReadCall = { input: UsageSummaryInput; scope: UsageService.UsageSessionScope };
 
   const seedThread = (input: {
     readonly id: string;
@@ -416,13 +416,13 @@ describe("ThreadCostService.read", () => {
   const makeHarness = (
     readSessions: (
       input: UsageSummaryInput,
-      scope: UsageSessionScope,
+      scope: UsageService.UsageSessionScope,
     ) => Effect.Effect<UsageSummary, UsageReadError> = () => Effect.succeed(summary([])),
   ) => {
     const calls: ReadCall[] = [];
     const layer = ThreadCostService.layer.pipe(
       Layer.provide(
-        Layer.mock(UsageService)({
+        Layer.mock(UsageService.UsageService)({
           readSessions: (input, scope) => {
             calls.push({ input, scope });
             return readSessions(input, scope);

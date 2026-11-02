@@ -67,29 +67,37 @@ function ThreadCostEstimate(props: {
   );
 }
 
+function ThreadCostRequest(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+}) {
+  const [requested, setRequested] = useState(false);
+  return requested ? (
+    <ThreadCostEstimate environmentId={props.environmentId} threadId={props.threadId} />
+  ) : (
+    <Pressable
+      accessibilityRole="button"
+      className="min-h-11 flex-row items-center bg-grouped-card px-4 py-2 active:bg-subtle"
+      onPress={() => setRequested(true)}
+    >
+      <Text className="text-sm font-t3-medium text-foreground">Estimate cost</Text>
+    </Pressable>
+  );
+}
+
 /** Renders nothing on the new-task sheet, which has no thread to price yet. */
 export function ThreadCostSection() {
   const { selectedThread } = useThreadSelection();
-  const [requestedThreadId, setRequestedThreadId] = useState<ThreadId | null>(null);
   if (!selectedThread) return null;
   return (
     <>
       <Text className="px-5 pb-2 pt-7 text-sm font-t3-medium text-foreground-muted">Cost</Text>
       <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">
-        {requestedThreadId === selectedThread.id ? (
-          <ThreadCostEstimate
-            environmentId={selectedThread.environmentId}
-            threadId={selectedThread.id}
-          />
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            className="min-h-11 flex-row items-center bg-grouped-card px-4 py-2 active:bg-subtle"
-            onPress={() => setRequestedThreadId(selectedThread.id)}
-          >
-            <Text className="text-sm font-t3-medium text-foreground">Estimate cost</Text>
-          </Pressable>
-        )}
+        <ThreadCostRequest
+          key={`${selectedThread.environmentId}:${selectedThread.id}`}
+          environmentId={selectedThread.environmentId}
+          threadId={selectedThread.id}
+        />
       </View>
     </>
   );

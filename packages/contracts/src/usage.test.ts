@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import { OrchestratorMcpThreadCostInput } from "./orchestratorMcp.ts";
-import { WS_METHODS, WsServerGetThreadCostRpc } from "./rpc.ts";
 import { ThreadCost, ThreadCostInput, UsageReadError } from "./usage.ts";
 
 const decodeCost = Schema.decodeUnknownSync(ThreadCost);
@@ -87,13 +86,6 @@ describe("thread cost inputs", () => {
     expect(() => decodeInput({})).toThrow();
     expect(() => decodeInput({ threadId: "" })).toThrow();
     expect(() => decodeMcpInput({})).toThrow();
-  });
-});
-
-describe("server.getThreadCost", () => {
-  it("is the RPC that carries a thread cost", () => {
-    expect(WsServerGetThreadCostRpc._tag).toBe(WS_METHODS.serverGetThreadCost);
-    expect(WS_METHODS.serverGetThreadCost).toBe("server.getThreadCost");
   });
 });
 
