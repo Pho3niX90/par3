@@ -111,7 +111,7 @@ export function classifyReachability(
   if (status === 502) {
     return fail(
       "origin_unreachable",
-      "The tunnel is up, but it cannot reach the T3 server on this machine.",
+      "The tunnel is up, but it cannot reach the Par3 server on this machine.",
       "Restart Par3 so the tunnel uses the port the server listens on.",
     );
   }
