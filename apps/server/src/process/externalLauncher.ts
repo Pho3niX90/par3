@@ -155,6 +155,8 @@ function resolveCommandEditorArgs(
   switch (editor.launchStyle) {
     case "direct-path":
       return [target];
+    case "path-only":
+      return [Option.match(parsedTarget, { onNone: () => target, onSome: ({ path }) => path })];
     case "goto":
       return Option.isSome(parsedTarget) ? ["--goto", target] : [target];
     case "line-column":

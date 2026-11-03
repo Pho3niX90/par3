@@ -434,6 +434,70 @@ for (const cwd of ["/workspace with spaces/", "/workspace with spaces/file.ts:12
   );
 }
 
+for (const { platform, installPath, cwd, args } of [
+  {
+    platform: "darwin",
+    installPath: "Applications/OpenIDEA.app/Contents/MacOS/openidea",
+    cwd: "/workspace with spaces/file.ts:12:4",
+    args: ["/workspace with spaces/file.ts"],
+  },
+  {
+    platform: "linux",
+    installPath: ".local/bin/openidea",
+    cwd: "/workspace with spaces/file.ts:12",
+    args: ["/workspace with spaces/file.ts"],
+  },
+  {
+    platform: "linux",
+    installPath: ".local/bin/openidea",
+    cwd: "/workspace with spaces/",
+    args: ["/workspace with spaces/"],
+  },
+  {
+    platform: "win32",
+    installPath: "AppData/Local/OpenIDEA/openidea.exe",
+    cwd: "/workspace with spaces/file.ts:12:4",
+    args: ["/workspace with spaces/file.ts"],
+  },
+] as const) {
+  it.effect.skipIf(windowsHost)(`opens ${cwd} in OpenIDEA from ${installPath} on ${platform}`, () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-openidea-" });
+      const executable = path.join(home, installPath);
+      yield* fs.makeDirectory(path.dirname(executable), { recursive: true });
+      yield* fs.writeFileString(executable, "#!/bin/sh\n");
+      yield* fs.chmod(executable, 0o755);
+
+      let spawned: ChildProcess.StandardCommand | undefined;
+      yield* Effect.gen(function* () {
+        const launcher = yield* ExternalLauncher.ExternalLauncher;
+        assert.include(yield* launcher.resolveAvailableEditors(), "openidea");
+        yield* launcher.launchEditor({ editor: "openidea", cwd });
+      }).pipe(
+        Effect.provide(
+          layerTest({
+            platform,
+            env: {
+              HOME: home,
+              LOCALAPPDATA: path.join(home, "AppData/Local"),
+              PATH: "",
+              PATHEXT: ".EXE;.CMD",
+            },
+            onSpawn: (command) => {
+              spawned = command;
+            },
+          }),
+        ),
+      );
+      assert.ok(spawned);
+      assert.equal(spawned.command, executable);
+      assert.deepEqual(spawned.args, args);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+}
+
 it.effect.each([
   { editor: "webstorm", installPath: "Applications/WebStorm 2026.2.app/Contents/MacOS/webstorm" },
   { editor: "idea", installPath: "Applications/IntelliJ IDEA 2026.1.4.app/Contents/MacOS/idea" },
