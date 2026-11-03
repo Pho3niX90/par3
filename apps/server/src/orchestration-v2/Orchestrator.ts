@@ -60,7 +60,6 @@ import {
   RunId,
   resolveProjectProviderInstanceEnabled,
   RuntimeMode,
-  sameModelSelection,
   ThreadLinkedPullRequest,
   ThreadId,
   type TurnItemId,
@@ -2741,13 +2740,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
     if (command.type === "thread.sidekick.set" && command.sidekickModelSelection !== null) {
       const sidekick = command.sidekickModelSelection;
-      if (sameModelSelection(sidekick, thread.modelSelection)) {
-        return yield* new OrchestratorDispatchError({
-          commandId: command.commandId,
-          commandType: command.type,
-          cause: "The sidekick must be a different model from the thread's own.",
-        });
-      }
       yield* providerAdapters.get(sidekick.instanceId).pipe(
         Effect.mapError(
           (cause) =>

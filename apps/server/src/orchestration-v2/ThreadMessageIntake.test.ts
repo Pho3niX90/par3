@@ -7,6 +7,9 @@ import {
   ChatAttachmentId,
   CommandId,
   EventId,
+  ProjectId,
+  ProviderDriverKind,
+  ProviderInstanceId,
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
@@ -20,13 +23,16 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { createPendingAttachmentId, resolveAttachmentPath } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
   OrchestratorCommandPreviouslyRejectedError,
   OrchestratorDispatchError,
 } from "./Orchestrator.ts";
+import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import { dispatchCommand } from "./ThreadMessageIntake.ts";
+import * as ThreadSidekick from "./ThreadSidekick.ts";
 
 const layerIntakeTest = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-question-intake-",
@@ -359,3 +365,74 @@ it.effect("a retried response re-claims the preserved pending uploads", () =>
     ).toHaveLength(2);
   }).pipe(Effect.provide(layerIntakeTest)),
 );
+
+it.effect("accepts a sidekick matching the stored lead while the composer's lead is unsent", () => {
+  const codex = ProviderInstanceId.make("codex");
+  const storedLead = { instanceId: codex, model: "gpt-6.1-sol" };
+  const threadId = ThreadId.make("thread:sidekick-stored-lead");
+  const captured: OrchestrationV2ServerCommand[] = [];
+  return dispatchCommand({
+    type: "thread.sidekick.set",
+    commandId: CommandId.make("set-sidekick-stored-lead"),
+    threadId,
+    sidekickModelSelection: storedLead,
+  }).pipe(
+    Effect.flip,
+    Effect.tap((error) =>
+      Effect.sync(() => {
+        expect(error).toBeInstanceOf(OrchestratorDispatchError);
+        expect(captured.map((command) => command.type)).toEqual(["thread.sidekick.set"]);
+      }),
+    ),
+    Effect.provide(
+      ThreadSidekick.layer.pipe(
+        Layer.provideMerge(
+          Layer.mergeAll(
+            Layer.mock(ProviderRegistry.ProviderRegistry)({
+              getProviders: Effect.succeed([
+                {
+                  instanceId: codex,
+                  driver: ProviderDriverKind.make("codex"),
+                  enabled: true,
+                  installed: true,
+                  version: "test",
+                  status: "ready",
+                  auth: { status: "authenticated" },
+                  checkedAt: "2026-11-03T00:00:00.000Z",
+                  models: [
+                    { slug: storedLead.model, name: "Sol", isCustom: false, capabilities: null },
+                  ],
+                  slashCommands: [],
+                  skills: [],
+                },
+              ]),
+            }),
+            Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+              list: () => Effect.succeed([codex]),
+            }),
+            layerIntakeTest,
+            Layer.mock(ThreadManagementService.ThreadManagementService)({
+              getThreadRecords: () =>
+                Effect.succeed({
+                  thread: {
+                    projectId: ProjectId.make("project:sidekick-stored-lead"),
+                    modelSelection: storedLead,
+                  },
+                } as never),
+              dispatch: (command) => {
+                captured.push(command);
+                return Effect.fail(
+                  new OrchestratorDispatchError({
+                    commandId: command.commandId,
+                    commandType: command.type,
+                    cause: "Stop after intake",
+                  }),
+                );
+              },
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
+});

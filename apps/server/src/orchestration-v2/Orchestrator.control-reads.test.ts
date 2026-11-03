@@ -1511,15 +1511,17 @@ it.effect("sets and clears a sidekick through the model-selection event", () =>
     );
     assert.isNull((yield* projections.getThreadProjection(threadId)).thread.sidekickModelSelection);
 
-    const sameAsLead = yield* orchestrator
-      .dispatch({
-        type: "thread.sidekick.set",
-        commandId: CommandId.make("sidekick-same-as-lead"),
-        threadId,
-        sidekickModelSelection: modelSelection,
-      })
-      .pipe(Effect.result);
-    assert.isTrue(Result.isFailure(sameAsLead));
+    // The stored lead is stale while the composer holds an unsent model change.
+    yield* orchestrator.dispatch({
+      type: "thread.sidekick.set",
+      commandId: CommandId.make("sidekick-same-as-stored-lead"),
+      threadId,
+      sidekickModelSelection: modelSelection,
+    });
+    assert.deepEqual(
+      (yield* projections.getThreadProjection(threadId)).thread.sidekickModelSelection,
+      modelSelection,
+    );
   }).pipe(Effect.provide(layerTest)),
 );
 

@@ -76,7 +76,8 @@ const validateSidekick = Effect.fn("ThreadMessageIntake.validateSidekick")(funct
     const { thread } = yield* threads.getThreadRecords(command.threadId, []);
     yield* sidekicks.value.validate({
       projectId: thread.projectId,
-      lead: thread.modelSelection,
+      // A composer's model change stays local until it sends, so the stored lead can be stale.
+      lead: null,
       sidekick: command.sidekickModelSelection,
     });
   }
