@@ -1,7 +1,12 @@
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
-export const EditorLaunchStyle = Schema.Literals(["direct-path", "goto", "line-column"]);
+export const EditorLaunchStyle = Schema.Literals([
+  "direct-path",
+  "goto",
+  "line-column",
+  "path-only",
+]);
 export type EditorLaunchStyle = typeof EditorLaunchStyle.Type;
 
 type EditorDefinition = {
@@ -144,6 +149,13 @@ export const EDITORS = [
     commands: ["webstorm"],
     launchStyle: "line-column",
     jetbrainsProductCode: "WS",
+  },
+  {
+    id: "openidea",
+    label: "OpenIDEA",
+    commands: ["openidea"],
+    // Its CLI treats the whole argument as a path and has no line or column flags.
+    launchStyle: "path-only",
   },
   { id: "file-manager", label: "File Manager", commands: null, launchStyle: "direct-path" },
 ] as const satisfies ReadonlyArray<EditorDefinition>;

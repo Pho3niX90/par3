@@ -169,6 +169,18 @@ export const KiroIcon: Icon = (props) => (
   </svg>
 );
 
+export const OpenIDEAIcon: Icon = (props) => (
+  <svg {...props} viewBox="22 24 56 56">
+    <rect x="22" y="26" width="56" height="52" rx="12" fill="#D9582C" />
+    <rect x="27" y="26" width="46" height="42" rx="9" fill="#1B1A1A" />
+    <circle cx="44" cy="47.4" r="4.1" fill="none" stroke="#EAE7E0" strokeWidth="2.7" />
+    <rect x="54.3" y="42" width="2.8" height="10.5" fill="#EAE7E0" />
+    <rect x="51.2" y="42" width="5.9" height="2.5" fill="#EAE7E0" />
+    <rect x="51.2" y="50" width="9.4" height="2.5" fill="#EAE7E0" />
+    <circle cx="55.7" cy="38.4" r="1.8" fill="#EAE7E0" />
+  </svg>
+);
+
 export const VisualStudioCode: Icon = (props) => {
   const id = useId();
   const maskId = `${id}-vscode-a`;

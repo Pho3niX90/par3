@@ -63,7 +63,7 @@ export const resolveEditorCommand = Effect.fn("editor.resolveEditorCommand")(fun
       for (const bundle of bundles) {
         const contents = path.join(root, bundle, "Contents");
         candidates.push(
-          ...(jetbrains || editor.id === "zed"
+          ...(jetbrains || editor.id === "zed" || editor.id === "openidea"
             ? [path.join(contents, "MacOS", editor.id === "zed" ? "cli" : command)]
             : [
                 path.join(contents, "Resources/app/bin", command),
@@ -104,6 +104,10 @@ export const resolveEditorCommand = Effect.fn("editor.resolveEditorCommand")(fun
           : editor.id === "vscode-insiders"
             ? "Microsoft VS Code Insiders"
             : editor.label;
+      // Tauri's per-user installer uses %LOCALAPPDATA%\<product>, not Programs.
+      if (editor.id === "openidea" && env.LOCALAPPDATA) {
+        candidates.push(path.join(env.LOCALAPPDATA, name, `${command}.exe`));
+      }
       for (const root of roots) {
         candidates.push(
           path.join(root, name, "resources/app/bin", `${command}.cmd`),
@@ -116,6 +120,9 @@ export const resolveEditorCommand = Effect.fn("editor.resolveEditorCommand")(fun
             path.join(root, name, "bin", "zed.exe"),
             path.join(root, name, "zed.exe"),
           );
+        }
+        if (editor.id === "openidea") {
+          candidates.push(path.join(root, name, `${command}.exe`));
         }
       }
     }
