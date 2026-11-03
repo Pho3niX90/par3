@@ -108,6 +108,21 @@ it.effect("a lead switched to the sidekick's model makes the pairing inactive", 
   ),
 );
 
+it.effect("an unsettled lead skips the lead checks but not the sidekick's own", () =>
+  Effect.gen(function* () {
+    const sidekicks = yield* ThreadSidekick.ThreadSidekick;
+    yield* sidekicks.validate({ projectId, lead: null, sidekick });
+    const error = yield* sidekicks
+      .validate({ projectId, lead: null, sidekick: { instanceId: codex, model: "missing" } })
+      .pipe(Effect.flip);
+    assert.include(error.message, "does not offer missing");
+  }).pipe(
+    Effect.provide(
+      layer([provider(claude, "claudeAgent", "opus"), provider(codex, "codex", "luna")]),
+    ),
+  ),
+);
+
 it.effect("Copilot Default is refused because its real model is unknown", () =>
   Effect.gen(function* () {
     const sidekicks = yield* ThreadSidekick.ThreadSidekick;
