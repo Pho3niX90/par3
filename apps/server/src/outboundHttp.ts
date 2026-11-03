@@ -10,14 +10,44 @@ const requireUndici = NodeModule.createRequire(import.meta.url);
 export const builtinFetchUsesHttp2 = (bundledUndiciVersion: string | undefined) =>
   Number.parseInt(bundledUndiciVersion ?? "", 10) >= 8;
 
-/** Preserves the EnvHttpProxyAgent installed by --use-env-proxy / NODE_USE_ENV_PROXY. */
+function environmentProxyUrl(lowercaseName: string): string {
+  const value = (process.env[lowercaseName] ?? process.env[lowercaseName.toUpperCase()])?.trim();
+  if (!value) return "";
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `http://${value}`);
+    return ["http:", "https:", "socks:", "socks5:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+const environmentProxies = () => {
+  const fallback = environmentProxyUrl("all_proxy");
+  return {
+    httpProxy: environmentProxyUrl("http_proxy") || fallback,
+    httpsProxy: environmentProxyUrl("https_proxy") || environmentProxyUrl("http_proxy") || fallback,
+  };
+};
+
+/** Connect's server requests need the same proxy variables as desktop downloads. */
 export function installHttp1FetchDispatcher(): void {
   const undici = requireUndici("undici") as typeof Undici;
+  const proxies = environmentProxies();
   // Node's agent comes from its internal undici copy, so `instanceof` against the npm class is false.
-  const usesEnvProxy = undici.getGlobalDispatcher().constructor.name === "EnvHttpProxyAgent";
+  const usesEnvProxy =
+    Boolean(proxies.httpProxy || proxies.httpsProxy) ||
+    undici.getGlobalDispatcher().constructor.name === "EnvHttpProxyAgent";
   undici.setGlobalDispatcher(
     usesEnvProxy
       ? new undici.EnvHttpProxyAgent({
+          ...proxies,
+          // The local server and cloudflared metrics must never leave this machine.
+          noProxy: [
+            "localhost",
+            "127.0.0.1",
+            "[::1]",
+            process.env.no_proxy ?? process.env.NO_PROXY ?? "",
+          ].join(","),
           allowH2: false,
           // ProxyAgent's connector forces h2 and ignores allowH2; replace it for HTTPS proxies.
           clientFactory: (origin) => new undici.Pool(origin, { allowH2: false }),
@@ -28,7 +58,10 @@ export function installHttp1FetchDispatcher(): void {
 
 /** Avoids uncaught idle-timeout errors on h2 streams (https://github.com/nodejs/undici/issues/5936). */
 export function keepOutboundFetchOnHttp1(): void {
-  if (builtinFetchUsesHttp2(process.versions.undici)) installHttp1FetchDispatcher();
+  const proxies = environmentProxies();
+  if (builtinFetchUsesHttp2(process.versions.undici) || proxies.httpProxy || proxies.httpsProxy) {
+    installHttp1FetchDispatcher();
+  }
 }
 
 // @types/node does not declare setTypeOfService yet.
