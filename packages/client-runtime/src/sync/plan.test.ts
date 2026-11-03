@@ -230,6 +230,33 @@ describe("planConflictResolution", () => {
     );
     expect([...ops.values()].flat().map((op) => op.action._tag)).toEqual(["delete", "delete"]);
   });
+
+  it("writes merged contents to every machine that lacks them, which none can be read from", async () => {
+    const environments = [
+      env(A, { hash: "h2", base: { hash: "h1", rev: 1 } }),
+      env(B, { hash: "h3", base: { hash: "h1", rev: 1 } }),
+      env(C, { hash: "h4", base: { hash: "h1", rev: 1 } }),
+    ];
+    const ops = planConflictResolution(environments, KEY, { contents: "merged", hash: "h4" });
+    expect(ops.get(A)?.[0]).toMatchObject({
+      expectedHash: "h2",
+      action: { _tag: "content", contents: "merged" },
+      baseline: { hash: "h4", rev: 2 },
+    });
+    expect(ops.get(C)?.[0]?.action).toEqual({ _tag: "adopt" });
+
+    const sent: unknown[] = [];
+    await runSyncPlan(ops, {
+      read: async () => {
+        throw new Error("merged contents are never read from a machine");
+      },
+      apply: async (_environmentId, batch) => {
+        sent.push(...batch.map((op) => op.action));
+        return { results: batch.map((op) => ({ key: op.key, status: "applied" })) };
+      },
+    });
+    expect(sent).toContainEqual({ _tag: "write", contents: "merged" });
+  });
 });
 
 describe("runSyncPlan", () => {

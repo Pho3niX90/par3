@@ -2,7 +2,7 @@ import type { SyncEnvironmentView } from "@t3tools/client-runtime/sync/plan";
 import { EnvironmentId, type SyncSnapshot } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { peerSyncCategories, summarizeSyncJoin } from "./syncSettings.logic";
+import { peerSyncCategories, summarizeSyncJoin, syncMergeSides } from "./syncSettings.logic";
 
 const PEER = EnvironmentId.make("peer");
 const NEW = EnvironmentId.make("new");
@@ -87,5 +87,34 @@ describe("peerSyncCategories", () => {
     expect(peerSyncCategories(peers, snapshot({}, { categories: null }))).toEqual([
       "codex.prompts",
     ]);
+  });
+});
+
+describe("syncMergeSides", () => {
+  const conflict = (
+    categoryId: string,
+    hashes: ReadonlyArray<string | null>,
+  ): Parameters<typeof syncMergeSides>[0] => ({
+    key: `${categoryId}:notes.md`,
+    categoryId,
+    name: "notes.md",
+    candidates: hashes.map((hash, index) => ({
+      environmentId: EnvironmentId.make(`env-${index}`),
+      hash,
+    })),
+  });
+
+  it("groups machines by the two versions they hold", () => {
+    expect(syncMergeSides(conflict("claude.skills", ["h1", "h2", "h1"]))).toEqual([
+      { hash: "h1", environmentIds: [EnvironmentId.make("env-0"), EnvironmentId.make("env-2")] },
+      { hash: "h2", environmentIds: [EnvironmentId.make("env-1")] },
+    ]);
+  });
+
+  it("refuses deletions, a third version, secrets, and MCP servers", () => {
+    expect(syncMergeSides(conflict("claude.skills", ["h1", null]))).toBeNull();
+    expect(syncMergeSides(conflict("claude.skills", ["h1", "h2", "h3"]))).toBeNull();
+    expect(syncMergeSides(conflict("vault", ["h1", "h2"]))).toBeNull();
+    expect(syncMergeSides(conflict("mcpServers", ["h1", "h2"]))).toBeNull();
   });
 });

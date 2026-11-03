@@ -22,6 +22,8 @@ export interface SyncEnvironmentView {
 
 export type PlannedAction =
   | { readonly _tag: "write"; readonly sourceEnvironmentId: EnvironmentId }
+  /** Contents no machine has yet, such as a merge of two versions. */
+  | { readonly _tag: "content"; readonly contents: string }
   | { readonly _tag: "delete" }
   | { readonly _tag: "adopt" };
 
@@ -100,17 +102,21 @@ function allKeys(environments: ReadonlyArray<SyncEnvironmentView>): string[] {
   return [...keys].sort();
 }
 
-/** Ops that bring every participant to `target`, copying from whoever already has it. */
+/**
+ * Ops that bring every participant to `target`, copying from whoever already has it, or writing
+ * `contents` when given.
+ */
 function converge(
   key: string,
   participants: ReadonlyArray<Participant>,
   target: SyncBaseline,
+  contents?: string,
 ): Array<[EnvironmentId, PlannedOp]> | null {
   const source =
-    target.hash === null
+    target.hash === null || contents !== undefined
       ? undefined
       : participants.find((participant) => participant.current === target.hash);
-  if (target.hash !== null && source === undefined) return null;
+  if (target.hash !== null && contents === undefined && source === undefined) return null;
   const ops: Array<[EnvironmentId, PlannedOp]> = [];
   for (const participant of participants) {
     const atTarget =
@@ -132,7 +138,9 @@ function converge(
         action:
           target.hash === null
             ? { _tag: "delete" }
-            : { _tag: "write", sourceEnvironmentId: source!.environmentId },
+            : contents !== undefined
+              ? { _tag: "content", contents }
+              : { _tag: "write", sourceEnvironmentId: source!.environmentId },
         baseline: target,
       },
     ]);
@@ -221,11 +229,20 @@ export function planSync(environments: ReadonlyArray<SyncEnvironmentView>): Sync
   return { opsByEnvironment, conflicts, inSync };
 }
 
-/** Ops that settle a conflict on one machine's version, or on deleting the item everywhere. */
+/** Contents written to every machine, with their hash as the servers compute it. */
+export interface SyncMergedVersion {
+  readonly contents: string;
+  readonly hash: string;
+}
+
+/**
+ * Ops that settle a conflict on one machine's version, on merged contents, or on deleting the
+ * item everywhere.
+ */
 export function planConflictResolution(
   environments: ReadonlyArray<SyncEnvironmentView>,
   key: string,
-  winner: EnvironmentId | "delete",
+  winner: EnvironmentId | "delete" | SyncMergedVersion,
 ): ReadonlyMap<EnvironmentId, ReadonlyArray<PlannedOp>> {
   const parts = splitSyncItemKey(key);
   const result = new Map<EnvironmentId, PlannedOp[]>();
@@ -234,9 +251,13 @@ export function planConflictResolution(
   const hash =
     winner === "delete"
       ? null
-      : (participants.find((participant) => participant.environmentId === winner)?.current ?? null);
+      : typeof winner === "object"
+        ? winner.hash
+        : (participants.find((participant) => participant.environmentId === winner)?.current ??
+          null);
   const rev = Math.max(0, ...participants.map((participant) => participant.baseline?.rev ?? 0)) + 1;
-  for (const [environmentId, op] of converge(key, participants, { hash, rev }) ?? []) {
+  const contents = typeof winner === "object" ? winner.contents : undefined;
+  for (const [environmentId, op] of converge(key, participants, { hash, rev }, contents) ?? []) {
     const list = result.get(environmentId) ?? [];
     list.push(op);
     result.set(environmentId, list);
@@ -293,6 +314,10 @@ export async function runSyncPlan(
     [...opsByEnvironment].map(async ([environmentId, planned]) => {
       const ops: SyncApplyOp[] = [];
       for (const op of planned) {
+        if (op.action._tag === "content") {
+          ops.push({ ...op, action: { _tag: "write", contents: op.action.contents } });
+          continue;
+        }
         if (op.action._tag !== "write") {
           ops.push({ ...op, action: op.action });
           continue;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   chunkWordRanges,
+  commonLines,
   computeMerge3,
   convertLineEndings,
   detectLineEnding,
@@ -334,5 +335,15 @@ describe("helpers", () => {
     expect(isBinaryContent(new TextEncoder().encode("plain text"))).toBe(false);
     expect(isBinaryContent(new Uint8Array([0x61, 0, 0x62]))).toBe(true);
     expect(isBinaryContent(new Uint8Array([0xff, 0xfe, 0x41]))).toBe(true);
+  });
+
+  it("merges two texts without a base by what they share", () => {
+    const left = lines("a", "left", "b", "only-left", "c");
+    const right = lines("a", "right", "b", "c", "only-right");
+    const base = commonLines(left, right);
+    expect(base).toBe(lines("a", "b", "c"));
+    const result = computeMerge3({ base, ours: left, theirs: right });
+    expect(kinds(result)).toEqual(["conflict", "ours", "theirs"]);
+    expect(result.initialResult).toBe(lines("a", "b", "only-left", "c", "only-right"));
   });
 });
