@@ -537,6 +537,12 @@ for (const { platform, installPath, cwd, args } of [
     cwd: "/workspace with spaces/file.ts:12:4",
     args: ["/workspace with spaces/file.ts"],
   },
+  {
+    platform: "win32",
+    installPath: "Program Files/OpenIDEA/openidea.exe",
+    cwd: "/workspace with spaces/file.ts:12:4",
+    args: ["/workspace with spaces/file.ts"],
+  },
 ] as const) {
   it.effect.skipIf(windowsHost)(`opens ${cwd} in OpenIDEA from ${installPath} on ${platform}`, () =>
     Effect.gen(function* () {
@@ -560,6 +566,7 @@ for (const { platform, installPath, cwd, args } of [
             env: {
               HOME: home,
               LOCALAPPDATA: path.join(home, "AppData/Local"),
+              ProgramFiles: path.join(home, "Program Files"),
               PATH: "",
               PATHEXT: ".EXE;.CMD",
             },
