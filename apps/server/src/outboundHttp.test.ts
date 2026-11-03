@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off - the test runs a real TLS h2 server to see which protocol fetch negotiates.
 import * as NodeHttp2 from "node:http2";
+import * as NodeHttp from "node:http";
 import * as NodeNet from "node:net";
 import * as NodeTls from "node:tls";
 
@@ -10,12 +11,13 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import * as Undici from "undici";
-import { afterAll, afterEach, beforeAll, describe, expect } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, describe, expect, vi } from "vite-plus/test";
 
 import {
   builtinFetchUsesHttp2,
   ignoreMacosTypeOfServiceEinval,
   installHttp1FetchDispatcher,
+  keepOutboundFetchOnHttp1,
 } from "./outboundHttp.ts";
 
 // Test-only self-signed P-256 certificate for 127.0.0.1, valid until 2126; not a
@@ -74,7 +76,114 @@ const versionViaBuiltinFetch = () =>
     Effect.provide(FetchHttpClient.layer),
   );
 
+const listenHttpServer = Effect.fn("outboundHttp.test.listen")(function* (server: NodeHttp.Server) {
+  yield* Effect.acquireRelease(
+    Effect.promise(() => new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))),
+    () => Effect.promise(() => server[Symbol.asyncDispose]()),
+  );
+  return (server.address() as NodeNet.AddressInfo).port;
+});
+
 describe("installHttp1FetchDispatcher", () => {
+  it.live.each(["http_proxy", "all_proxy"])(
+    "uses %s for Connect HTTP requests and keeps loopback requests local",
+    (variable) =>
+      Effect.gen(function* () {
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            vi.unstubAllEnvs();
+          }),
+        );
+        const targetPort = yield* listenHttpServer(
+          NodeHttp.createServer((request, response) => response.end(request.url)),
+        );
+        const connections: Array<string | undefined> = [];
+        const proxyPort = yield* listenHttpServer(
+          NodeHttp.createServer((request, response) => {
+            connections.push(request.url);
+            response.end(new URL(request.url!).pathname);
+          }),
+        );
+        vi.stubEnv("HTTP_PROXY", "");
+        vi.stubEnv("http_proxy", "");
+        vi.stubEnv("HTTPS_PROXY", "");
+        vi.stubEnv("https_proxy", "");
+        vi.stubEnv("ALL_PROXY", "");
+        vi.stubEnv("all_proxy", "");
+        vi.stubEnv(variable.toUpperCase(), "http://127.0.0.1:1");
+        vi.stubEnv(variable, `http://127.0.0.1:${proxyPort}`);
+        vi.stubEnv("NO_PROXY", "*");
+        vi.stubEnv("no_proxy", "");
+        Undici.setGlobalDispatcher(new Undici.Agent());
+
+        keepOutboundFetchOnHttp1();
+
+        const relayUrl = `http://relay.example.test:${targetPort}/.well-known/t3/environment`;
+        expect(
+          yield* HttpClient.get(relayUrl).pipe(Effect.flatMap((response) => response.text)),
+        ).toBe("/.well-known/t3/environment");
+        expect(
+          yield* HttpClient.get(`http://127.0.0.1:${targetPort}/ready`).pipe(
+            Effect.flatMap((response) => response.text),
+          ),
+        ).toBe("/ready");
+        expect(connections).toEqual([relayUrl]);
+      }).pipe(Effect.provide(FetchHttpClient.layer)),
+  );
+
+  it.live("keeps the server usable when a proxy variable is malformed", () =>
+    Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          vi.unstubAllEnvs();
+        }),
+      );
+      for (const name of [
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+      ]) {
+        vi.stubEnv(name, "http://");
+      }
+      Undici.setGlobalDispatcher(new Undici.Agent());
+
+      keepOutboundFetchOnHttp1();
+
+      expect(yield* versionViaBuiltinFetch()).toBe("1.1");
+    }),
+  );
+
+  it.live("sends Connect HTTPS requests through an authenticated proxy", () =>
+    Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          vi.unstubAllEnvs();
+        }),
+      );
+      const requests: Array<{ url: string | undefined; authorization: string | undefined }> = [];
+      const proxy = NodeHttp.createServer();
+      proxy.on("connect", (request, socket) => {
+        requests.push({ url: request.url, authorization: request.headers["proxy-authorization"] });
+        // A deliberate rejection proves HTTPS reached the proxy without an external TLS server.
+        socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+      });
+      const port = yield* listenHttpServer(proxy);
+      vi.stubEnv("https_proxy", `http://user:p%40ss@127.0.0.1:${port}`);
+      vi.stubEnv("no_proxy", "");
+      Undici.setGlobalDispatcher(new Undici.Agent());
+
+      keepOutboundFetchOnHttp1();
+
+      yield* HttpClient.get("https://relay.example.test/health").pipe(Effect.flip);
+      expect(requests).toEqual([
+        { url: "relay.example.test:443", authorization: "Basic dXNlcjpwQHNz" },
+      ]);
+    }).pipe(Effect.provide(FetchHttpClient.layer)),
+  );
+
   it("makes the global dispatcher negotiate HTTP/1.1 and keeps the env proxy agent", async () => {
     Undici.setGlobalDispatcher(new Undici.Agent());
     expect(await versionViaGlobalDispatcher()).toBe("2.0");

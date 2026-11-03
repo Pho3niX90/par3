@@ -40,6 +40,10 @@ UDP. Both tunnel protocols (QUIC and HTTP/2) use this port. When the host's
 network blocks it, the tunnel cannot start, but normal web traffic still works.
 The host looks online, so this problem is easy to miss.
 
+Par3 uses `HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY` for sign-in and relay HTTP
+requests, and honors `NO_PROXY`. These settings do not carry the tunnel through
+that proxy: cloudflared still needs direct outbound access to port 7844.
+
 Common causes:
 
 - **A Tailscale exit node on the host.** All of the host's internet traffic goes
@@ -89,7 +93,7 @@ Fix:
 
 1. Check this device's internet connection. On a captive or dead Wi-Fi network,
    the device can look online but cannot reach anything.
-2. A VPN, firewall, ad blocker, or DNS filter on this device can block T3
+2. A VPN, firewall, ad blocker, or DNS filter on this device can block Parity
    Connect. Turn it off for a moment to test.
 3. On iPhone, Connectivity Assist in the Wi-Fi settings can break Parity Connect.
    Turn it off to test.
