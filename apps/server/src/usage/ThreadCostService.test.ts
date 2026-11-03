@@ -269,6 +269,16 @@ describe("summarizeThreadCost", () => {
     assert.strictEqual(cost.subagents.costUsd, 2);
   });
 
+  it("keeps unidentified subagent spend without claiming an exact agent count", () => {
+    const cost = summarize(
+      [row({ thread_id: ROOT, native_id: "root-session" })],
+      summary([bucket({ sourcePath: "root-session\u0001sidechain", costUsd: 2 })]),
+    );
+    assert.strictEqual(cost.subagents.nativeAgentCount, undefined);
+    assert.strictEqual(cost.subagents.nativeAgentCountUnknown, true);
+    assert.strictEqual(cost.subagents.costUsd, 2);
+  });
+
   it("counts equal agent ids in different sessions as different sub-agents", () => {
     const cost = summarize(
       [

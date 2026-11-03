@@ -403,11 +403,13 @@ export function describeThreadCost(cost: ThreadCost): ThreadCostDescription {
       : [
           { label: "This thread", amount: formatThreadUsd(thread.costUsd) },
           {
-            label: countOf(
-              subagents.threadCount + (subagents.nativeAgentCount ?? 0),
-              "sub-agent",
-              "sub-agents",
-            ),
+            label: subagents.nativeAgentCountUnknown
+              ? "Sub-agents"
+              : countOf(
+                  subagents.threadCount + (subagents.nativeAgentCount ?? 0),
+                  "sub-agent",
+                  "sub-agents",
+                ),
             amount: formatThreadUsd(subagents.costUsd),
           },
         ],

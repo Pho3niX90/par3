@@ -112,6 +112,7 @@ function summarizeScope(
   threadCount: number,
   buckets: readonly UsageBucket[],
   nativeAgentCount = 0,
+  nativeAgentCountUnknown = false,
 ): ThreadCostScope {
   const lines = new Map<string, ThreadCostLine>();
   for (const bucket of buckets) {
@@ -144,6 +145,7 @@ function summarizeScope(
   return {
     threadCount,
     ...(nativeAgentCount === 0 ? {} : { nativeAgentCount }),
+    ...(nativeAgentCountUnknown ? { nativeAgentCountUnknown } : {}),
     costUsd: roundUsd(buckets.reduce((sum, bucket) => sum + bucket.costUsd, 0)),
     models,
   };
@@ -162,13 +164,16 @@ export function summarizeThreadCost(input: {
   const own: UsageBucket[] = [];
   const subagent: UsageBucket[] = [];
   const nativeAgents = new Set<string>();
+  let nativeAgentCountUnknown = false;
   for (const bucket of buckets) {
     const { sessionId, nativeSubagentId } = UsageService.decodeScopedUsageSource(
       bucket.sourcePath ?? "",
     );
     const key = sessionKey(bucket.provider, sessionId);
     seen.add(key);
-    if (nativeSubagentId !== null) nativeAgents.add(`${key}\u0000${nativeSubagentId}`);
+    if (bucket.provider === "claude" && nativeSubagentId === "sidechain") {
+      nativeAgentCountUnknown = true;
+    } else if (nativeSubagentId !== null) nativeAgents.add(`${key}\u0000${nativeSubagentId}`);
     (nativeSubagentId === null && conversations.ownSessions.has(key) ? own : subagent).push(bucket);
   }
   let knownSessions = 0;
@@ -189,7 +194,12 @@ export function summarizeThreadCost(input: {
     readAt: input.readAt,
     totalCostUsd: roundUsd(totalCostUsd),
     thread: summarizeScope(1, own),
-    subagents: summarizeScope(input.threadCount - 1, subagent, nativeAgents.size),
+    subagents: summarizeScope(
+      input.threadCount - 1,
+      subagent,
+      nativeAgents.size,
+      nativeAgentCountUnknown,
+    ),
     coverage: {
       complete:
         knownSessions + conversations.untrackedConversations > 0 &&

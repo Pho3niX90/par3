@@ -278,6 +278,22 @@ describe("describeThreadCost", () => {
     ).toBe("1 sub-agent");
   });
 
+  it("shows subagent spend without an exact count when agent identities are missing", () => {
+    expect(
+      describeThreadCost(
+        cost({
+          subagents: {
+            threadCount: 2,
+            nativeAgentCount: 3,
+            nativeAgentCountUnknown: true,
+            costUsd: 0.5,
+            models: [],
+          },
+        }),
+      ).breakdown[1],
+    ).toEqual({ label: "Sub-agents", amount: "$0.50" });
+  });
+
   it("has nothing to split when the figure is unknown", () => {
     const { amount, breakdown } = describeThreadCost(
       cost({

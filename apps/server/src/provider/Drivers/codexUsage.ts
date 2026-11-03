@@ -155,7 +155,8 @@ export function initialCodexScanState(): CodexScanState {
   };
 }
 
-/** Forks copy and restamp parent history in a burst (0-40ms gaps); genuine child usage follows a model turn (5s+ observed). */
+/** Forks restamp copied history in bursts. This heuristic can also drop genuine usage within
+ * one second of the last copied line; rebasing those counters leaves that usage unbilled. */
 const FORK_COPY_MAX_GAP_MS = 1000;
 
 function nativeParentSessionId(payload: Record<string, unknown>): string | undefined {

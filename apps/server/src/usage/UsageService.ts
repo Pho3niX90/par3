@@ -31,6 +31,7 @@ import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { formatMalformedUsageWarning } from "@t3tools/shared/usageFormat";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { CodexScanState } from "../provider/Drivers/codexUsage.ts";
 import { BUILT_IN_USAGE_DRIVERS, type BuiltInUsageReadersEnv } from "../provider/builtInDrivers.ts";
 import type { ProviderDriver } from "@t3tools/provider-core/server/driver";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
@@ -146,6 +147,8 @@ const decodeCachedSources = Schema.decodeUnknownOption(
  * history out of the fork's total.
  */
 export type UsageSessionScope = ReadonlyMap<UsageProviderKind, ReadonlyMap<string, number>>;
+
+const isCodexScanState = Schema.is(CodexScanState);
 
 const SCOPED_SOURCE_SEPARATOR = "\u0001";
 
@@ -826,6 +829,15 @@ export const make = Effect.gen(function* () {
     const nativeParents = new Map<string, string>();
     if (scope !== undefined) {
       for (const file of filesByDir.flat()) {
+        const entry = fileCache.get(file.path);
+        const state = entry?.position.state;
+        if (
+          entry?.provider === "codex" &&
+          isCodexScanState(state) &&
+          state.parentSessionId !== undefined
+        ) {
+          nativeParents.set(state.sessionId, state.parentSessionId);
+        }
         for (const record of file.records) {
           if (record.provider === "codex" && record.parentSessionId !== undefined) {
             nativeParents.set(record.sessionId, record.parentSessionId);
@@ -857,11 +869,22 @@ export const make = Effect.gen(function* () {
       let scannedFiles = 0;
       let skippedFiles = 0;
       let malformedRecords = 0;
+      let unattributedHistory = false;
       // Distinct per directory. Buckets carry per-cell session counts, but a
       // session spans days and models, so clients total this figure instead.
       const sessionIds = new Set<string>();
 
       for (const file of filesByDir[index] ?? []) {
+        // Pre-v12 history remains useful globally, but cannot split native subagent spend.
+        if (
+          scope !== undefined &&
+          (provider === "claude" || provider === "codex") &&
+          (fileCache.get(file.path)?.size ?? 0) < 0
+        ) {
+          unattributedHistory = true;
+          skippedFiles += 1;
+          continue;
+        }
         malformedRecords += file.malformedRecords;
         if (file.records.length === 0) {
           skippedFiles += 1;
@@ -908,11 +931,19 @@ export const make = Effect.gen(function* () {
       }
 
       const sourceMessage =
-        message ?? (files === null ? "No transcript directory on this environment." : null);
+        [
+          message ?? (files === null ? "No transcript directory on this environment." : null),
+          unattributedHistory
+            ? "Older cached history cannot identify subagents; scoped usage may be incomplete."
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" ") || null;
       sources.push({
         fingerprint: { hostId: sourceHostId ?? hostId, provider, resolvedHomePath: dir, volumeId },
-        status:
-          files === null && scannedFiles === 0
+        status: unattributedHistory
+          ? "partial"
+          : files === null && scannedFiles === 0
             ? "missing"
             : malformedRecords > 0
               ? status === undefined || status === "ok"

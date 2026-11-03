@@ -2791,8 +2791,43 @@ describe("UsageService", () => {
             summary.buckets.reduce((sum, bucket) => sum + bucket.costUsd, 0),
             60 + 20 * (version === 4 ? 1 : 2),
           );
+          const scoped = yield* upgraded.readSessions(
+            WINDOW,
+            new Map([
+              [
+                "codex",
+                new Map([
+                  ["live", 0],
+                  ["deleted", 0],
+                ]),
+              ],
+            ]),
+          );
+          assert.strictEqual(totalOutputTokens(scoped), 10);
+          assert.strictEqual(
+            scoped.sources.find((source) => source.fingerprint.provider === "codex")?.status,
+            "partial",
+          );
           yield* upgraded.awaitPersisted;
-          assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v11.json");
+          const restarted = yield* UsageService.make;
+          const stillScoped = yield* restarted.readSessions(
+            WINDOW,
+            new Map([
+              [
+                "codex",
+                new Map([
+                  ["live", 0],
+                  ["deleted", 0],
+                ]),
+              ],
+            ]),
+          );
+          assert.strictEqual(totalOutputTokens(stillScoped), 10);
+          assert.strictEqual(
+            stillScoped.sources.find((source) => source.fingerprint.provider === "codex")?.status,
+            "partial",
+          );
+          assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v12.json");
           assert.strictEqual(
             yield* Effect.promise(() => NodeFSP.readFile(legacyPath, "utf8")),
             legacy,
@@ -3433,6 +3468,8 @@ describe("UsageService.readSessions", () => {
           ["wanted", undefined, 100],
           ["child", "wanted", 20],
           ["grandchild", "child", 5],
+          ["metadata-only", "wanted", null],
+          ["via-metadata", "metadata-only", 7],
           ["unrelated", undefined, 900],
           ["other-child", "unrelated", 800],
           ["cycle-a", "cycle-b", 700],
@@ -3462,6 +3499,7 @@ describe("UsageService.readSessions", () => {
                 },
               },
             ]
+              .filter((line) => output !== null || line.type !== "event_msg")
               .map((line) => JSON.stringify(line))
               .join("\n") + "\n",
           );
@@ -3474,6 +3512,7 @@ describe("UsageService.readSessions", () => {
           wanted: 100,
           "wanted\u0001child": 20,
           "wanted\u0001grandchild": 5,
+          "wanted\u0001via-metadata": 7,
         });
         const tracked = yield* service.readSessions(
           WINDOW,
@@ -3483,6 +3522,7 @@ describe("UsageService.readSessions", () => {
           wanted: 100,
           child: 20,
           "child\u0001grandchild": 5,
+          "wanted\u0001via-metadata": 7,
         });
         const after = yield* service.readSessions(
           WINDOW,
@@ -3490,7 +3530,12 @@ describe("UsageService.readSessions", () => {
         );
         assert.deepStrictEqual(after.buckets, []);
         const full = yield* service.readSummary(WINDOW);
-        assert.strictEqual(totalOutputTokens(full), 3125);
+        assert.strictEqual(totalOutputTokens(full), 3132);
+        yield* service.awaitPersisted;
+        yield* Effect.promise(() => NodeFSP.rm(NodePath.join(dir, "metadata-only.jsonl")));
+        const restarted = yield* UsageService.make;
+        const cached = yield* restarted.readSessions(WINDOW, scopeOf({ wanted: 0 }, "codex"));
+        assert.deepStrictEqual(outputBySession(cached), outputBySession(result));
       }).pipe(Effect.provide(layerService({ prefix: "usage-codex-native", home, settings })));
     }).pipe(Effect.scoped),
   );
