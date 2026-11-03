@@ -84,7 +84,7 @@ it("does not read cost until asked, then shows the figure, split, and models", a
   expect(state.requests[0]).toEqual({ environmentId, input: { threadId } });
   await expect.element(page.getByText("$1.50")).toBeVisible();
   await expect.element(page.getByText("This thread")).toBeVisible();
-  await expect.element(page.getByText("1 sub-agent thread")).toBeVisible();
+  await expect.element(page.getByText("1 sub-agent")).toBeVisible();
   await expect.element(page.getByText("claude-fable-5")).toBeVisible();
   await expect.element(page.getByText("API-equivalent, not your subscription bill.")).toBeVisible();
 });

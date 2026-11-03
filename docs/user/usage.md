@@ -71,7 +71,7 @@ In a thread's details, choose **Estimate cost**. On mobile it's under the thread
 Agents can ask with `t3_thread_cost`, and scripts on the host with `par3 thread cost <thread>`.
 
 The figure uses the same API-equivalent prices as **Usage**, including your custom prices, so it
-isn't your subscription bill. It covers the thread and its sub-agent threads, shown separately.
+isn't your subscription bill. It covers the thread and its sub-agents, shown separately.
 A fork counts only what it used after forking, and isn't added to the thread it came from.
 
 A `+` means the real figure may be higher, and the notes say why: a provider keeps no usage history

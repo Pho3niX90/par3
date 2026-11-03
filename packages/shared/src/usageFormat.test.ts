@@ -225,10 +225,13 @@ describe("describeThreadCost", () => {
     ...overrides,
   });
 
-  it("states a complete figure plainly, with no split or notes", () => {
+  it("states a complete figure with its sub-agent share, even when that is nothing", () => {
     expect(describeThreadCost(cost())).toEqual({
       amount: "$1.00",
-      breakdown: [],
+      breakdown: [
+        { label: "This thread", amount: "$1.00" },
+        { label: "0 sub-agents", amount: "$0.00" },
+      ],
       models: [
         {
           key: "claude:claude-fable-5",
@@ -260,18 +263,52 @@ describe("describeThreadCost", () => {
     ).toBe("Unknown");
   });
 
-  it("splits out sub-agents only when the thread has some", () => {
+  it("counts sub-agent threads and a provider's native sub-agents together", () => {
     expect(
-      describeThreadCost(cost({ subagents: { threadCount: 2, costUsd: 0.5, models: [] } }))
-        .breakdown,
+      describeThreadCost(
+        cost({ subagents: { threadCount: 2, nativeAgentCount: 3, costUsd: 0.5, models: [] } }),
+      ).breakdown,
     ).toEqual([
       { label: "This thread", amount: "$1.00" },
-      { label: "2 sub-agent threads", amount: "$0.50" },
+      { label: "5 sub-agents", amount: "$0.50" },
     ]);
     expect(
       describeThreadCost(cost({ subagents: { threadCount: 1, costUsd: 0, models: [] } }))
         .breakdown[1]?.label,
-    ).toBe("1 sub-agent thread");
+    ).toBe("1 sub-agent");
+  });
+
+  it("shows subagent spend without an exact count when agent identities are missing", () => {
+    expect(
+      describeThreadCost(
+        cost({
+          subagents: {
+            threadCount: 2,
+            nativeAgentCount: 3,
+            nativeAgentCountUnknown: true,
+            costUsd: 0.5,
+            models: [],
+          },
+        }),
+      ).breakdown[1],
+    ).toEqual({ label: "Sub-agents", amount: "$0.50" });
+  });
+
+  it("has nothing to split when the figure is unknown", () => {
+    const { amount, breakdown } = describeThreadCost(
+      cost({
+        totalCostUsd: 0,
+        coverage: {
+          complete: false,
+          untrackedConversations: 1,
+          conversationsWithoutUsage: 0,
+          unreadableSources: 0,
+          unpricedRecords: 0,
+        },
+      }),
+    );
+    expect(amount).toBe("Unknown");
+    expect(breakdown).toEqual([]);
   });
 
   it("merges a model used by the thread and a sub-agent, ordered by cost", () => {

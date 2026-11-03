@@ -105,3 +105,24 @@ describe("UsageReadError", () => {
     ).toThrow();
   });
 });
+
+describe("ThreadCostScope.nativeAgentCount", () => {
+  it("is optional, so a client can read a server that does not send it", () => {
+    expect(decodeCost(estimate).subagents.nativeAgentCount).toBeUndefined();
+    expect(
+      decodeCost({
+        ...estimate,
+        subagents: { threadCount: 0, nativeAgentCount: 2, costUsd: 0, models: [] },
+      }).subagents.nativeAgentCount,
+    ).toBe(2);
+  });
+
+  it("rejects a negative count", () => {
+    expect(() =>
+      decodeCost({
+        ...estimate,
+        subagents: { threadCount: 0, nativeAgentCount: -1, costUsd: 0, models: [] },
+      }),
+    ).toThrow();
+  });
+});

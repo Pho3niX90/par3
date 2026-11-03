@@ -60,6 +60,29 @@ describe("parseCodexLine", () => {
       },
     });
 
+  it("retains the parent of a native subagent without treating a regular fork as one", () => {
+    for (const [source, forkedFrom, parent] of [
+      [{ subagent: { thread_spawn: { parent_thread_id: "parent" } } }, undefined, "parent"],
+      ["cli", "parent", undefined],
+      [{ subagent: { thread_spawn: {} } }, undefined, undefined],
+    ] as const) {
+      const state = initialCodexScanState();
+      parseCodexLine(
+        JSON.stringify({
+          type: "session_meta",
+          payload: {
+            id: "child",
+            source,
+            forked_from_id: forkedFrom,
+          },
+        }),
+        state,
+      );
+      parseCodexLine(turnContext, state);
+      expect(parseCodexLine(tokenCount(10, 0, 5, 0), state)?.parentSessionId).toBe(parent);
+    }
+  });
+
   it("attributes usage to the model from the preceding turn context", () => {
     const state = initialCodexScanState();
     parseCodexLine(sessionMeta, state);

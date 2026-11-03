@@ -218,15 +218,11 @@ describe("scan cache round trip", () => {
       };
 
       const restored = decodeScanCache(JSON.parse(JSON.stringify(legacy)), TEST_FORMAT_MAP);
-      expect(restored.get("/gone.jsonl")).toEqual(
-        version >= 10
-          ? original.get("/gone.jsonl")
-          : {
-              ...original.get("/gone.jsonl"),
-              size: -1,
-              position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
-            },
-      );
+      expect(restored.get("/gone.jsonl")).toEqual({
+        ...original.get("/gone.jsonl"),
+        size: -1,
+        position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
+      });
       expect(restored.get("/gone-codex.jsonl")).toEqual({
         ...original.get("/gone-codex.jsonl"),
         size: -1,
@@ -234,7 +230,7 @@ describe("scan cache round trip", () => {
       });
       expect(restored.get("/clean-codex.jsonl")).toEqual({
         ...cleanCodex,
-        size: version >= 8 ? cleanCodex.size : -1,
+        size: -1,
         position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
       });
       expect(restored.get("/gone-pi.jsonl")).toEqual(
@@ -249,9 +245,39 @@ describe("scan cache round trip", () => {
     },
   );
 
-  it("re-parses a Claude transcript cached before advisor usage was counted", () => {
+  it("restores a native sub-agent id, with or without a service tier turn", () => {
+    const original = cacheWith([
+      [
+        "/claude.jsonl",
+        100,
+        [
+          record({ nativeSubagentId: "a0654362" }),
+          record({ nativeSubagentId: "a0654362", unresolvedServiceTierTurnId: "turn-1" }),
+          record(),
+          record({ parentSessionId: "parent-session" }),
+        ],
+      ],
+    ]);
+    const restored = decodeScanCache(
+      JSON.parse(makeScanCacheWriter()(original, {})),
+      TEST_FORMAT_MAP,
+    );
+    expect(restored).toEqual(original);
+  });
+
+  it("drops an entry whose native sub-agent id points at nothing", () => {
+    const original = cacheWith([
+      ["/claude.jsonl", 100, [record({ nativeSubagentId: "a0654362" })]],
+    ]);
+    const document = JSON.parse(makeScanCacheWriter()(original, {}));
+    const row = document.files["/claude.jsonl"].r[0];
+    row[row.length - 1] = 999;
+    expect(decodeScanCache(document, TEST_FORMAT_MAP).has("/claude.jsonl")).toBe(false);
+  });
+
+  it("re-parses a Claude transcript cached before native sub-agents were labelled", () => {
     const original = cacheWith([["/claude.jsonl", 100, [record()]]]);
-    const v9 = { ...JSON.parse(makeScanCacheWriter()(original, {})), version: 9 };
+    const v9 = { ...JSON.parse(makeScanCacheWriter()(original, {})), version: 11 };
 
     const restored = decodeScanCache(JSON.parse(JSON.stringify(v9)), TEST_FORMAT_MAP);
     expect(restored.get("/claude.jsonl")).toEqual({

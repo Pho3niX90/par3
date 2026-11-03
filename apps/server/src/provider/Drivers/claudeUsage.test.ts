@@ -216,3 +216,57 @@ describe("Claude advisor iterations", () => {
     expect(parse(unusable).map((record) => record.model)).toEqual(["claude-opus-5-5"]);
   });
 });
+
+describe("Claude native sub-agents", () => {
+  const sidechainLine = (fields: Record<string, unknown>) =>
+    JSON.stringify({
+      ...JSON.parse(claudeLine({ messageId: "m", contentType: "text" })),
+      ...fields,
+    });
+
+  it("labels usage from a sub-agent's sidechain with its agent id", () => {
+    const [record] = parseClaudeLine(sidechainLine({ isSidechain: true, agentId: "a0654362" }));
+    expect(record?.nativeSubagentId).toBe("a0654362");
+  });
+
+  it("labels a sidechain with no agent id, as older transcripts have", () => {
+    const [record] = parseClaudeLine(sidechainLine({ isSidechain: true }));
+    expect(record?.nativeSubagentId).toBe("sidechain");
+  });
+
+  it("leaves Claude's own background agents with the thread", () => {
+    const [record] = parseClaudeLine(
+      sidechainLine({ isSidechain: true, agentId: "acompact-1f2e" }),
+    );
+    expect(record).toBeDefined();
+    expect(record?.nativeSubagentId).toBeUndefined();
+  });
+
+  it("does not label the main conversation, even if an agent id is present", () => {
+    const [record] = parseClaudeLine(sidechainLine({ isSidechain: false, agentId: "a0654362" }));
+    expect(record?.nativeSubagentId).toBeUndefined();
+  });
+
+  it("labels an advisor call made by a sub-agent", () => {
+    const base = JSON.parse(claudeLine({ messageId: "m", contentType: "text" }));
+    const records = parseClaudeLine(
+      JSON.stringify({
+        ...base,
+        isSidechain: true,
+        agentId: "a0654362",
+        message: {
+          ...base.message,
+          usage: {
+            ...base.message.usage,
+            iterations: [{ type: "advisor_message", model: "claude-fable-5", output_tokens: 1 }],
+          },
+        },
+      }),
+    );
+    expect(records.map((record) => record.nativeSubagentId)).toEqual(["a0654362", "a0654362"]);
+  });
+
+  it("reads the fields that identify a sub-agent from a projected transcript", () => {
+    expect(claudeUsageFormat.selectFields).toMatchObject({ isSidechain: true, agentId: true });
+  });
+});

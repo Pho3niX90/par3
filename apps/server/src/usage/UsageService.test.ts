@@ -2791,8 +2791,43 @@ describe("UsageService", () => {
             summary.buckets.reduce((sum, bucket) => sum + bucket.costUsd, 0),
             60 + 20 * (version === 4 ? 1 : 2),
           );
+          const scoped = yield* upgraded.readSessions(
+            WINDOW,
+            new Map([
+              [
+                "codex",
+                new Map([
+                  ["live", 0],
+                  ["deleted", 0],
+                ]),
+              ],
+            ]),
+          );
+          assert.strictEqual(totalOutputTokens(scoped), 10);
+          assert.strictEqual(
+            scoped.sources.find((source) => source.fingerprint.provider === "codex")?.status,
+            "partial",
+          );
           yield* upgraded.awaitPersisted;
-          assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v11.json");
+          const restarted = yield* UsageService.make;
+          const stillScoped = yield* restarted.readSessions(
+            WINDOW,
+            new Map([
+              [
+                "codex",
+                new Map([
+                  ["live", 0],
+                  ["deleted", 0],
+                ]),
+              ],
+            ]),
+          );
+          assert.strictEqual(totalOutputTokens(stillScoped), 10);
+          assert.strictEqual(
+            stillScoped.sources.find((source) => source.fingerprint.provider === "codex")?.status,
+            "partial",
+          );
+          assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v12.json");
           assert.strictEqual(
             yield* Effect.promise(() => NodeFSP.readFile(legacyPath, "utf8")),
             legacy,
@@ -3420,6 +3455,146 @@ describe("UsageService.readSessions", () => {
         return yield* service.readSessions(WINDOW, scopeOf({ wanted: 0, "also-wanted": 0 }));
       }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-scope", home, settings })));
       assert.deepStrictEqual(outputBySession(summary), { wanted: 100, "also-wanted": 50 });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("includes native Codex descendants and counts tracked children once", () =>
+    Effect.gen(function* () {
+      const { home, settings } = yield* setup;
+      const dir = NodePath.join(home, "codex", "sessions");
+      yield* Effect.promise(async () => {
+        await NodeFSP.mkdir(dir, { recursive: true });
+        for (const [id, parent, output] of [
+          ["wanted", undefined, 100],
+          ["child", "wanted", 20],
+          ["grandchild", "child", 5],
+          ["metadata-only", "wanted", null],
+          ["via-metadata", "metadata-only", 7],
+          ["unrelated", undefined, 900],
+          ["other-child", "unrelated", 800],
+          ["cycle-a", "cycle-b", 700],
+          ["cycle-b", "cycle-a", 600],
+        ] as const) {
+          await NodeFSP.writeFile(
+            NodePath.join(dir, id + ".jsonl"),
+            [
+              {
+                type: "session_meta",
+                timestamp: "2026-08-01T09:00:00Z",
+                payload: {
+                  id,
+                  source:
+                    parent === undefined
+                      ? "cli"
+                      : { subagent: { thread_spawn: { parent_thread_id: parent } } },
+                },
+              },
+              { type: "turn_context", payload: { model: "gpt-6-sol" } },
+              {
+                type: "event_msg",
+                timestamp: "2026-08-01T10:00:00Z",
+                payload: {
+                  type: "token_count",
+                  info: { last_token_usage: { input_tokens: 10, output_tokens: output } },
+                },
+              },
+            ]
+              .filter((line) => output !== null || line.type !== "event_msg")
+              .map((line) => JSON.stringify(line))
+              .join("\n") + "\n",
+          );
+        }
+      });
+      yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        const result = yield* service.readSessions(WINDOW, scopeOf({ wanted: 0 }, "codex"));
+        assert.deepStrictEqual(outputBySession(result), {
+          wanted: 100,
+          "wanted\u0001child": 20,
+          "wanted\u0001grandchild": 5,
+          "wanted\u0001via-metadata": 7,
+        });
+        const tracked = yield* service.readSessions(
+          WINDOW,
+          scopeOf({ wanted: 0, child: 0 }, "codex"),
+        );
+        assert.deepStrictEqual(outputBySession(tracked), {
+          wanted: 100,
+          child: 20,
+          "child\u0001grandchild": 5,
+          "wanted\u0001via-metadata": 7,
+        });
+        const after = yield* service.readSessions(
+          WINDOW,
+          scopeOf({ wanted: Date.parse("2026-08-01T11:00:00Z") }, "codex"),
+        );
+        assert.deepStrictEqual(after.buckets, []);
+        const full = yield* service.readSummary(WINDOW);
+        assert.strictEqual(totalOutputTokens(full), 3132);
+        yield* service.awaitPersisted;
+        yield* Effect.promise(() => NodeFSP.rm(NodePath.join(dir, "metadata-only.jsonl")));
+        const restarted = yield* UsageService.make;
+        const cached = yield* restarted.readSessions(WINDOW, scopeOf({ wanted: 0 }, "codex"));
+        assert.deepStrictEqual(outputBySession(cached), outputBySession(result));
+      }).pipe(Effect.provide(layerService({ prefix: "usage-codex-native", home, settings })));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("keeps a session's native sub-agents apart from its own usage", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      const sidechain = (id: number, agentId: string, outputTokens: number) =>
+        `${JSON.stringify({
+          ...JSON.parse(sessionLine({ id, sessionId: "wanted", outputTokens })),
+          isSidechain: true,
+          agentId,
+        })}\n`;
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(
+          transcript,
+          sessionLine({ id: 1, sessionId: "wanted", outputTokens: 100 }) +
+            sidechain(2, "a0654362", 20) +
+            sidechain(3, "a997f7a7", 30),
+        ),
+      );
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSessions(WINDOW, scopeOf({ wanted: 0 }));
+      }).pipe(Effect.provide(layerService({ prefix: "usage-sessions-native", home, settings })));
+      const decoded = summary.buckets
+        .map((bucket) => ({
+          ...UsageService.decodeScopedUsageSource(bucket.sourcePath ?? ""),
+          outputTokens: bucket.totals.outputTokens,
+        }))
+        .toSorted((a, b) => a.outputTokens - b.outputTokens);
+      assert.deepStrictEqual(decoded, [
+        { sessionId: "wanted", nativeSubagentId: "a0654362", outputTokens: 20 },
+        { sessionId: "wanted", nativeSubagentId: "a997f7a7", outputTokens: 30 },
+        { sessionId: "wanted", nativeSubagentId: null, outputTokens: 100 },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not split the unscoped Usage page by native sub-agent", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() =>
+        NodeFSP.writeFile(
+          transcript,
+          sessionLine({ id: 1, sessionId: "wanted", outputTokens: 100 }) +
+            `${JSON.stringify({
+              ...JSON.parse(sessionLine({ id: 2, sessionId: "wanted", outputTokens: 20 })),
+              isSidechain: true,
+              agentId: "a0654362",
+            })}\n`,
+        ),
+      );
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSummary(WINDOW);
+      }).pipe(Effect.provide(layerService({ prefix: "usage-unscoped-native", home, settings })));
+      assert.strictEqual(summary.buckets.length, 1);
+      assert.strictEqual(summary.buckets[0]?.totals.outputTokens, 120);
     }).pipe(Effect.scoped),
   );
 
