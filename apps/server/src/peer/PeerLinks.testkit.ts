@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   EnvironmentHttpApi,
@@ -32,6 +33,7 @@ import * as PeerLinks from "./PeerLinks.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SpecService from "../specs/SpecService.ts";
 import * as PeerMcpClient from "./PeerMcpClient.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 
 class PeerTestApi extends HttpApi.make("environment")
   .add(EnvironmentHttpApi.groups.metadata)
@@ -73,12 +75,13 @@ export const servePeer = <E, R>(
       getDescriptor: Ref.get(descriptor),
     });
     const authContext = yield* EnvironmentAuth.layer.pipe(
+      Layer.provide(ManagedPolicy.layerTest()),
       Layer.provideMerge(ServerSettings.layerTest({ linkedEnvironmentsEnabled: true })),
       Layer.provide(Sqlite.layerMemory),
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provideMerge(ServerEnvironment.layerIdentity),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-peer-link-peer-" })),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Layer.fresh,
       Layer.build,
     );
@@ -103,8 +106,7 @@ export const servePeer = <E, R>(
         Layer.provide(ServerHttp.layerServerEnvironmentHttpApi),
         Layer.provide(AuthHttp.layerAuthenticatedAuth),
       ),
-      tools.pipe(
-        Layer.provideMerge(McpHttpServer.layerMcpTransport),
+      McpHttpServer.layerMcpTransport(tools).pipe(
         Layer.provide(SpecService.layerDisabled),
         Layer.provide(Layer.mock(ThreadSidekick.ThreadSidekick)({})),
         Layer.provide(
@@ -173,7 +175,7 @@ export const layerLinkingEnvironment = (
       }),
     ),
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-peer-link-here-" })),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.fresh,
   );
 

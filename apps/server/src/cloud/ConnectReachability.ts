@@ -68,10 +68,11 @@ export function classifyReachability(
   const restart = "Restart Par3. If it stays, run `par3 connect` again.";
 
   if (!facts.managedTunnelConfigured) {
+    // A running server reads the link `t3 connect` stores only at startup.
     return fail(
       "not_linked",
       "The server has not set up a Parity Connect tunnel.",
-      "Run `t3 connect`, then restart the server (`t3 service restart`) so it applies the link.",
+      "Run `par3 connect`, then restart Par3 so it applies the link.",
     );
   }
   if (connector === null) {

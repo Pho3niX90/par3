@@ -5,7 +5,7 @@
  */
 import { ProviderDriverKind, type OrchestrationV2ProviderCapabilities } from "@t3tools/contracts";
 import { CopilotSettings } from "../settings.ts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -94,7 +94,7 @@ interface CopilotAdapterV2Options {
   ) => Effect.Effect<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
     EffectAcpErrors.AcpError,
-    ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+    ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
   >;
   readonly assertComplete?: Effect.Effect<void, EffectAcpErrors.AcpError>;
 }
@@ -158,7 +158,7 @@ const makeCopilotAdapterV2 = Effect.fn("makeCopilotAdapterV2")(function* (
 
 export type CopilotAdapterV2DriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | IdAllocator.IdAllocatorV2
   | Path.Path

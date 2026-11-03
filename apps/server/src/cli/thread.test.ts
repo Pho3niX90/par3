@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { RunId, ThreadId, type ThreadCost } from "@t3tools/contracts";
 import * as NetService from "@t3tools/shared/Net";
@@ -14,6 +15,7 @@ import {
   threadCommand,
   threadCostLines,
   type ThreadTools,
+  titleFromMessage,
   waitForRun,
 } from "./thread.ts";
 
@@ -287,7 +289,11 @@ it.effect("cost refuses an id that is not a thread id, before contacting a serve
     assert.isTrue(
       (yield* TestConsole.errorLines).some((line) => String(line).includes("is not a thread id")),
     );
-  }).pipe(Effect.provide(Layer.mergeAll(TestConsole.layer, NodeServices.layer, NetService.layer))),
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(TestConsole.layer, NodeServices.layer, NodeCrypto.layer, NetService.layer),
+    ),
+  ),
 );
 
 it.effect("cost reports that no server is running in that home", () =>
@@ -308,6 +314,13 @@ it.effect("cost reports that no server is running in that home", () =>
     );
   }).pipe(
     Effect.scoped,
-    Effect.provide(Layer.mergeAll(TestConsole.layer, NodeServices.layer, NetService.layer)),
+    Effect.provide(
+      Layer.mergeAll(TestConsole.layer, NodeServices.layer, NodeCrypto.layer, NetService.layer),
+    ),
   ),
 );
+
+it("titles from a long first line without splitting an emoji", () => {
+  const title = titleFromMessage(`${"a".repeat(78)}😀 and the rest of a long first line`);
+  assert.strictEqual(title, `${"a".repeat(78)}…`);
+});

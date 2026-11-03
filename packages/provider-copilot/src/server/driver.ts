@@ -5,7 +5,7 @@
  */
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { CopilotSettings } from "../settings.ts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -63,7 +63,7 @@ const UPDATE = makePackageManagedProviderMaintenanceResolver({
 export type CopilotDriverEnv =
   | CopilotAdapterV2DriverEnv
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | ProviderLatestVersions.ProviderLatestVersions
@@ -91,7 +91,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv, Pa
     const httpClient = yield* HttpClient.HttpClient;
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const fileSystem = yield* FileSystem.FileSystem;
-    const crypto = yield* Crypto.Crypto;
+    const secureRandom = yield* SecureRandom.SecureRandom;
     const path = yield* Path.Path;
     const processEnv = yield* mergeProviderInstanceEnvironment(environment);
     const continuationIdentity = defaultProviderContinuationIdentity({
@@ -126,7 +126,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv, Pa
 
     const textGeneration = yield* makeCopilotTextGeneration(effectiveConfig, launchEnv).pipe(
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      Effect.provideService(Crypto.Crypto, crypto),
+      Effect.provideService(SecureRandom.SecureRandom, secureRandom),
     );
 
     const orchestrationAdapter = yield* makeCopilotAdapterV2ForInstance(
@@ -237,7 +237,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv, Pa
                           });
                         }).pipe(
                           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-                          Effect.provideService(Crypto.Crypto, crypto),
+                          Effect.provideService(SecureRandom.SecureRandom, secureRandom),
                         ),
                       }).pipe(
                         Effect.flatMap((models) =>

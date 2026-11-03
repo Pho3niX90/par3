@@ -99,6 +99,7 @@ import {
 } from "./new-task-context-presentation";
 import { resolveEnvironmentProjectMatch } from "./new-task-project-selection";
 import { useNewTaskProjectDefaults } from "./use-new-task-project-defaults";
+import { resolveNewThreadRuntimeMode } from "./thread-settings-options";
 import { resolveProjectThreadCreationBranch } from "./projectThreadCreationValidation";
 import {
   INACTIVE_FLOW_KEY,
@@ -441,7 +442,12 @@ export function NewTaskFlowProvider(
   const startFromOrigin =
     isGitRepo && (draftStartFromOrigin ?? projectSettings.settings.newWorktreesStartFromOrigin);
   const defaultRuntimeMode = newThreadSeed.runtimeMode;
-  const runtimeMode = selectedProjectDraft.runtimeMode ?? defaultRuntimeMode;
+  const managedPolicy = selectedEnvironmentServerConfig?.managedPolicy;
+  const runtimeMode = resolveNewThreadRuntimeMode(
+    selectedProjectDraft.runtimeMode,
+    defaultRuntimeMode,
+    managedPolicy,
+  );
 
   // Antigravity keeps unavailable selections so sign-out or a catalog change
   // cannot switch the user's model.
@@ -776,7 +782,11 @@ export function NewTaskFlowProvider(
       attachments: draft.attachments,
       context: draft.context,
       modelSelection: draftModelSelection,
-      runtimeMode: draft.runtimeMode ?? defaultRuntimeMode,
+      runtimeMode: resolveNewThreadRuntimeMode(
+        draft.runtimeMode,
+        defaultRuntimeMode,
+        managedPolicy,
+      ),
       interactionMode: resolvePendingTaskInteractionMode({
         planModeEnabled: planModePreferenceEnabled,
         draftInteractionMode: draft.interactionMode ?? newThreadSeed.interactionMode ?? undefined,

@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   EnvironmentId,
@@ -11,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -33,7 +35,8 @@ const machineLayer = (environmentId: string) =>
         ServerConfig.layerTest(process.cwd(), { prefix: `t3-vault-test-${environmentId}-` }),
       ),
     ),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(ManagedPolicy.layerTest()),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 
 const machine = (environmentId: string) =>

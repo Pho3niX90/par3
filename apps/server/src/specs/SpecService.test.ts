@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -8,7 +9,7 @@ import {
   type SpecMutationInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -72,7 +73,7 @@ const layerTest = SpecService.layer.pipe(
   Layer.provideMerge(layerProjectionStore),
   Layer.provideMerge(ServerSettings.layerTest({ specModeEnabled: true })),
   Layer.provideMerge(SqlitePersistence.layerMemory),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const createProject = (projectId: ProjectId, workspaceRoot: string) =>
@@ -159,7 +160,7 @@ const queryAfterServiceRestart = (input: { projectId: ProjectId; slug: string })
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const crypto = yield* Crypto.Crypto;
+    const digest = yield* Digest.Digest;
     const sql = yield* SqlClient.SqlClient;
     const projects = yield* ProjectStore.ProjectStoreV2;
     const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -167,7 +168,7 @@ const queryAfterServiceRestart = (input: { projectId: ProjectId; slug: string })
     const dependencies = Layer.mergeAll(
       Layer.succeed(FileSystem.FileSystem, fs),
       Layer.succeed(Path.Path, path),
-      Layer.succeed(Crypto.Crypto, crypto),
+      Layer.succeed(Digest.Digest, digest),
       Layer.succeed(SqlClient.SqlClient, sql),
       Layer.succeed(ProjectStore.ProjectStoreV2, projects),
       Layer.succeed(ProjectionStore.ProjectionStoreV2, projections),

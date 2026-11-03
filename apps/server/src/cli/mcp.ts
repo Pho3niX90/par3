@@ -7,7 +7,7 @@ import {
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import * as Console from "effect/Console";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -186,7 +186,7 @@ const mcpAddCommand = Command.make("add", {
   Command.withHandler((flags) =>
     runWithServerConfig(flags, (config) =>
       Effect.gen(function* () {
-        const crypto = yield* Crypto.Crypto;
+        const crypto = yield* SecureRandom.SecureRandom;
         const secretStore = yield* ServerSecretStore.ServerSecretStore;
         const transportType =
           Option.getOrUndefined(flags.transport) ??
@@ -204,7 +204,7 @@ const mcpAddCommand = Command.make("add", {
           });
         }
 
-        const id = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+        const id = yield* crypto.uuidV4().pipe(Effect.orDie);
         const secrets = [
           ...environment.map(([name, value]) => ({ kind: "env" as const, name, value })),
           ...headers.map(({ name, value }) => ({ kind: "header" as const, name, value })),

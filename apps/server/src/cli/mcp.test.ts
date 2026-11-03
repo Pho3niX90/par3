@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@t3tools/shared/Net";
 import { assert, describe, it } from "@effect/vitest";
@@ -11,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as TestConsole from "effect/testing/TestConsole";
 import { Command } from "effect/cli";
 
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { cli } from "../binCli.ts";
 import * as ServerConfig from "../config.ts";
@@ -21,7 +23,9 @@ import { McpServerInputError } from "./mcp.ts";
 
 const runCli = (args: ReadonlyArray<string>) =>
   Command.runWith(cli, { version: "0.0.0" })(args).pipe(
-    Effect.provide(Layer.mergeAll(NodeServices.layer, NetService.layer, TestConsole.layer)),
+    Effect.provide(
+      Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, NetService.layer, TestConsole.layer),
+    ),
   );
 
 const makeBaseDir = () => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-mcp-cli-"));
@@ -51,7 +55,8 @@ const loadServerSettings = (baseDir: string) =>
         Layer.provide(ServerSecretStore.layer),
         Layer.provide(SqlitePersistence.layerMemory),
         Layer.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
-        Layer.provide(NodeServices.layer),
+        Layer.provide(ManagedPolicy.layerTest()),
+        Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       ),
     ),
   );

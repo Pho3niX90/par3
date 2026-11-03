@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   EnvironmentId,
@@ -20,6 +21,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -44,7 +46,8 @@ const storeLayer = SyncStore.layer.pipe(
   Layer.provideMerge(
     Layer.fresh(ServerConfig.layerTest(process.cwd(), { prefix: "t3-sync-store-test-" })),
   ),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(ManagedPolicy.layerTest()),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 /** A sync store whose Claude home is a scratch directory with the given files. */

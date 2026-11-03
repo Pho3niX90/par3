@@ -165,6 +165,7 @@ computer.
 | Cursor         | Install [Cursor CLI](https://cursor.com/cli), then run `agent login`.                                                                                     |
 | Grok Build     | Install [Grok Build CLI](https://x.ai/cli), then run `grok login`.                                                                                        |
 | GitHub Copilot | Install [GitHub Copilot CLI](./providers-copilot.md#set-up-github-copilot) (`npm i -g @github/copilot`), then run `copilot login`.                        |
+| Kiro           | Install [Kiro CLI](https://kiro.dev/docs/cli/), then run `kiro-cli login`.                                                                                |
 | OpenCode       | Install [OpenCode](https://opencode.ai), then run `opencode auth login`.                                                                                  |
 | Antigravity    | Install and sign in with Google from Par3's provider settings.                                                                                            |
 | Pi             | Install [Pi](./providers-pi.md#set-up-pi) with Node.js 22.19 or newer, then run `pi` and `/login`.                                                        |
@@ -199,8 +200,8 @@ their original values.
 
 For provider-specific setup and accounts, see [Codex](./providers-codex.md),
 [Claude](./providers-claude.md), [OpenCode](./providers-opencode.md),
-[Antigravity](./providers-antigravity.md), [Pi](./providers-pi.md),
-[Muse Code](./providers-muse.md), and [fx](./providers-fx.md).
+[Antigravity](./providers-antigravity.md), [Kiro](./providers-kiro.md),
+[Pi](./providers-pi.md), [Muse Code](./providers-muse.md), and [fx](./providers-fx.md).
 
 ## Next steps
 
@@ -209,3 +210,4 @@ For provider-specific setup and accounts, see [Codex](./providers-codex.md),
 - [Remote access](./remote-access.md): connect from another device.
 - [Running in the background](./background-service.md): keep a Linux or macOS host available.
 - [Updating Par3](./updating.md): update the app and connected servers.
+- [Managed policy](./managed-policy.md): configure Par3 for everyone on a machine.

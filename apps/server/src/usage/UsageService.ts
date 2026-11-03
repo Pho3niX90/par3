@@ -39,7 +39,7 @@ import type {
   TranscriptUsageFormat,
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
-import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
+import { canonicalModelFilter, resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
   listTranscriptFiles,
@@ -742,6 +742,7 @@ export const make = Effect.gen(function* () {
       rates,
       priceOverrides: createOverrideRateTable(settings.usagePriceOverrides),
       modelAliases: resolveModelAliases(settings.usageModelAliases),
+      ...(input.modelFilter === undefined ? {} : { modelFilter: input.modelFilter }),
     });
 
     const sources: UsageSource[] = [];
@@ -905,6 +906,7 @@ export const make = Effect.gen(function* () {
       sources,
       pricing: pricing(),
       scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
+      ...(input.modelFilter === undefined ? {} : { modelFilter: input.modelFilter }),
     } satisfies UsageSummary;
   });
 
@@ -927,12 +929,16 @@ export const make = Effect.gen(function* () {
       scope === undefined
         ? null
         : [...scope].map(([provider, sessions]) => [provider, [...sessions]]),
+      input.modelFilter ?? null,
     ]);
 
   const readSharedScan = Effect.fnUntraced(function* (
-    input: UsageSummaryInput,
+    requested: UsageSummaryInput,
     scope: UsageSessionScope | undefined,
   ) {
+    const { modelFilter: requestedFilter, ...unfiltered } = requested;
+    const modelFilter = canonicalModelFilter(requestedFilter);
+    const input = modelFilter === undefined ? unfiltered : { ...unfiltered, modelFilter };
     const settings = yield* readSettings;
     const key = scanKey(input, settings, scope);
     const deferred = yield* Effect.uninterruptible(

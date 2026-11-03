@@ -99,7 +99,8 @@ Fix:
 
 ## Sign-in, account, or link problems
 
-Parity Connect does not have an active link between your account and the host.
+This device's Parity Connect sign-in is not ready yet, or Parity Connect does not have
+an active link between your account and the host.
 
 - **The host is linked to a different account.** Sign in to the same Parity Connect
   account on this device and on the host. On the host, run `par3 connect logout`,
@@ -107,10 +108,14 @@ Parity Connect does not have an active link between your account and the host.
 - **Parity Connect is off on the host, or the host only publishes agent activity.**
   On the host, open **Settings > Sharing & access** and turn **Parity Connect** on, or
   run `par3 connect`.
-- **The host was linked, but the server did not apply the link yet.** Run
-  `par3 service restart` on the host, or restart `par3 serve`.
+- **The host was linked, but the server did not apply the link yet.** Restart
+  the server on the host: quit and reopen the Par3 desktop app, run
+  `par3 service restart`, or stop `par3 serve` and run it again.
 - **This device's sign-in expired, or the host no longer accepts this
   device.** Sign out of Parity Connect and sign in again.
+- **This device is still loading its Parity Connect sign-in.** Wait a moment;
+  Par3 retries on its own. If it keeps waiting, reload or restart Par3 on
+  this device.
 - **Your account reached its tunnel limit.** Remove an environment you do not
   use from your T3 account's Parity Connect page, or
   [link a paid T3 Chat account](./remote-access.md#more-machines-with-t3-chat)
@@ -151,3 +156,7 @@ If none of this helps, open an issue on
 - The text from **Copy diagnostics** in the environment's **Details**.
 - The output of `par3 connect status` on the host.
 - The trace ID, if one is shown.
+- If the tunnel dropped earlier, the host's tunnel log, `relay-client.ndjson`
+  in the logs folder (`~/.t3/userdata/logs` by default). It records when the
+  tunnel connected, warned, exited, and restarted, with the tunnel token
+  removed.

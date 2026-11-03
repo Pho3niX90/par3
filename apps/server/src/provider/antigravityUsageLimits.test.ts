@@ -1,4 +1,6 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -200,7 +202,7 @@ describe("Antigravity subscription limits", () => {
       });
       expect(byId.get("gemini-5h")?.resetsAt).toBe("2026-10-21T13:29:53.000Z");
       expect(byId.get("gemini-weekly")?.resetsAt).toBe("2026-10-28T08:29:53.000Z");
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   // Oracle: measure the tolerance from the summary request, after auth.
@@ -221,7 +223,7 @@ describe("Antigravity subscription limits", () => {
         },
       });
       expect((yield* probe).windows[0]?.resetsAt).toBeUndefined();
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   // Oracle: keep descriptions, measured resets, and spent buckets.
@@ -273,7 +275,7 @@ describe("Antigravity subscription limits", () => {
         { id: "spent", resetsAt: "2026-10-21T15:16:04.000Z" },
         { id: "distant", resetsAt: "2026-10-28T12:16:04.000Z" },
       ]);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   // Oracle: the 60-second tolerance applies to both known window lengths.
@@ -330,7 +332,7 @@ describe("Antigravity subscription limits", () => {
         { id: "weekly-before", resetsAt: "2026-10-28T10:15:03.000Z" },
         { id: "weekly-edge", resetsAt: undefined },
       ]);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   // Oracle: the existing endpoint merge keeps the most-used reading.
@@ -391,7 +393,7 @@ describe("Antigravity subscription limits", () => {
           resetsAt: "2026-10-27T10:16:04.000Z",
         },
       ]);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   // Oracle: model quotas have no evidence for the summary-only rule.
@@ -419,7 +421,7 @@ describe("Antigravity subscription limits", () => {
         { id: "gemini-weekly", resetsAt: "2026-10-28T10:16:04.000Z", windowDurationMins: 10080 },
         { id: "gemini-quota", resetsAt: "2026-10-21T15:16:04.000Z", windowDurationMins: undefined },
       ]);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("reports separate Gemini and shared Claude/GPT five-hour and weekly limits", () =>
@@ -446,7 +448,7 @@ describe("Antigravity subscription limits", () => {
       expect(
         requests.filter((request) => request.url.endsWith(":retrieveUserQuotaSummary")),
       ).toHaveLength(4);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("merges quota groups that only one endpoint reports", () =>
@@ -478,7 +480,7 @@ describe("Antigravity subscription limits", () => {
       expect(byId.get("gemini-weekly")?.label).toBe("Gemini · Weekly");
       expect(byId.get("3p-5h")?.usedPercent).toBeCloseTo(70);
       expect(byId.get("3p-weekly")?.usedPercent).toBe(100);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("labels Argon's weekly quota apart from the default Gemini weekly quota", () =>
@@ -500,7 +502,7 @@ describe("Antigravity subscription limits", () => {
       const byId = new Map(limits.windows.map((window) => [window.id, window]));
       expect(byId.get("gemini-weekly")?.label).toBe("Gemini · Weekly");
       expect(byId.get("gemini-argon-wtu-weekly")?.label).toBe("Gemini 4 Argon · Weekly");
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("keeps one endpoint's quotas when the other fails", () =>
@@ -511,7 +513,7 @@ describe("Antigravity subscription limits", () => {
       const limits = yield* probe;
       expect(limits.unavailable).toBeUndefined();
       expect(limits.windows).toHaveLength(4);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("re-reads changed credentials and clears cached access after sign-out", () =>
@@ -530,7 +532,7 @@ describe("Antigravity subscription limits", () => {
       yield* clear;
       yield* probe;
       expect(requests.filter((request) => request.url.endsWith("/token"))).toHaveLength(4);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("names one Google account the same way from every sign-in", () =>
@@ -544,7 +546,7 @@ describe("Antigravity subscription limits", () => {
       expect(machineB.credentialFingerprint).toBe(machineA.credentialFingerprint);
       expect(otherAccount.credentialFingerprint).not.toBe(machineA.credentialFingerprint);
       expect(JSON.stringify(machineA)).not.toMatch(/google-user-1|someone@example.com/);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("falls back to model quotas without inventing a window duration", () =>
@@ -573,7 +575,7 @@ describe("Antigravity subscription limits", () => {
           (window) => window.kind === "other" && window.windowDurationMins === undefined,
         ),
       ).toBe(true);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("adds Gemini model quota when the summary only reports the shared group", () =>
@@ -611,7 +613,7 @@ describe("Antigravity subscription limits", () => {
         resetsAt: "2026-10-09T16:06:00.000Z",
       });
       expect(gemini?.usedPercent).toBeCloseTo(30);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
   it.effect("shows partly used model quotas beside a summary that reads full", () =>
     Effect.gen(function* () {
@@ -642,7 +644,7 @@ describe("Antigravity subscription limits", () => {
       const byId = new Map(limits.windows.map((window) => [window.id, window]));
       expect(byId.get("gemini-quota")?.usedPercent).toBeCloseTo(29);
       expect(byId.get("gemini-weekly")?.usedPercent).toBe(50);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("shows a limit the agent reported until it resets or the account signs out", () =>
@@ -674,7 +676,7 @@ describe("Antigravity subscription limits", () => {
       expect((yield* (yield* reopen).probe).unavailable?.reason).toBe("probeFailed");
       yield* reportLimitReached(now - 1);
       expect((yield* probe).unavailable?.reason).toBe("probeFailed");
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it("only reads the agent's quota message", () => {
@@ -711,7 +713,7 @@ describe("Antigravity subscription limits", () => {
           windowDurationMins: 300,
         },
       ]);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("returns a safe failure when OAuth refresh fails", () =>
@@ -721,7 +723,7 @@ describe("Antigravity subscription limits", () => {
       expect(limits.windows).toEqual([]);
       expect(limits.unavailable?.reason).toBe("probeFailed");
       expect(JSON.stringify(limits)).not.toMatch(/client-secret|refresh-a|access-token/);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("does not make network requests for API keys or missing sign-ins", () =>
@@ -731,6 +733,6 @@ describe("Antigravity subscription limits", () => {
         expect((yield* probe).unavailable?.reason).toBe("unsupported");
         expect(requests).toEqual([]);
       }
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

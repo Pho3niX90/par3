@@ -11,7 +11,7 @@ import {
   specRoleSupported,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -99,7 +99,7 @@ export class SpecService extends Context.Service<
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
   const sql = yield* SqlClient.SqlClient;
   const projects = yield* ProjectStore.ProjectStoreV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -122,7 +122,7 @@ const make = Effect.gen(function* () {
   const locked = <A, E, R>(key: string, effect: Effect.Effect<A, E, R>) =>
     lockFor(key).pipe(Effect.flatMap((lock) => lock.withPermits(1)(effect)));
   const hash = (value: string) =>
-    crypto.digest("SHA-256", new TextEncoder().encode(value)).pipe(
+    digest.digest(Digest.sha256, new TextEncoder().encode(value)).pipe(
       Effect.map(Hex.encode),
       Effect.mapError(() => failure("io", "Could not hash the spec.")),
     );

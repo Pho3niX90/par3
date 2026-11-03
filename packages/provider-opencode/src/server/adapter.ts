@@ -270,6 +270,7 @@ interface ActiveOpenCodeTurn {
   readonly appThread: OrchestrationV2AppThread;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
+  readonly sidekick: ProviderAdapter.ProviderAdapterV2TurnInput["sidekick"];
   readonly providerTurnId: OrchestrationV2ProviderTurn["id"];
   readonly providerThreadId: OrchestrationV2ProviderTurn["providerThreadId"];
   readonly runOrdinal: number;
@@ -2297,6 +2298,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             appThread: state.appThread,
             modelSelection: state.appThread.modelSelection,
             runtimePolicy: state.parentSubagent.parentTurn.runtimePolicy,
+            sidekick: null,
             providerTurnId,
             providerThreadId: providerTurn.providerThreadId,
             runOrdinal: state.parentSubagent.parentTurn.runOrdinal,
@@ -3013,6 +3015,27 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           };
         });
 
+        // OpenCode runs each step with the agent and system prompt of the latest
+        // user message, so every prompt in a turn, steers included, repeats them.
+        const turnPromptOptions = (turn: ActiveOpenCodeTurn) => {
+          const agent =
+            getModelSelectionStringOptionValue(turn.modelSelection, "agent") ??
+            (turn.runtimePolicy.interactionMode === "plan" ? "plan" : undefined);
+          const variant = getModelSelectionStringOptionValue(turn.modelSelection, "variant");
+          return {
+            ...(agent === undefined ? {} : { agent }),
+            ...(variant === undefined ? {} : { variant }),
+            system: [
+              orchestrationSystemPrompt,
+              // A later prompt without the sidekick playbook drops it, so no "off" text is needed.
+              hasT3Mcp && turn.sidekick != null ? sidekickInstructions(turn.sidekick) : undefined,
+              buildRuntimeInstructions({ harness: "OpenCode", model: turn.modelSelection.model }),
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+          };
+        };
+
         // Native commands await generation; user-message receipts admit their background requests.
         const submitPrompt = Effect.fn("OpenCode.submitPrompt")(function* (
           state: OpenCodeThreadState,
@@ -3271,6 +3294,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 appThread: turnInput.appThread,
                 modelSelection: turnInput.modelSelection,
                 runtimePolicy: turnInput.runtimePolicy,
+                sidekick: turnInput.sidekick,
                 providerTurnId,
                 providerThreadId: turnInput.providerThread.id,
                 runOrdinal: turnInput.runOrdinal,
@@ -3338,28 +3362,6 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 );
                 return;
               }
-              // OpenCode stores `system` on each user message and builds the request from the
-              // latest one, so per-turn content such as the sidekick playbook disappears once
-              // a later prompt omits it; no explicit "off" text is needed.
-              const systemPrompt = [
-                orchestrationSystemPrompt,
-                hasT3Mcp && turnInput.sidekick != null
-                  ? sidekickInstructions(turnInput.sidekick)
-                  : undefined,
-                buildRuntimeInstructions({
-                  harness: "OpenCode",
-                  model: turnInput.modelSelection.model,
-                }),
-              ]
-                .filter(Boolean)
-                .join("\n\n");
-              const agent =
-                getModelSelectionStringOptionValue(turnInput.modelSelection, "agent") ??
-                (turnInput.runtimePolicy.interactionMode === "plan" ? "plan" : undefined);
-              const variant = getModelSelectionStringOptionValue(
-                turnInput.modelSelection,
-                "variant",
-              );
               yield* submitPrompt(
                 state,
                 turn,
@@ -3367,9 +3369,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   sessionID: sessionId,
                   messageID: turn.admissionMessageId!,
                   model: parsedModel,
-                  ...(agent === undefined ? {} : { agent }),
-                  ...(variant === undefined ? {} : { variant }),
-                  system: systemPrompt,
+                  ...turnPromptOptions(turn),
                   parts,
                 },
                 admissionAbortController!,
@@ -3480,6 +3480,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   sessionID: sessionId,
                   messageID: turn.admissionMessageId,
                   model: parsedModel,
+                  ...turnPromptOptions(turn),
                   parts,
                 },
                 admissionAbortController!,

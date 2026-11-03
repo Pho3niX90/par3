@@ -4,7 +4,7 @@ import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import { CommandId } from "@t3tools/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
@@ -328,7 +328,7 @@ const layerSpecInvalidation = Layer.effectDiscard(
   Effect.gen(function* () {
     const specs = yield* SpecService.SpecService;
     const threads = yield* ThreadManagementService.ThreadManagementService;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     yield* specs.invalidations.pipe(
       Stream.runForEach((threadIds) =>
         Effect.forEach(threadIds, (threadId) =>
@@ -337,7 +337,7 @@ const layerSpecInvalidation = Layer.effectDiscard(
               .dispatch({
                 type: "thread.stop",
                 commandId: CommandId.make(
-                  `spec-invalidated:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
+                  `spec-invalidated:${yield* crypto.uuidV4().pipe(Effect.orDie)}`,
                 ),
                 threadId,
                 reason:

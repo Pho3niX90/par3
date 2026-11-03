@@ -11,7 +11,7 @@ import {
   type RuntimeMode,
 } from "@t3tools/contracts";
 import type { CopilotSettings } from "../settings.ts";
-import type * as Crypto from "effect/Crypto";
+import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
@@ -127,7 +127,7 @@ export const makeCopilotAcpRuntime = Effect.fn("makeCopilotAcpRuntime")(function
 ): Effect.fn.Return<
   AcpSessionRuntime.AcpSessionRuntime["Service"],
   EffectAcpErrors.AcpError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
 > {
   const acpContext = yield* Layer.build(
     AcpSessionRuntime.layer({

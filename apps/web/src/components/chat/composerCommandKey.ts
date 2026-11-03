@@ -47,7 +47,7 @@ export function composerCommandKeyHandler(input: {
   readonly openSpecMode: () => void;
   readonly isLiteralPendingAnswer: boolean;
   readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
-  readonly promptHistoryMessages: ChatComposerProps["promptHistoryMessages"];
+  readonly promptHistoryEntries: ChatComposerProps["promptHistoryEntries"];
   readonly promptHistoryPositionRef: RefObject<{
     targetKey: string;
     position: ComposerPromptHistoryPosition;
@@ -101,7 +101,7 @@ export function composerCommandKeyHandler(input: {
     openSpecMode,
     isLiteralPendingAnswer,
     pendingUserInputs,
-    promptHistoryMessages,
+    promptHistoryEntries,
     promptHistoryPositionRef,
     composerDraftTarget,
     promptRef,
@@ -170,7 +170,9 @@ export function composerCommandKeyHandler(input: {
     const step = stepComposerPromptHistory({
       direction,
       // Built on the keypress, not per render: the timeline changes on every streamed delta.
-      entries: buildComposerPromptHistoryEntries(promptHistoryMessages),
+      entries: buildComposerPromptHistoryEntries(
+        promptHistoryEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
+      ),
       position,
       currentPrompt: promptRef.current,
     });

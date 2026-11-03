@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -71,7 +72,7 @@ const withService = <A, E, R>(
       ),
       Layer.provideMerge(GitVcsDriver.layer),
       Layer.provideMerge(layerServerConfig),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
     return yield* Effect.gen(function* () {
       const service = yield* MergeConflictService.MergeConflictService;

@@ -36,6 +36,7 @@ const BUILT_IN_DRIVER_ORDER: ReadonlyArray<string> = [
   "antigravity",
   "copilot",
   "fx",
+  "kiro",
 ];
 
 const driverRank = (driver: string): number => {

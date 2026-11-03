@@ -3,7 +3,7 @@
  * is one throwaway session whose permission requests are always cancelled, so it cannot change anything;
  * requests to investigate the checkout are refused because no read-only mode can guarantee that.
  */
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -110,7 +110,7 @@ export const makeCopilotTextGeneration = Effect.fn("makeCopilotTextGeneration")(
   copilotSettings: CopilotSettings,
   environment: NodeJS.ProcessEnv = process.env,
 ) {
-  const crypto = yield* Crypto.Crypto;
+  const secureRandom = yield* SecureRandom.SecureRandom;
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
   const makeRuntime: CopilotRuntimeFactory = (cwd) =>
@@ -126,7 +126,7 @@ export const makeCopilotTextGeneration = Effect.fn("makeCopilotTextGeneration")(
       // Never start a login flow for a background generation.
       authenticateOnAuthRequired: false,
     }).pipe(
-      Effect.provideService(Crypto.Crypto, crypto),
+      Effect.provideService(SecureRandom.SecureRandom, secureRandom),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, commandSpawner),
     );
 
