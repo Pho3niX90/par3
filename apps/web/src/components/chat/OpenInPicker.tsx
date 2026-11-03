@@ -40,6 +40,7 @@ import {
   FinderIcon,
   Icon,
   KiroIcon,
+  OpenIDEAIcon,
   TraeIcon,
   VisualStudioCode,
   VisualStudioCodeInsiders,
@@ -181,6 +182,11 @@ const resolveOpenInOptions = (platform: string, availableEditors: ReadonlyArray<
     {
       Icon: WebStormIcon,
       value: "webstorm",
+      kind: "brand",
+    },
+    {
+      Icon: OpenIDEAIcon,
+      value: "openidea",
       kind: "brand",
     },
     {
