@@ -118,7 +118,7 @@ it("does not read cost until asked, then shows the figure and its caveats", () =
   expect(state.requests[0]).toEqual({ environmentId, input: { threadId } });
   const text = view.container.textContent;
   expect(text).toContain("$2.00+");
-  expect(text).toContain("1 sub-agent thread");
+  expect(text).toContain("1 sub-agent");
   expect(text).toContain("claude-fable-5");
   expect(text).toContain("1 conversation uses a provider with no usage history.");
   expect(text).toContain("not your subscription bill");

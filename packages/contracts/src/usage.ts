@@ -175,6 +175,8 @@ export type ThreadCostLine = typeof ThreadCostLine.Type;
 
 export const ThreadCostScope = Schema.Struct({
   threadCount: NonNegativeInt,
+  /** Sub-agents a provider ran inside a conversation, with no thread of their own. */
+  nativeAgentCount: Schema.optionalKey(NonNegativeInt),
   costUsd: Schema.Number,
   models: ForwardCompatibleArray(ThreadCostLine),
 });

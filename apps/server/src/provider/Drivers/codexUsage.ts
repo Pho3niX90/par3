@@ -119,6 +119,7 @@ export const CodexScanState = Schema.Struct({
   model: Schema.mutableKey(Schema.String),
   speed: Schema.mutableKey(CodexSpeed),
   sessionId: Schema.mutableKey(Schema.String),
+  parentSessionId: Schema.mutableKey(Schema.optionalKey(Schema.String)),
   lastUsageSignature: Schema.mutableKey(Schema.NullOr(Schema.String)),
   lastCumulativeUsage: Schema.mutableKey(Schema.NullOr(CodexTokenUsage)),
   // Optional so scan states cached before this field existed stay valid.
@@ -157,15 +158,15 @@ export function initialCodexScanState(): CodexScanState {
 /** Forks copy and restamp parent history in a burst (0-40ms gaps); genuine child usage follows a model turn (5s+ observed). */
 const FORK_COPY_MAX_GAP_MS = 1000;
 
-function isForkedSessionMeta(payload: Record<string, unknown>): boolean {
-  if (typeof payload["forked_from_id"] === "string") return true;
+function nativeParentSessionId(payload: Record<string, unknown>): string | undefined {
   const source = payload["source"];
-  if (typeof source !== "object" || source === null) return false;
+  if (typeof source !== "object" || source === null) return undefined;
   const subagent = (source as Record<string, unknown>)["subagent"];
-  if (typeof subagent !== "object" || subagent === null) return false;
+  if (typeof subagent !== "object" || subagent === null) return undefined;
   const spawn = (subagent as Record<string, unknown>)["thread_spawn"];
-  if (typeof spawn !== "object" || spawn === null) return false;
-  return typeof (spawn as Record<string, unknown>)["parent_thread_id"] === "string";
+  if (typeof spawn !== "object" || spawn === null) return undefined;
+  const parent = (spawn as Record<string, unknown>)["parent_thread_id"];
+  return typeof parent === "string" ? parent : undefined;
 }
 
 // The first usage line past the copied burst ends suppression for the rest of the rollout.
@@ -212,8 +213,13 @@ function parseCodexRecord(parsed: unknown, state: CodexScanState): readonly Usag
     if (typeof payloadRecord["model_provider"] === "string") {
       state.modelProvider = payloadRecord["model_provider"];
     }
+    const parent = nativeParentSessionId(payloadRecord);
+    if (parent !== undefined) state.parentSessionId = parent;
     const metaTimestampMs = parseTimestampMs(record["timestamp"]);
-    if (metaTimestampMs !== null && isForkedSessionMeta(payloadRecord)) {
+    if (
+      metaTimestampMs !== null &&
+      (typeof payloadRecord["forked_from_id"] === "string" || parent !== undefined)
+    ) {
       state.suppressingForkCopies = true;
       state.forkCopyAnchorMs = metaTimestampMs;
     }
@@ -388,6 +394,7 @@ function codexRequestRecord(
     timestampMs,
     model,
     sessionId: state.sessionId,
+    ...(state.parentSessionId === undefined ? {} : { parentSessionId: state.parentSessionId }),
     totals,
     reportedCostUsd: null,
     speed,

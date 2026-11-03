@@ -17,6 +17,10 @@ export interface UsageRecord {
   readonly model: string;
   readonly rateModel?: string;
   readonly sessionId: string;
+  /** Set when a sub-agent the provider ran inside `sessionId` used these tokens. */
+  readonly nativeSubagentId?: string;
+  /** Parent session of a separately recorded native subagent. */
+  readonly parentSessionId?: string;
   readonly totals: UsageTokenTotals;
   readonly reportedCostUsd: number | null;
   readonly speed: UsageSpeed;

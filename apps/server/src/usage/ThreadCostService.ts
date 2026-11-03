@@ -108,7 +108,11 @@ function mergedCostSource(
   return current === next ? current : "modelPriced";
 }
 
-function summarizeScope(threadCount: number, buckets: readonly UsageBucket[]): ThreadCostScope {
+function summarizeScope(
+  threadCount: number,
+  buckets: readonly UsageBucket[],
+  nativeAgentCount = 0,
+): ThreadCostScope {
   const lines = new Map<string, ThreadCostLine>();
   for (const bucket of buckets) {
     const key = `${bucket.provider}\u0000${bucket.model}`;
@@ -139,6 +143,7 @@ function summarizeScope(threadCount: number, buckets: readonly UsageBucket[]): T
     .map((line) => ({ ...line, costUsd: roundUsd(line.costUsd) }));
   return {
     threadCount,
+    ...(nativeAgentCount === 0 ? {} : { nativeAgentCount }),
     costUsd: roundUsd(buckets.reduce((sum, bucket) => sum + bucket.costUsd, 0)),
     models,
   };
@@ -156,10 +161,15 @@ export function summarizeThreadCost(input: {
   const seen = new Set<string>();
   const own: UsageBucket[] = [];
   const subagent: UsageBucket[] = [];
+  const nativeAgents = new Set<string>();
   for (const bucket of buckets) {
-    const key = sessionKey(bucket.provider, bucket.sourcePath ?? "");
+    const { sessionId, nativeSubagentId } = UsageService.decodeScopedUsageSource(
+      bucket.sourcePath ?? "",
+    );
+    const key = sessionKey(bucket.provider, sessionId);
     seen.add(key);
-    (conversations.ownSessions.has(key) ? own : subagent).push(bucket);
+    if (nativeSubagentId !== null) nativeAgents.add(`${key}\u0000${nativeSubagentId}`);
+    (nativeSubagentId === null && conversations.ownSessions.has(key) ? own : subagent).push(bucket);
   }
   let knownSessions = 0;
   let conversationsWithoutUsage = 0;
@@ -179,7 +189,7 @@ export function summarizeThreadCost(input: {
     readAt: input.readAt,
     totalCostUsd: roundUsd(totalCostUsd),
     thread: summarizeScope(1, own),
-    subagents: summarizeScope(input.threadCount - 1, subagent),
+    subagents: summarizeScope(input.threadCount - 1, subagent, nativeAgents.size),
     coverage: {
       complete:
         knownSessions + conversations.untrackedConversations > 0 &&

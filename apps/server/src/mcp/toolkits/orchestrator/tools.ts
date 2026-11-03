@@ -255,7 +255,7 @@ const ThreadReadTool = Tool.make("t3_thread_read", {
 
 const ThreadCostTool = Tool.make("t3_thread_cost", {
   description:
-    "Estimate what a thread used: USD, tokens, and models, with its sub-agent threads split out. An API-equivalent estimate, not a subscription bill. `coverage.complete: false` means the real figure may be higher. Scans provider history, so call it once rather than in a loop.",
+    "Estimate what a thread used: USD, tokens, and models, with its sub-agents split out. An API-equivalent estimate, not a subscription bill. `coverage.complete: false` means the real figure may be higher. Scans provider history, so call it once rather than in a loop.",
   parameters: OrchestratorMcpThreadCostInput,
   success: ThreadCost,
   failure: OrchestratorMcpFailure,

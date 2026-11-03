@@ -218,7 +218,7 @@ it("cost prints the figure, its split, its models, and why it may be low", () =>
     [
       "$1.50+",
       "This thread: $1.50",
-      "1 sub-agent thread: $0.00",
+      "1 sub-agent: $0.00",
       "claude-fable-5: $1.50 (1.50K tokens)",
       "Note: 1 conversation uses a provider with no usage history.",
     ],
@@ -267,7 +267,11 @@ it.effect("cost asks the tool for that thread and prints plain lines", () => {
   return Effect.gen(function* () {
     yield* printThreadCost(threadId, false)(tools);
     assert.deepStrictEqual(calls, [{ tool: "t3_thread_cost", args: { threadId } }]);
-    assert.deepStrictEqual(yield* TestConsole.logLines, ["$1.00"]);
+    assert.deepStrictEqual(yield* TestConsole.logLines, [
+      "$1.00",
+      "This thread: $1.00",
+      "0 sub-agents: $0.00",
+    ]);
   }).pipe(Effect.provide(Layer.fresh(TestConsole.layer)));
 });
 

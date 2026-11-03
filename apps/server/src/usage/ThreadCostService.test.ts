@@ -231,6 +231,58 @@ describe("summarizeThreadCost", () => {
     assert.strictEqual(cost.totalCostUsd, 5);
   });
 
+  it("moves a native sub-agent's spend out of the session that ran it, and counts each once", () => {
+    const rows = [row({ thread_id: ROOT, native_id: "root-session" })];
+    const cost = summarize(
+      rows,
+      summary([
+        bucket({ sourcePath: "root-session", costUsd: 1 }),
+        bucket({
+          sourcePath: "root-session\u0001agent-a",
+          costUsd: 2,
+          day: UsageDay.make("2026-08-01"),
+        }),
+        bucket({
+          sourcePath: "root-session\u0001agent-a",
+          costUsd: 3,
+          day: UsageDay.make("2026-08-02"),
+        }),
+        bucket({ sourcePath: "root-session\u0001agent-b", costUsd: 4 }),
+      ]),
+    );
+    assert.strictEqual(cost.thread.costUsd, 1);
+    assert.strictEqual(cost.subagents.costUsd, 9);
+    assert.strictEqual(cost.subagents.threadCount, 0);
+    assert.strictEqual(cost.subagents.nativeAgentCount, 2);
+    assert.strictEqual(cost.totalCostUsd, 10);
+    assert.strictEqual(cost.thread.nativeAgentCount, undefined);
+  });
+
+  it("treats a session with only native sub-agent usage as having usage", () => {
+    const cost = summarize(
+      [row({ thread_id: ROOT, native_id: "root-session" })],
+      summary([bucket({ sourcePath: "root-session\u0001agent-a", costUsd: 2 })]),
+    );
+    assert.strictEqual(cost.coverage.conversationsWithoutUsage, 0);
+    assert.strictEqual(cost.coverage.complete, true);
+    assert.strictEqual(cost.thread.costUsd, 0);
+    assert.strictEqual(cost.subagents.costUsd, 2);
+  });
+
+  it("counts equal agent ids in different sessions as different sub-agents", () => {
+    const cost = summarize(
+      [
+        row({ thread_id: ROOT, native_id: "root-session" }),
+        row({ thread_id: ROOT, native_id: "other-session", provider_thread_id: "p2" }),
+      ],
+      summary([
+        bucket({ sourcePath: "root-session\u0001agent-a" }),
+        bucket({ sourcePath: "other-session\u0001agent-a" }),
+      ]),
+    );
+    assert.strictEqual(cost.subagents.nativeAgentCount, 2);
+  });
+
   it("does not confuse equal session ids from different providers", () => {
     const cost = summarize(
       [

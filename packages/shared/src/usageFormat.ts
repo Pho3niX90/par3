@@ -395,21 +395,22 @@ function mergeThreadCostModels(
 /** Shared wording, so web, mobile, and the CLI state the same figure and the same caveats. */
 export function describeThreadCost(cost: ThreadCost): ThreadCostDescription {
   const { totalCostUsd, coverage, thread, subagents } = cost;
+  const unknown = totalCostUsd === 0 && !coverage.complete;
   return {
-    amount:
-      totalCostUsd === 0 && !coverage.complete
-        ? "Unknown"
-        : `${formatThreadUsd(totalCostUsd)}${coverage.complete ? "" : "+"}`,
-    breakdown:
-      subagents.threadCount === 0
-        ? []
-        : [
-            { label: "This thread", amount: formatThreadUsd(thread.costUsd) },
-            {
-              label: countOf(subagents.threadCount, "sub-agent thread", "sub-agent threads"),
-              amount: formatThreadUsd(subagents.costUsd),
-            },
-          ],
+    amount: unknown ? "Unknown" : `${formatThreadUsd(totalCostUsd)}${coverage.complete ? "" : "+"}`,
+    breakdown: unknown
+      ? []
+      : [
+          { label: "This thread", amount: formatThreadUsd(thread.costUsd) },
+          {
+            label: countOf(
+              subagents.threadCount + (subagents.nativeAgentCount ?? 0),
+              "sub-agent",
+              "sub-agents",
+            ),
+            amount: formatThreadUsd(subagents.costUsd),
+          },
+        ],
     models: mergeThreadCostModels(cost),
     notes: threadCostNotes(cost),
   };

@@ -30,6 +30,17 @@ export function parseClaudeLine(line: string): readonly UsageRecord[] {
   return parseClaudeRecord(parsed);
 }
 
+// Claude names its own background agents, such as `acompact-…`. They serve the thread itself, unlike
+// the bare hex ids of the sub-agents it was asked to run.
+const CLAUDE_INTERNAL_AGENT_ID = /^a[a-z_]+-/;
+
+function claudeNativeSubagentId(record: Record<string, unknown>): string | null {
+  if (record["isSidechain"] !== true) return null;
+  const agentId = record["agentId"];
+  if (typeof agentId !== "string" || agentId.length === 0) return "sidechain";
+  return CLAUDE_INTERNAL_AGENT_ID.test(agentId) ? null : agentId;
+}
+
 function parseClaudeRecord(parsed: unknown): readonly UsageRecord[] {
   if (typeof parsed !== "object" || parsed === null) return [];
 
@@ -56,12 +67,14 @@ function parseClaudeRecord(parsed: unknown): readonly UsageRecord[] {
     messageId === null && requestId === null ? null : `${messageId ?? ""}:${requestId ?? ""}`;
 
   const cost = record["costUSD"];
+  const nativeSubagentId = claudeNativeSubagentId(record);
 
   const executor: UsageRecord = {
     provider: "claude",
     timestampMs,
     model,
     sessionId: typeof record["sessionId"] === "string" ? record["sessionId"] : "",
+    ...(nativeSubagentId === null ? {} : { nativeSubagentId }),
     totals: {
       uncachedInputTokens: tokenCount(usageRecord["input_tokens"]),
       cachedInputTokens: tokenCount(usageRecord["cache_read_input_tokens"]),
@@ -94,6 +107,7 @@ function parseClaudeRecord(parsed: unknown): readonly UsageRecord[] {
       timestampMs,
       model: advisorModel,
       sessionId: executor.sessionId,
+      ...(nativeSubagentId === null ? {} : { nativeSubagentId }),
       totals: {
         uncachedInputTokens: tokenCount(advisor["input_tokens"]),
         cachedInputTokens: tokenCount(advisor["cache_read_input_tokens"]),
@@ -115,6 +129,8 @@ export const claudeUsageFormat: TranscriptUsageFormat<void> = {
     timestamp: true,
     requestId: true,
     sessionId: true,
+    isSidechain: true,
+    agentId: true,
     costUSD: true,
     message: { id: true, model: true, usage: true },
   },

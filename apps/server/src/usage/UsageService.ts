@@ -141,10 +141,21 @@ const decodeCachedSources = Schema.decodeUnknownOption(
 
 /**
  * Limits a scan to known conversations: provider, then session, then the first instant to count.
- * Buckets then carry the session in `sourcePath`. A fork's transcript starts with its parent's
- * usage under older timestamps, so the instant keeps that history out of the fork's total.
+ * Buckets then carry the session in `sourcePath`, read back by `decodeScopedUsageSource`. A fork's
+ * transcript starts with its parent's usage under older timestamps, so the instant keeps that
+ * history out of the fork's total.
  */
 export type UsageSessionScope = ReadonlyMap<UsageProviderKind, ReadonlyMap<string, number>>;
+
+const SCOPED_SOURCE_SEPARATOR = "\u0001";
+
+export function decodeScopedUsageSource(source: string): {
+  readonly sessionId: string;
+  readonly nativeSubagentId: string | null;
+} {
+  const [sessionId = "", nativeSubagentId] = source.split(SCOPED_SOURCE_SEPARATOR);
+  return { sessionId, nativeSubagentId: nativeSubagentId ?? null };
+}
 
 export class UsageService extends Context.Service<
   UsageService,
@@ -812,6 +823,32 @@ export const make = Effect.gen(function* () {
       }
     }
     const crossFileSessions = sharedSessions(filesByDir.flat());
+    const nativeParents = new Map<string, string>();
+    if (scope !== undefined) {
+      for (const file of filesByDir.flat()) {
+        for (const record of file.records) {
+          if (record.provider === "codex" && record.parentSessionId !== undefined) {
+            nativeParents.set(record.sessionId, record.parentSessionId);
+          }
+        }
+      }
+    }
+    const scopedCodexSessions = new Map<string, string>();
+    const scopedSession = (record: UsageRecord) => {
+      if (record.provider !== "codex") return record.sessionId;
+      const cached = scopedCodexSessions.get(record.sessionId);
+      if (cached !== undefined) return cached;
+      const sessions = scope?.get(record.provider);
+      let session = record.sessionId;
+      const visited = new Set<string>();
+      while (!sessions?.has(session) && nativeParents.has(session)) {
+        if (visited.has(session)) break;
+        visited.add(session);
+        session = nativeParents.get(session)!;
+      }
+      scopedCodexSessions.set(record.sessionId, session);
+      return session;
+    };
 
     for (const [
       index,
@@ -834,8 +871,11 @@ export const make = Effect.gen(function* () {
         const eventOccurrences = new Map<string, number>();
         for (const rawRecord of file.records) {
           const record = correctedRecord(rawRecord);
+          const session = scope === undefined ? record.sessionId : scopedSession(record);
+          const nativeSubagentId =
+            session === record.sessionId ? record.nativeSubagentId : record.sessionId;
           if (scope !== undefined) {
-            const firstCountedMs = scope.get(record.provider)?.get(record.sessionId);
+            const firstCountedMs = scope.get(record.provider)?.get(session);
             if (firstCountedMs === undefined || record.timestampMs < firstCountedMs) continue;
           }
           let usageRecord = record;
@@ -855,7 +895,12 @@ export const make = Effect.gen(function* () {
             eventOccurrences.set(key, occurrence);
             usageRecord = { ...record, dedupeKey: key + ":" + occurrence };
           }
-          const bucketSource = scope === undefined ? dir : record.sessionId;
+          const bucketSource =
+            scope === undefined
+              ? dir
+              : nativeSubagentId === undefined
+                ? session
+                : session + SCOPED_SOURCE_SEPARATOR + nativeSubagentId;
           if (aggregator.add(usageRecord, bucketSource) && record.sessionId.length > 0) {
             sessionIds.add(record.sessionId);
           }
