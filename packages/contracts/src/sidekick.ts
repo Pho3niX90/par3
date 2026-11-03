@@ -42,15 +42,16 @@ export function sidekickModelLabel(
 /**
  * Why a sidekick selection cannot be chosen or used, or null when it can. The
  * server adds checks a client cannot see (a registered adapter, project
- * enablement, option descriptors); this covers what both sides share.
+ * enablement, option descriptors); this covers what both sides share. A null
+ * lead skips the comparison, for a lead the server cannot know yet.
  */
 export function sidekickSelectionProblem(input: {
-  readonly lead: Pick<ModelSelection, "instanceId" | "model">;
+  readonly lead: Pick<ModelSelection, "instanceId" | "model"> | null;
   readonly sidekick: Pick<ModelSelection, "instanceId" | "model">;
   readonly providers: ReadonlyArray<ServerProvider>;
 }): string | null {
   const { sidekick } = input;
-  if (sameModelSelection(input.lead, sidekick)) {
+  if (input.lead !== null && sameModelSelection(input.lead, sidekick)) {
     return "The sidekick is the same model as the lead.";
   }
   const provider = input.providers.find(

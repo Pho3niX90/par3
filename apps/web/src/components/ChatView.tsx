@@ -453,7 +453,9 @@ export default function ChatView(props: ChatViewProps) {
   const setThreadInteractionMode = useOrchestrationCommand(threadEnvironment.setInteractionMode, {
     reportFailure: false,
   });
-  const setThreadSidekick = useOrchestrationCommand(threadEnvironment.setSidekick);
+  const setThreadSidekick = useOrchestrationCommand(threadEnvironment.setSidekick, {
+    reportFailure: false,
+  });
   const canSetSidekick = useAtomValue(threadEnvironment.setSidekick.permissionAtom(environmentId));
   const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
     reportFailure: false,
@@ -2965,6 +2967,14 @@ export default function ChatView(props: ChatViewProps) {
       void setThreadSidekick({
         environmentId,
         input: { threadId: activeThreadId, sidekickModelSelection: selection },
+      }).then((result) => {
+        if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
+        const error = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Could not change the sidekick",
+          description: error instanceof Error ? error.message : "The environment request failed.",
+        });
       });
     } else if (isLocalDraftThread) {
       setDraftThreadContext(composerDraftTarget, { sidekickModelSelection: selection });

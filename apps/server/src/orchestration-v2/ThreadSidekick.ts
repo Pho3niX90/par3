@@ -40,10 +40,13 @@ export interface ThreadSidekickStatus {
 export class ThreadSidekick extends Context.Service<
   ThreadSidekick,
   {
-    /** Checks a selection before it is stored on a thread. */
+    /**
+     * Checks a selection before it is stored on a thread. Pass a null lead when
+     * the lead may change before the next turn; `status` then judges the pairing.
+     */
     readonly validate: (input: {
       readonly projectId: ProjectId;
-      readonly lead: ModelSelection;
+      readonly lead: ModelSelection | null;
       readonly sidekick: ModelSelection;
     }) => Effect.Effect<void, ThreadSidekickInvalidError>;
     readonly status: (
@@ -69,13 +72,15 @@ const make = Effect.gen(function* () {
 
   const problem = Effect.fn("ThreadSidekick.problem")(function* (input: {
     readonly projectId: ProjectId;
-    readonly lead: ModelSelection;
+    readonly lead: ModelSelection | null;
     readonly sidekick: ModelSelection;
     readonly providers: ReadonlyArray<ServerProvider>;
   }) {
-    const leadProvider = input.providers.find(
-      (provider) => provider.instanceId === input.lead.instanceId,
-    );
+    const { lead } = input;
+    const leadProvider =
+      lead === null
+        ? undefined
+        : input.providers.find((provider) => provider.instanceId === lead.instanceId);
     if (
       leadProvider !== undefined &&
       !(leadProvider.sidekickLead ?? sidekickDriverTraits(leadProvider.driver).sidekickLead)
