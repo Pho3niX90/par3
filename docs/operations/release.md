@@ -342,6 +342,13 @@ selected profile's version. Before releasing `3.0.0` to the App Store, advance
 `build.testflight.env.T3CODE_MOBILE_VERSION` in `apps/mobile/eas.json` to the next
 unreleased major and get its first beta build approved.
 
+## Par3 Google Play releases
+
+The fork builds Android without EAS. The Release workflow publishes each nightly to open
+testing and each stable release to production, at full rollout once Play's review passes.
+A successful run only means Play accepted the upload, so check the Play Console to see
+whether the release went live. To retry, dispatch **Fork mobile Android release**.
+
 ## Android APK mirror
 
 `.github/workflows/mobile-android-apk.yml` checks the Google Play Alpha closed-testing
