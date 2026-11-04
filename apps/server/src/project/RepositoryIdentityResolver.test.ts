@@ -21,7 +21,215 @@ const git = (cwd: string, args: ReadonlyArray<string>) =>
     });
   }).pipe(Effect.provide(ProcessRunner.layer));
 
+const clone = (parent: string, name: string, remoteUrl: string | null) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const cwd = path.join(parent, name);
+    yield* fileSystem.makeDirectory(cwd);
+    yield* git(cwd, ["init"]);
+    if (remoteUrl !== null) yield* git(cwd, ["remote", "add", "origin", remoteUrl]);
+    return cwd;
+  });
+
+const FRONTEND = "git@github.com:Acme/frontend.git";
+const BACKEND = "https://gitlab.com/Acme/backend.git";
+const WORKSPACE_KEY = "workspace:github.com/acme/frontend|gitlab.com/acme/backend";
+
 it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
+  it.effect("identifies a folder of clones by its member repositories, wherever it lives", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const makeFolder = () =>
+        fileSystem.makeTempDirectoryScoped({ prefix: "t3-repository-identity-workspace-" });
+      const folder = yield* makeFolder();
+      yield* clone(folder, "frontend", FRONTEND);
+      yield* clone(folder, "backend", BACKEND);
+      yield* clone(folder, "no-remote", null);
+      yield* fileSystem.makeDirectory(`${folder}/docs`);
+      yield* clone(folder, ".hidden", "git@github.com:Acme/hidden.git");
+
+      const otherMachine = yield* makeFolder();
+      yield* clone(otherMachine, "z-web", FRONTEND);
+      yield* clone(otherMachine, "a-api", BACKEND);
+
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      const identity = yield* resolver.resolve(folder);
+
+      expect(identity).toEqual({
+        canonicalKey: WORKSPACE_KEY,
+        locator: { source: "git-remote", remoteName: "workspace", remoteUrl: WORKSPACE_KEY },
+        rootPath: folder,
+        displayName: "Acme/backend + Acme/frontend",
+        members: [
+          {
+            path: "backend",
+            canonicalKey: "gitlab.com/acme/backend",
+            remoteUrl: BACKEND,
+            displayName: "Acme/backend",
+          },
+          {
+            path: "frontend",
+            canonicalKey: "github.com/acme/frontend",
+            remoteUrl: FRONTEND,
+            displayName: "Acme/frontend",
+          },
+        ],
+      });
+      expect((yield* resolver.resolve(otherMachine))?.canonicalKey).toBe(WORKSPACE_KEY);
+    }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
+  );
+
+  it.effect("returns null for a folder with no member repositories or too many of them", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const empty = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-workspace-empty-",
+      });
+      yield* clone(empty, "no-remote", null);
+      yield* fileSystem.makeDirectory(`${empty}/docs`);
+
+      const crowded = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-workspace-crowded-",
+      });
+      for (let index = 0; index < 65; index += 1) {
+        yield* fileSystem.makeDirectory(`${crowded}/repo-${index}/.git`, { recursive: true });
+      }
+
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      expect(yield* resolver.resolve(empty)).toBeNull();
+      expect(yield* resolver.resolve(crowded)).toBeNull();
+    }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
+  );
+
+  it.effect(
+    "takes members from a par3.json manifest over what is on disk, without running git",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const folder = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-repository-identity-workspace-manifest-",
+        });
+        yield* clone(folder, "unlisted", "git@github.com:Acme/unlisted.git");
+        yield* fileSystem.writeFileString(
+          `${folder}/par3.json`,
+          JSON.stringify({
+            repositories: [
+              { path: "services\\web", url: FRONTEND },
+              { path: "api", url: BACKEND },
+              { path: "local", url: "/srv/git/local.git" },
+            ],
+          }),
+        );
+
+        const runner = yield* ProcessRunner.ProcessRunner;
+        const memberRuns: Array<string> = [];
+        const resolver = yield* RepositoryIdentityResolver.make().pipe(
+          Effect.provideService(ProcessRunner.ProcessRunner, {
+            run: (input) =>
+              Effect.suspend(() => {
+                if (input.args[1] !== folder) memberRuns.push(input.args[1] ?? "");
+                return runner.run(input);
+              }),
+          }),
+        );
+        const identity = yield* resolver.resolve(folder);
+
+        expect(identity?.canonicalKey).toBe(WORKSPACE_KEY);
+        expect(identity?.members?.map((member) => member.path)).toEqual(["api", "services/web"]);
+        expect(memberRuns).toEqual([]);
+      }).pipe(Effect.provide(ProcessRunner.layer)),
+  );
+
+  it.effect("reads a manifest from t3.json when no par3.json exists, and prefers par3.json", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const folder = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-workspace-t3-manifest-",
+      });
+      yield* fileSystem.writeFileString(
+        `${folder}/t3.json`,
+        JSON.stringify({ repositories: [{ path: "web", url: FRONTEND }] }),
+      );
+
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      expect((yield* resolver.resolve(folder))?.canonicalKey).toBe(
+        "workspace:github.com/acme/frontend",
+      );
+
+      yield* fileSystem.writeFileString(
+        `${folder}/par3.json`,
+        JSON.stringify({ repositories: [{ path: "api", url: BACKEND }] }),
+      );
+      expect((yield* resolver.resolve(folder, { refresh: true }))?.canonicalKey).toBe(
+        "workspace:gitlab.com/acme/backend",
+      );
+    }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
+  );
+
+  it.effect("ignores a par3.json manifest in a folder that is itself a repository", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const cwd = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-workspace-repo-",
+      });
+      yield* git(cwd, ["init"]);
+      yield* git(cwd, ["remote", "add", "origin", FRONTEND]);
+      yield* fileSystem.writeFileString(
+        `${cwd}/par3.json`,
+        JSON.stringify({ repositories: [{ path: "api", url: BACKEND }] }),
+      );
+
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      const identity = yield* resolver.resolve(cwd);
+
+      expect(identity?.canonicalKey).toBe("github.com/acme/frontend");
+      expect(identity?.members).toBeUndefined();
+    }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
+  );
+
+  it.effect("re-reads members on refresh, including a member whose remote changed", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const folder = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-workspace-refresh-",
+      });
+      const frontend = yield* clone(folder, "frontend", "git@github.com:Acme/old.git");
+
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      expect((yield* resolver.resolve(folder))?.canonicalKey).toBe("workspace:github.com/acme/old");
+
+      yield* git(frontend, ["remote", "set-url", "origin", FRONTEND]);
+      yield* clone(folder, "backend", BACKEND);
+      expect((yield* resolver.resolve(folder))?.canonicalKey).toBe("workspace:github.com/acme/old");
+      expect((yield* resolver.resolve(folder, { refresh: true }))?.canonicalKey).toBe(
+        WORKSPACE_KEY,
+      );
+    }).pipe(Effect.provide(RepositoryIdentityResolver.layer)),
+  );
+
+  it.effect("skips the provider refine hook for a workspace, keeping it for its members", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const folder = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-repository-identity-workspace-refine-",
+      });
+      yield* clone(folder, "frontend", FRONTEND);
+
+      const refined: Array<string> = [];
+      const resolver = yield* RepositoryIdentityResolver.make({
+        refine: (identity) =>
+          Effect.sync(() => {
+            refined.push(identity.canonicalKey);
+            return identity;
+          }),
+      });
+      yield* resolver.resolve(folder);
+
+      expect(refined).toEqual(["github.com/acme/frontend"]);
+    }).pipe(Effect.provide(ProcessRunner.layer)),
+  );
+
   it.effect("normalizes equivalent GitHub remotes into a stable repository identity", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

@@ -20,10 +20,14 @@ const makeTempDir = Effect.gen(function* () {
   });
 });
 
-const writeProjectFile = Effect.fn("writeProjectFile")(function* (cwd: string, contents: string) {
+const writeProjectFile = Effect.fn("writeProjectFile")(function* (
+  cwd: string,
+  contents: string,
+  fileName = "par3.json",
+) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  yield* fileSystem.writeFileString(path.join(cwd, "t3.json"), contents).pipe(Effect.orDie);
+  yield* fileSystem.writeFileString(path.join(cwd, fileName), contents).pipe(Effect.orDie);
 });
 
 it.layer(layerTest)("T3ProjectFileLoader", (it) => {
@@ -37,6 +41,28 @@ it.layer(layerTest)("T3ProjectFileLoader", (it) => {
         const loaded = yield* loader.load(cwd);
 
         expect(Option.isNone(loaded)).toBe(true);
+      }),
+    );
+
+    it.effect("prefers par3.json over t3.json and still reads t3.json alone", () =>
+      Effect.gen(function* () {
+        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const cwd = yield* makeTempDir;
+        yield* writeProjectFile(cwd, '{ "iconPath": "t3.svg" }', "t3.json");
+        expect(yield* loader.load(cwd)).toEqual(Option.some({ iconPath: "t3.svg" }));
+
+        yield* writeProjectFile(cwd, '{ "iconPath": "par3.svg" }');
+        expect(yield* loader.load(cwd)).toEqual(Option.some({ iconPath: "par3.svg" }));
+      }),
+    );
+
+    it.effect("does not fall back to t3.json when par3.json is malformed", () =>
+      Effect.gen(function* () {
+        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const cwd = yield* makeTempDir;
+        yield* writeProjectFile(cwd, '{ "iconPath": "t3.svg" }', "t3.json");
+        yield* writeProjectFile(cwd, "{ not json");
+        expect(Option.isNone(yield* loader.load(cwd))).toBe(true);
       }),
     );
   });

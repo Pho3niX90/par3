@@ -2,9 +2,9 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import {
   type EnvironmentId,
   type ProjectListEntriesResult,
+  PROJECT_FILE_NAMES,
   ProjectReadFileError,
   type ProjectReadFileResult,
-  T3_PROJECT_FILE_NAME,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
@@ -66,6 +66,9 @@ function getProjectEntriesQueryAtom(
   });
 }
 
+const isProjectFileName = (relativePath: string | null) =>
+  PROJECT_FILE_NAMES.some((name) => name === relativePath);
+
 export function getProjectFileQueryAtom(
   environmentId: EnvironmentId,
   cwd: string,
@@ -76,7 +79,7 @@ export function getProjectFileQueryAtom(
     input: {
       cwd,
       relativePath: relativePath ?? EMPTY_PROJECT_FILE_PATH,
-      ...(relativePath === T3_PROJECT_FILE_NAME ? { allowMissing: true } : {}),
+      ...(isProjectFileName(relativePath) ? { allowMissing: true } : {}),
     },
   });
 }

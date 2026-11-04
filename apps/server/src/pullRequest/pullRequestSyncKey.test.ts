@@ -1,6 +1,11 @@
-import { ProjectId, SourceControlProviderKind } from "@t3tools/contracts";
+import {
+  ProjectId,
+  SourceControlProviderKind,
+  workspaceRepositoryIdentity,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import { pullRequestSyncKey } from "./pullRequestSyncKey.ts";
 
 describe("pullRequestSyncKey", () => {
@@ -27,6 +32,16 @@ describe("pullRequestSyncKey", () => {
     ).toEqual(expected);
     expect(pullRequestSyncKey({ ...reference, repository: "other" }, identity)).toBeNull();
     expect(pullRequestSyncKey({ ...reference, host: "unrelated.test" }, identity)).toBeNull();
+  });
+  it("gives a multi-repository folder no repository or host of its own", () => {
+    const identity = workspaceRepositoryIdentity({
+      rootPath: "/work/acme",
+      members: [
+        { path: "web", canonicalKey: "github.com/acme/web", remoteUrl: "git@github.com:acme/web" },
+      ],
+    });
+    expect(sourceControlDefinitions.repositorySelector(identity)).toBeNull();
+    expect(pullRequestSyncKey({ ...reference, repository: "acme/web" }, identity)).toBeNull();
   });
   it("normalizes complete hosted aliases without requiring a checkout", () => {
     expect(

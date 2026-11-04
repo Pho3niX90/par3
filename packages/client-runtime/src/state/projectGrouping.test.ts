@@ -1,4 +1,9 @@
-import { EnvironmentId, ProjectId, SourceControlProviderKind } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  SourceControlProviderKind,
+  workspaceRepositoryIdentity,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { EnvironmentProject } from "./models.ts";
@@ -262,6 +267,39 @@ describe("buildProjectGroups", () => {
         "t3code-3",
       ]);
       expect(groups[0]?.memberProjectRefs).toHaveLength(3);
+    }
+  });
+
+  it("groups a multi-repository folder across environments despite different folder names", () => {
+    const workspaceAt = (rootPath: string) =>
+      workspaceRepositoryIdentity({
+        rootPath,
+        members: [
+          {
+            path: "api",
+            canonicalKey: "github.com/acme/api",
+            remoteUrl: "git@github.com:acme/api.git",
+          },
+          {
+            path: "web",
+            canonicalKey: "github.com/acme/web",
+            remoteUrl: "git@github.com:acme/web.git",
+          },
+        ],
+      });
+    const projects = [
+      makeProject("local", "/work/acme", { repositoryIdentity: workspaceAt("/work/acme") }),
+      makeProject("remote", "/srv/everything", {
+        environmentId: EnvironmentId.make("remote"),
+        repositoryIdentity: workspaceAt("/srv/everything"),
+      }),
+    ];
+
+    for (const mode of ["repository", "repository_path"] as const) {
+      const groups = buildProjectGroups({ projects, settings: settings(mode) });
+      expect(groups).toHaveLength(1);
+      expect(groups[0]?.key).toBe("workspace:github.com/acme/api|github.com/acme/web");
+      expect(groups[0]?.memberProjectRefs).toHaveLength(2);
     }
   });
 

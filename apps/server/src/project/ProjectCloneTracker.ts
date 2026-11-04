@@ -1,5 +1,12 @@
-import { SourceControlProviderKind } from "@t3tools/contracts";
+import {
+  PAR3_PROJECT_FILE_NAME,
+  PAR3_PROJECT_FILE_SCHEMA_URL,
+  SourceControlProviderKind,
+  T3ProjectFile,
+} from "@t3tools/contracts";
+import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import type {
+  ProjectCloneMember,
   ProjectCloneSnapshot,
   ProjectCloneStage,
   ProjectCloneStartInput,
@@ -20,8 +27,10 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -75,24 +84,56 @@ function clampText(text: string, maxLength: number): string {
   return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1)}…`;
 }
 
+const encodeProjectFile = Schema.encodeEffect(fromJsonStringPretty(T3ProjectFile));
+
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 interface TrackedClone {
   readonly snapshot: ProjectCloneSnapshot;
   readonly fiber: Fiber.Fiber<unknown, unknown> | null;
   readonly hooks: ProjectCloneHooks;
+  /** The step cloning or to resume from; past the end once every step has finished. */
+  readonly stepIndex: number;
   readonly input: {
-    /** What git is given; may carry credentials and never leaves the server. */
-    readonly cloneUrl: string;
     readonly destinationPath: string;
-    readonly repository: SourceControlRepositoryInfo | null;
+    readonly steps: ReadonlyArray<CloneStep>;
     readonly protocol: SourceControlCloneProtocol;
   };
 }
 
+/** One repository to clone: the only one, or one member of a workspace. */
+interface CloneStep {
+  /** What git is given; may carry credentials and never leaves the server. */
+  readonly cloneUrl: string;
+  readonly remoteUrl: string;
+  readonly destinationPath: string;
+  readonly repository: SourceControlRepositoryInfo | null;
+  readonly member: ProjectCloneMember | null;
+}
+
+const stepSnapshot = (step: CloneStep) => ({
+  remoteUrl: step.remoteUrl,
+  repository: step.repository,
+  ...(step.member ? { member: step.member } : {}),
+});
+
+const cloneStartError = (
+  provider: SourceControlProviderKind | undefined,
+  detail: string,
+  cause?: unknown,
+) =>
+  new SourceControlRepositoryError({
+    operation: "cloneRepository",
+    provider: provider ?? SourceControlProviderKind.make("unknown"),
+    detail,
+    ...(cause === undefined ? {} : { cause }),
+  });
+
 /** @public */
 export const make = Effect.gen(function* () {
   const repositories = yield* SourceControlRepositoryService.SourceControlRepositoryService;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const clones = yield* Ref.make(new Map<ProjectId, TrackedClone>());
   const changes = yield* PubSub.unbounded<ReadonlyArray<ProjectCloneSnapshot>>();
   const retentionFibers = new Map<ProjectId, Fiber.Fiber<unknown, never>>();
@@ -205,7 +246,13 @@ export const make = Effect.gen(function* () {
         endedAt,
         percent: phase === "done" ? 100 : tracked.snapshot.percent,
         stalled: false,
-        error: error === null ? null : clampText(error, PROJECT_CLONE_ERROR_MAX_LENGTH),
+        error:
+          error === null
+            ? null
+            : clampText(
+                tracked.snapshot.member ? `${tracked.snapshot.member.path}: ${error}` : error,
+                PROJECT_CLONE_ERROR_MAX_LENGTH,
+              ),
       },
     }));
     if (phase === "done") yield* scheduleRemoval(projectId);
@@ -213,15 +260,16 @@ export const make = Effect.gen(function* () {
 
   const cloneWatchingForStall = Effect.fn("ProjectCloneTracker.cloneWatchingForStall")(function* (
     projectId: ProjectId,
-    tracked: TrackedClone,
+    step: CloneStep,
+    protocol: SourceControlCloneProtocol,
   ) {
     const pulses = yield* Queue.sliding<void>(1);
     yield* watchForStall(projectId, pulses).pipe(Effect.forkScoped);
     return yield* repositories.cloneRepository(
       {
-        remoteUrl: tracked.input.cloneUrl,
-        destinationPath: tracked.input.destinationPath,
-        protocol: tracked.input.protocol,
+        remoteUrl: step.cloneUrl,
+        destinationPath: step.destinationPath,
+        protocol,
       },
       {
         onProgress: (update) =>
@@ -231,12 +279,47 @@ export const make = Effect.gen(function* () {
     );
   }, Effect.scoped);
 
+  const advance = (projectId: ProjectId, finishedIndex: number) =>
+    modify(projectId, (tracked) => {
+      const next = tracked.input.steps[finishedIndex + 1];
+      return {
+        ...tracked,
+        stepIndex: finishedIndex + 1,
+        snapshot: next
+          ? {
+              ...tracked.snapshot,
+              ...stepSnapshot(next),
+              stage: "connecting",
+              percent: null,
+              detail: null,
+              stalled: false,
+            }
+          : tracked.snapshot,
+      };
+    });
+
+  /** Advancing in `onExit` means an interrupt cannot leave `stepIndex` on a finished checkout. */
+  const cloneRemainingSteps = Effect.fn("ProjectCloneTracker.cloneRemainingSteps")(function* (
+    projectId: ProjectId,
+    tracked: TrackedClone,
+  ) {
+    for (let index = tracked.stepIndex; index < tracked.input.steps.length; index++) {
+      yield* cloneWatchingForStall(
+        projectId,
+        tracked.input.steps[index]!,
+        tracked.input.protocol,
+      ).pipe(
+        Effect.onExit((exit) => (Exit.isSuccess(exit) ? advance(projectId, index) : Effect.void)),
+      );
+    }
+  });
+
   /**
    * `onExit` records outcomes even on interruption; `matchCause` would be skipped.
    * Mark the clone done before the post-clone hook so a late Cancel cannot remove it.
    */
   const runClone = (projectId: ProjectId, tracked: TrackedClone) =>
-    cloneWatchingForStall(projectId, tracked).pipe(
+    cloneRemainingSteps(projectId, tracked).pipe(
       Effect.onExit((exit) =>
         Exit.isSuccess(exit)
           ? finish(projectId, "done", null)
@@ -252,6 +335,12 @@ export const make = Effect.gen(function* () {
       Effect.ignoreCause(),
     );
 
+  /** Finished steps are complete checkouts and stay on disk. */
+  const discardCurrentStep = (tracked: TrackedClone) => {
+    const step = tracked.input.steps[tracked.stepIndex];
+    return step ? repositories.discardClone(step.destinationPath) : Effect.void;
+  };
+
   const launch = Effect.fn("ProjectCloneTracker.launch")(function* (projectId: ProjectId) {
     const current = yield* Ref.get(clones);
     const tracked = current.get(projectId);
@@ -266,15 +355,86 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  const planRepositoryClone = Effect.fn("ProjectCloneTracker.planRepositoryClone")(function* (
+    input: ProjectCloneStartInput,
+  ) {
+    const prepared = yield* repositories.prepareClone(input);
+    return {
+      destinationPath: prepared.destinationPath,
+      steps: [{ ...prepared, member: null }] as ReadonlyArray<CloneStep>,
+    };
+  });
+
+  const planWorkspaceClone = Effect.fn("ProjectCloneTracker.planWorkspaceClone")(function* (
+    input: ProjectCloneStartInput,
+    members: NonNullable<ProjectCloneStartInput["repositories"]>,
+  ) {
+    const first = members[0];
+    if (
+      first === undefined ||
+      input.provider !== undefined ||
+      input.repository !== undefined ||
+      input.remoteUrl !== undefined ||
+      new Set(members.map((member) => member.path)).size !== members.length
+    ) {
+      return yield* cloneStartError(
+        input.provider,
+        "A workspace clone needs a list of repositories with different paths and nothing else to clone.",
+      );
+    }
+    const protocol = input.protocol ? { protocol: input.protocol } : {};
+    // The workspace folder follows the same new-or-empty rule and path expansion as a single clone.
+    const { destinationPath } = yield* repositories.prepareClone({
+      destinationPath: input.destinationPath,
+      remoteUrl: first.remoteUrl,
+      ...protocol,
+    });
+    const steps = yield* Effect.forEach(members, (member, index) =>
+      repositories
+        .prepareClone({
+          destinationPath: path.join(destinationPath, member.path),
+          remoteUrl: member.remoteUrl,
+          ...protocol,
+        })
+        .pipe(
+          Effect.map((prepared): CloneStep => ({
+            ...prepared,
+            member: { path: member.path, index: index + 1, count: members.length },
+          })),
+        ),
+    );
+    return { destinationPath, steps };
+  });
+
+  /** Written before any clone so the folder identifies as this workspace right away. */
+  const writeWorkspaceManifest = Effect.fn("ProjectCloneTracker.writeWorkspaceManifest")(
+    function* (manifestPath: string, steps: ReadonlyArray<CloneStep>) {
+      const manifest = yield* encodeProjectFile({
+        $schema: PAR3_PROJECT_FILE_SCHEMA_URL,
+        // The redacted URL: this file stays on disk and is meant to be shareable.
+        repositories: steps.flatMap((step) =>
+          step.member ? [{ path: step.member.path, url: step.remoteUrl }] : [],
+        ),
+      });
+      yield* fileSystem.makeDirectory(path.dirname(manifestPath), { recursive: true });
+      yield* fileSystem.writeFileString(manifestPath, `${manifest}\n`);
+    },
+    Effect.mapError((cause) =>
+      cloneStartError(undefined, "The workspace folder could not be created.", cause),
+    ),
+  );
+
   const start: ProjectCloneTracker["Service"]["start"] = Effect.fn("ProjectCloneTracker.start")(
     function* (input, hooks) {
-      const prepared = yield* repositories.prepareClone(input);
+      const plan = input.repositories
+        ? yield* planWorkspaceClone(input, input.repositories)
+        : yield* planRepositoryClone(input);
+      const firstStep = plan.steps[0]!;
       const startedAt = yield* nowIso;
       const snapshot: ProjectCloneSnapshot = {
         projectId: input.projectId,
-        remoteUrl: prepared.remoteUrl,
-        destinationPath: prepared.destinationPath,
-        repository: prepared.repository,
+        ...stepSnapshot(firstStep),
+        destinationPath: plan.destinationPath,
         phase: "running",
         stage: "connecting",
         percent: null,
@@ -285,11 +445,16 @@ export const make = Effect.gen(function* () {
         endedAt: null,
         sequence: ++sequence,
       };
+      const destinations = new Set([
+        plan.destinationPath,
+        ...plan.steps.map((step) => step.destinationPath),
+      ]);
       const claimed = yield* Ref.modify(clones, (current) => {
         const conflict = Array.from(current.values()).some(
           (tracked) =>
             tracked.snapshot.projectId === input.projectId ||
-            tracked.input.destinationPath === prepared.destinationPath,
+            destinations.has(tracked.input.destinationPath) ||
+            tracked.input.steps.some((step) => destinations.has(step.destinationPath)),
         );
         if (conflict) return [false, current] as const;
         const next = new Map(current);
@@ -297,42 +462,54 @@ export const make = Effect.gen(function* () {
           snapshot,
           fiber: null,
           hooks,
+          stepIndex: 0,
           input: {
-            cloneUrl: prepared.cloneUrl,
-            destinationPath: prepared.destinationPath,
-            repository: prepared.repository,
+            destinationPath: plan.destinationPath,
+            steps: plan.steps,
             protocol: input.protocol ?? "auto",
           },
         });
         return [true, next] as const;
       });
       if (!claimed) {
-        return yield* new SourceControlRepositoryError({
-          operation: "cloneRepository",
-          provider: input.provider ?? SourceControlProviderKind.make("unknown"),
-          detail: "A clone into this destination is already in progress.",
-        });
+        return yield* cloneStartError(
+          input.provider,
+          "A clone into this destination is already in progress.",
+        );
       }
       // Finish or release the claim despite disconnects; a claim without a fiber cannot be cancelled or retried.
       yield* Effect.uninterruptible(
         Effect.gen(function* () {
           yield* clearRetention(input.projectId);
+          const manifestPath = input.repositories
+            ? path.join(plan.destinationPath, PAR3_PROJECT_FILE_NAME)
+            : null;
+          if (manifestPath) yield* writeWorkspaceManifest(manifestPath, plan.steps);
           // Register before creation so racing thread.create and project.delete see the clone.
-          yield* hooks.createProject({
-            projectId: input.projectId,
-            title: input.title,
-            workspaceRoot: prepared.destinationPath,
-            createdAt: input.createdAt,
-          });
+          yield* hooks
+            .createProject({
+              projectId: input.projectId,
+              title: input.title,
+              workspaceRoot: plan.destinationPath,
+              createdAt: input.createdAt,
+            })
+            .pipe(
+              // The folder must stay empty, or starting this clone again would be refused.
+              Effect.tapError(() =>
+                manifestPath
+                  ? fileSystem.remove(manifestPath, { force: true }).pipe(Effect.ignore)
+                  : Effect.void,
+              ),
+            );
           yield* publish;
           yield* launch(input.projectId);
         }).pipe(Effect.tapError(() => remove(input.projectId))),
       );
       return {
         projectId: input.projectId,
-        cwd: prepared.destinationPath,
-        remoteUrl: prepared.remoteUrl,
-        repository: prepared.repository,
+        cwd: plan.destinationPath,
+        remoteUrl: firstStep.remoteUrl,
+        repository: firstStep.repository,
       };
     },
   );
@@ -349,10 +526,10 @@ export const make = Effect.gen(function* () {
       yield* Effect.uninterruptible(
         Effect.gen(function* () {
           yield* Fiber.interrupt(tracked.fiber!);
-          const after = yield* get(projectId);
-          if (after?.phase === "done") return;
-          if (after?.phase === "running") yield* finish(projectId, "cancelled", null);
-          yield* repositories.discardClone(tracked.input.destinationPath).pipe(Effect.ignore);
+          const after = (yield* Ref.get(clones)).get(projectId) ?? tracked;
+          if (after.snapshot.phase === "done") return;
+          if (after.snapshot.phase === "running") yield* finish(projectId, "cancelled", null);
+          yield* discardCurrentStep(after).pipe(Effect.ignore);
         }),
       );
       return true;
@@ -369,7 +546,7 @@ export const make = Effect.gen(function* () {
       ) {
         return false;
       }
-      yield* repositories.discardClone(tracked.input.destinationPath);
+      yield* discardCurrentStep(tracked);
       const startedAt = yield* nowIso;
       yield* modify(projectId, (entry) => ({
         ...entry,
@@ -399,9 +576,9 @@ export const make = Effect.gen(function* () {
     if (tracked.fiber) yield* Fiber.interrupt(tracked.fiber);
     // Git may have finished while the interrupt was landing; the project
     // is going away either way, but a complete checkout is the user's.
-    const after = yield* get(projectId);
-    if (after?.phase !== "done") {
-      yield* repositories.discardClone(tracked.input.destinationPath).pipe(Effect.ignore);
+    const after = (yield* Ref.get(clones)).get(projectId) ?? tracked;
+    if (after.snapshot.phase !== "done") {
+      yield* discardCurrentStep(after).pipe(Effect.ignore);
     }
     yield* clearRetention(projectId);
     yield* remove(projectId);

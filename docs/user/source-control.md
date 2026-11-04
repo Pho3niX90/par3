@@ -15,6 +15,12 @@ lists each repository inside it that the thread edited, with its branch, changes
 and the diff can switch between them. Only uncommitted and branch changes are shown there; turn diffs
 and restore need the project folder itself to be a repository. Repositories changed only through
 shell commands are not listed.
+
+Par3 identifies such a folder by the repositories inside it, so the same set of repositories on
+another machine is the same project for grouping, load balancing, and delegation, whatever the
+folder is called. To make that explicit when some are not cloned yet, list them under `repositories`
+in a `par3.json` at the root of the folder, each with a `path` and a `url`.
+
 On web and desktop, open the Diff pane source picker and choose **Commits** to review one local
 commit at a time. The list shows the newest 100 commits in the branch comparison. A merge commit
 shows its changes against its first parent.
@@ -152,6 +158,11 @@ are in place. A toast tracks progress and lets you cancel; if the clone fails, r
 toast or from the banner above the composer. When the host refuses the machine's SSH key, Par3
 clones over HTTPS with Git's credentials for that host instead, and the project's remote uses the
 HTTPS URL.
+
+**Add to another machine** clones a project onto another connected machine and offers to copy the
+local files Git ignores, such as `.env`. A folder of several repositories clones each of them into
+the new folder and writes a `par3.json` listing them, and ignored files are offered per repository.
+If one repository fails, retry resumes from it and keeps the ones already cloned.
 
 For a local Git repository without a remote, **Publish Repository** creates a hosted repository,
 adds it as `origin`, and pushes your commits. If there are no commits yet, it creates the remote;

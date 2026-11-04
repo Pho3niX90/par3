@@ -7,10 +7,22 @@ import type { ProjectScopedServerSettingKey, ServerSettings } from "./settings.t
 
 export const T3_PROJECT_FILE_NAME = "t3.json";
 
+export const PAR3_PROJECT_FILE_NAME = "par3.json";
+
+/** In precedence order; t3.json stays readable for repositories carrying upstream's file. */
+export const PROJECT_FILE_NAMES = [PAR3_PROJECT_FILE_NAME, T3_PROJECT_FILE_NAME] as const;
+
+/** @public */
 export const T3_PROJECT_FILE_SCHEMA_URL = "https://t3.codes/schema/t3.json";
+
+export const PAR3_PROJECT_FILE_SCHEMA_URL = "https://par3.paritylabs.co.za/schema/par3.json";
 
 const T3_PROJECT_FILE_PATH_MAX_LENGTH = 512;
 const T3_PROJECT_FILE_MAX_SCRIPTS = 50;
+export const T3_PROJECT_FILE_MAX_REPOSITORIES = 64;
+// Each segment is a real name: no absolute paths, drive letters, empty, `.` or `..` segments.
+const T3_PROJECT_FILE_RELATIVE_FOLDER_PATTERN =
+  /^(?![A-Za-z]:)(?!\.{1,2}(?:[\\/]|$))[^\\/]+(?:[\\/](?!\.{1,2}(?:[\\/]|$))[^\\/]+)*$/u;
 
 // Encoded-side annotations survive into JSON Schema; decoding still trims and rejects empty strings.
 const trimmedNonEmpty = (annotations: { readonly description: string }, maxLength?: number) => {
@@ -69,10 +81,29 @@ export const T3ProjectFileScript = Schema.Struct({
 });
 export type T3ProjectFileScript = typeof T3ProjectFileScript.Type;
 
+const relativeFolderPath = Schema.String.annotate({
+  description:
+    'Where the repository lives, relative to this file (e.g. "frontend"). It cannot leave this folder.',
+}).check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(T3_PROJECT_FILE_PATH_MAX_LENGTH),
+  Schema.isPattern(T3_PROJECT_FILE_RELATIVE_FOLDER_PATTERN),
+);
+
+export const T3ProjectFileRepository = Schema.Struct({
+  path: relativeFolderPath.pipe(Schema.decodeTo(relativeFolderPath, SchemaTransformation.trim())),
+  url: trimmedNonEmpty({
+    description: "Git remote URL to clone the repository from.",
+  }),
+}).annotate({
+  description: "A repository that belongs in this folder.",
+});
+export type T3ProjectFileRepository = typeof T3ProjectFileRepository.Type;
+
 export const T3ProjectFile = Schema.Struct({
   $schema: Schema.optionalKey(
     Schema.String.annotate({
-      description: `URL of the JSON Schema for this file, typically "${T3_PROJECT_FILE_SCHEMA_URL}".`,
+      description: `URL of the JSON Schema for this file, typically "${PAR3_PROJECT_FILE_SCHEMA_URL}".`,
     }),
   ),
   iconPath: Schema.optionalKey(
@@ -103,10 +134,17 @@ export const T3ProjectFile = Schema.Struct({
       })
       .check(Schema.isMaxLength(T3_PROJECT_FILE_MAX_SCRIPTS)),
   ),
+  repositories: Schema.optionalKey(
+    Schema.Array(T3ProjectFileRepository)
+      .annotate({
+        description:
+          "For a folder that is not itself a repository: the repositories it holds. Par3 then identifies the folder by this list even when some are not cloned yet, and uses it to clone them onto another machine. Ignored when the folder is itself a repository.",
+      })
+      .check(Schema.isMaxLength(T3_PROJECT_FILE_MAX_REPOSITORIES)),
+  ),
 }).annotate({
   title: "T3 project file",
-  description:
-    "Checked-in project configuration for Par3 (t3.json at the repository root). See https://t3.codes for documentation.",
+  description: `Checked-in project configuration for Par3 (par3.json at the repository root, or at the root of a folder that holds several repositories). See ${PAR3_PROJECT_FILE_SCHEMA_URL} for the schema.`,
 });
 export type T3ProjectFile = typeof T3ProjectFile.Type;
 
