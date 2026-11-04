@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { useParams } from "@tanstack/react-router";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -18,6 +19,7 @@ import {
   cloneUrlForProtocol,
   cloneUrlProtocol,
 } from "@t3tools/shared/cloneUrl";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { ArrowRightIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { create } from "zustand";
@@ -27,6 +29,7 @@ import { useAddProjectTargets } from "../hooks/useAddProjectTargets";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
 import {
+  type AddProjectFileCopy,
   COPYABLE_FILE_MAX_BYTES,
   addProjectToMachine,
   isDefaultCopiedFile,
@@ -36,7 +39,7 @@ import { newProjectId } from "../lib/utils";
 import { readProject, subscribeProject, useProject } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { projectEnvironment } from "../state/projects";
-import { useEnvironmentQuery } from "../state/query";
+import { formatEnvironmentQueryError } from "../state/query";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -101,33 +104,57 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
   const [targetId, setTargetId] = useState(request.targetEnvironmentId);
   const target = targets.find((t) => t.environmentId === targetId) ?? targets[0] ?? null;
   const source = environments.find((env) => env.environmentId === request.projectRef.environmentId);
-  const sourceUrl = project?.repositoryIdentity
-    ? (repositoryCloneRemoteUrl(project.repositoryIdentity) ?? "")
-    : "";
-  const [protocol, setProtocol] = useState<CloneProtocol | null>(() => cloneUrlProtocol(sourceUrl));
-  const sshUrl = cloneUrlForProtocol(sourceUrl, "ssh");
-  const httpsUrl = cloneUrlForProtocol(sourceUrl, "https");
-  const remoteUrl =
-    (protocol === "ssh" ? sshUrl : protocol === "https" ? httpsUrl : null) ?? sourceUrl;
+  const members = project?.repositoryIdentity?.members ?? null;
+  const sourceUrls = members
+    ? members.map((member) => member.remoteUrl)
+    : [
+        project?.repositoryIdentity
+          ? (repositoryCloneRemoteUrl(project.repositoryIdentity) ?? "")
+          : "",
+      ];
+  const [protocol, setProtocol] = useState<CloneProtocol | null>(() =>
+    sharedCloneProtocol(sourceUrls),
+  );
+  const canSwitchProtocol = sourceUrls.every(
+    (url) => cloneUrlForProtocol(url, "ssh") && cloneUrlForProtocol(url, "https"),
+  );
+  const cloneUrl = (url: string) => (protocol ? cloneUrlForProtocol(url, protocol) : null) ?? url;
 
   const targetEnvironment = environments.find((env) => env.environmentId === target?.environmentId);
   const defaultPath = getCloneDestinationPath(
     getAddProjectInitialQuery(targetEnvironment?.serverConfig?.settings.addProjectBaseDirectory),
-    getCloneDirectoryName(sourceUrl),
+    members ? folderName(project?.workspaceRoot ?? "") : getCloneDirectoryName(sourceUrls[0]),
   );
   const [pathOverride, setPathOverride] = useState<string | null>(null);
   const destinationPath = pathOverride ?? defaultPath;
 
   const canListFiles = source?.serverConfig?.environment.capabilities.ignoredFileListing === true;
-  const ignoredFiles = useEnvironmentQuery(
-    project && canListFiles
-      ? projectEnvironment.listIgnoredFiles({
-          environmentId: project.environmentId,
-          input: { cwd: project.workspaceRoot },
-        })
-      : null,
-  );
-  const files = ignoredFiles.data?.files ?? [];
+  const sourceEnvironmentId = project?.environmentId ?? null;
+  const workspaceRoot = project?.workspaceRoot ?? "";
+  const subdirectory = projectSubdirectory(project?.repositoryIdentity?.rootPath, workspaceRoot);
+  const ignoredFilesAtom =
+    sourceEnvironmentId && canListFiles
+      ? ignoredFileSourcesAtom(
+          JSON.stringify({
+            environmentId: sourceEnvironmentId,
+            sources: members
+              ? members.map((member) => ({
+                  cwd: `${workspaceRoot}/${member.path}`,
+                  label: member.path,
+                  targetPrefix: `${member.path}/`,
+                }))
+              : [
+                  {
+                    cwd: workspaceRoot,
+                    label: null,
+                    targetPrefix: subdirectory ? `${subdirectory}/` : "",
+                  },
+                ],
+          } satisfies IgnoredFileSourcesKey),
+        )
+      : NO_IGNORED_FILES_ATOM;
+  const ignoredFiles = useAtomValue(ignoredFilesAtom);
+  const files = ignoredFiles.files;
   const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
   const selectedFiles = selected ?? defaultSelection(files);
   const copyable = files.filter((file) => file.byteLength <= COPYABLE_FILE_MAX_BYTES);
@@ -140,10 +167,7 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
 
   // The project or every target can vanish while the dialog is open. Submitting
   // before the file list loads would silently skip the default .env copies.
-  const unavailable =
-    project === null ||
-    target === null ||
-    (canListFiles && ignoredFiles.data === null && ignoredFiles.error === null);
+  const unavailable = project === null || target === null || (canListFiles && ignoredFiles.loading);
   const toggleFile = (path: string, checked: boolean) => {
     const next = new Set(selectedFiles);
     if (checked) next.add(path);
@@ -186,17 +210,20 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
     const projectId = newProjectId();
     try {
       await addProjectToMachine({
-        source: { environmentId: project.environmentId, cwd: project.workspaceRoot },
-        subdirectory: projectSubdirectory(
-          project.repositoryIdentity?.rootPath,
-          project.workspaceRoot,
-        ),
+        sourceEnvironmentId: project.environmentId,
         target: { environmentId: target.environmentId, label: target.label },
         projectId,
         title: project.title,
-        remoteUrl,
+        clone: members
+          ? {
+              repositories: members.map((member) => ({
+                path: member.path,
+                remoteUrl: cloneUrl(member.remoteUrl),
+              })),
+            }
+          : { remoteUrl: cloneUrl(sourceUrls[0] ?? "") },
         destinationPath: destinationPath.trim(),
-        files: files.filter((file) => selectedFiles.has(file.path)).map((file) => file.path),
+        files: files.filter((file) => selectedFiles.has(file.path)),
       });
       close();
       openClonedProject(scopeProjectRef(target.environmentId, projectId));
@@ -224,8 +251,9 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
           <DialogHeader>
             <DialogTitle>Add to another machine</DialogTitle>
             <DialogDescription>
-              Clone {project?.repositoryIdentity?.displayName ?? project?.title} and bring the local
-              files git does not track.
+              {members
+                ? `Clone the ${members.length} ${members.length === 1 ? "repository" : "repositories"} in ${project?.title} into a new folder and bring the local files git does not track.`
+                : `Clone ${project?.repositoryIdentity?.displayName ?? project?.title} and bring the local files git does not track.`}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
@@ -296,7 +324,7 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
 
             <div className="flex flex-col gap-1.5">
               <Label>Clone over</Label>
-              {sshUrl && httpsUrl ? (
+              {canSwitchProtocol ? (
                 <ToggleGroup
                   aria-label="Clone protocol"
                   value={protocol ? [protocol] : []}
@@ -309,7 +337,22 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
                   <Toggle value="https">HTTPS</Toggle>
                 </ToggleGroup>
               ) : null}
-              <span className="truncate font-mono text-muted-foreground text-xs">{remoteUrl}</span>
+              {members ? (
+                <div className="flex max-h-24 flex-col gap-0.5 overflow-y-auto">
+                  {members.map((member) => (
+                    <span
+                      key={member.path}
+                      className="truncate font-mono text-muted-foreground text-xs"
+                    >
+                      {member.path}: {cloneUrl(member.remoteUrl)}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="truncate font-mono text-muted-foreground text-xs">
+                  {cloneUrl(sourceUrls[0] ?? "")}
+                </span>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -354,13 +397,8 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
                 </div>
                 {ignoredFiles.error ? (
                   <p className="text-destructive-foreground text-xs">{ignoredFiles.error}</p>
-                ) : files.length === 0 ? (
-                  <p className="text-muted-foreground text-xs">
-                    {ignoredFiles.isSuccess
-                      ? "No ignored files to copy."
-                      : "Finding ignored files…"}
-                  </p>
-                ) : (
+                ) : null}
+                {files.length > 0 ? (
                   <div className="max-h-52 overflow-y-auto rounded-md border">
                     {files.map((file) => (
                       <IgnoredFileRow
@@ -371,8 +409,12 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
                       />
                     ))}
                   </div>
+                ) : ignoredFiles.error ? null : (
+                  <p className="text-muted-foreground text-xs">
+                    {ignoredFiles.loading ? "Finding ignored files…" : "No ignored files to copy."}
+                  </p>
                 )}
-                {ignoredFiles.data?.truncated ? (
+                {ignoredFiles.truncated ? (
                   <p className="text-muted-foreground text-xs">
                     Showing the first {files.length} files.
                   </p>
@@ -412,6 +454,83 @@ function projectSubdirectory(repositoryRoot: string | undefined, workspaceRoot: 
     ? rest.slice(1).replaceAll("\\", "/")
     : "";
 }
+
+function folderName(path: string): string {
+  return path.split(/[\\/]/).findLast((segment) => segment.length > 0) ?? "";
+}
+
+/** Null when the repositories disagree, so each keeps its own URL until the user picks one. */
+function sharedCloneProtocol(urls: readonly string[]): CloneProtocol | null {
+  const [first = null, ...rest] = urls.map(cloneUrlProtocol);
+  return rest.every((protocol) => protocol === first) ? first : null;
+}
+
+/** A listed file: `path` is what the dialog shows and selects it by. */
+type IgnoredFileEntry = ProjectIgnoredFile & AddProjectFileCopy;
+
+interface IgnoredFileSources {
+  readonly files: readonly IgnoredFileEntry[];
+  readonly truncated: boolean;
+  readonly error: string | null;
+  readonly loading: boolean;
+}
+
+const NO_IGNORED_FILES_ATOM = Atom.make<IgnoredFileSources>({
+  files: [],
+  truncated: false,
+  error: null,
+  loading: false,
+});
+
+interface IgnoredFileSourcesKey {
+  readonly environmentId: EnvironmentId;
+  readonly sources: ReadonlyArray<{
+    readonly cwd: string;
+    /** Set for a workspace member; shown before its files and its errors. */
+    readonly label: string | null;
+    readonly targetPrefix: string;
+  }>;
+}
+
+/** A member that is listed but not cloned on the source errors alone; the others stay copyable. */
+const ignoredFileSourcesAtom = Atom.family((key: string) => {
+  const { environmentId, sources } = JSON.parse(key) as IgnoredFileSourcesKey;
+  return Atom.make((get): IgnoredFileSources => {
+    const results = sources.map((source) => ({
+      source,
+      result: get(
+        projectEnvironment.listIgnoredFiles({ environmentId, input: { cwd: source.cwd } }),
+      ),
+    }));
+    const lists = results.map(({ source, result }) => ({
+      source,
+      list: AsyncResult.getOrElse(result, () => null),
+    }));
+    return {
+      files: lists.flatMap(({ source, list }) =>
+        (list?.files ?? []).map((file) => ({
+          ...file,
+          path: source.label ? `${source.label}/${file.path}` : file.path,
+          sourceCwd: source.cwd,
+          relativePath: file.path,
+          targetRelativePath: `${source.targetPrefix}${file.path}`,
+        })),
+      ),
+      truncated: lists.some(({ list }) => list?.truncated),
+      error:
+        results
+          .flatMap(({ source, result }) =>
+            result._tag === "Failure"
+              ? [
+                  `${source.label ? `${source.label}: ` : ""}${formatEnvironmentQueryError(result.cause)}`,
+                ]
+              : [],
+          )
+          .join(" ") || null,
+      loading: results.some(({ result }) => result._tag === "Initial"),
+    };
+  }).pipe(Atom.withLabel(`add-project-ignored-files:${key}`));
+});
 
 function defaultSelection(files: readonly ProjectIgnoredFile[]): ReadonlySet<string> {
   return new Set(

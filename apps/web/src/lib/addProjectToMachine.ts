@@ -29,16 +29,29 @@ export function isDefaultCopiedFile(path: string): boolean {
   return DEFAULT_COPIED_FILE_NAME.test(name);
 }
 
+export interface AddProjectFileCopy {
+  readonly sourceCwd: string;
+  readonly relativePath: string;
+  /** Relative to the clone's folder on the target. */
+  readonly targetRelativePath: string;
+}
+
 export interface AddProjectToMachineInput {
-  readonly source: { readonly environmentId: EnvironmentId; readonly cwd: string };
-  /** Where the source project sits below its repository root, or "". */
-  readonly subdirectory: string;
+  readonly sourceEnvironmentId: EnvironmentId;
   readonly target: { readonly environmentId: EnvironmentId; readonly label: string };
   readonly projectId: ProjectId;
   readonly title: string;
-  readonly remoteUrl: string;
+  /** One repository, or a workspace's repositories cloned into its new folder. */
+  readonly clone:
+    | { readonly remoteUrl: string }
+    | {
+        readonly repositories: ReadonlyArray<{
+          readonly path: string;
+          readonly remoteUrl: string;
+        }>;
+      };
   readonly destinationPath: string;
-  readonly files: ReadonlyArray<string>;
+  readonly files: ReadonlyArray<AddProjectFileCopy>;
 }
 
 function failureMessage(result: Parameters<typeof squashAtomCommandFailure>[0]): string {
@@ -105,18 +118,18 @@ export function dismissProjectFileCopy(ref: ScopedProjectRef) {
 export async function addProjectToMachine(input: AddProjectToMachineInput): Promise<void> {
   // Read first, so the copy reflects the files as they were when the user asked.
   const reads = await Promise.all(
-    input.files.map(async (relativePath) => {
+    input.files.map(async ({ sourceCwd, relativePath, targetRelativePath }) => {
       const result = await executeAtomQuery(
         appAtomRegistry,
         projectEnvironment.readFile({
-          environmentId: input.source.environmentId,
-          input: { cwd: input.source.cwd, relativePath },
+          environmentId: input.sourceEnvironmentId,
+          input: { cwd: sourceCwd, relativePath },
         }),
         { label: "Read file to copy", reportFailure: false, refresh: true },
       );
-      if (result._tag === "Failure") return { relativePath, error: failureMessage(result) };
-      if (result.value.truncated) return { relativePath, error: "Too large to copy." };
-      return { relativePath, contents: result.value.contents };
+      if (result._tag === "Failure") return { targetRelativePath, error: failureMessage(result) };
+      if (result.value.truncated) return { targetRelativePath, error: "Too large to copy." };
+      return { targetRelativePath, contents: result.value.contents };
     }),
   );
 
@@ -134,7 +147,7 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
         projectId: input.projectId,
         title: input.title,
         createdAt: new Date().toISOString(),
-        remoteUrl: input.remoteUrl,
+        ...input.clone,
         destinationPath: input.destinationPath,
       },
     },
@@ -144,7 +157,7 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
     setFileCopy(copyKey, null);
     throw new Error(failureMessage(started));
   }
-  void suggestAppAccessForRemote(input.target.environmentId, input.remoteUrl);
+  void suggestAppAccessForRemote(input.target.environmentId, started.value.remoteUrl);
   if (reads.length === 0) return;
 
   void (async () => {
@@ -156,7 +169,7 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
     const failed: Array<string> = [];
     for (const read of reads) {
       if (!("contents" in read)) {
-        failed.push(`${read.relativePath}: ${read.error}`);
+        failed.push(`${read.targetRelativePath}: ${read.error}`);
         continue;
       }
       const written = await runAtomCommand(
@@ -166,16 +179,14 @@ export async function addProjectToMachine(input: AddProjectToMachineInput): Prom
           environmentId: input.target.environmentId,
           input: {
             cwd: started.value.cwd,
-            relativePath: input.subdirectory
-              ? `${input.subdirectory}/${read.relativePath}`
-              : read.relativePath,
+            relativePath: read.targetRelativePath,
             contents: read.contents,
           },
         },
         { label: "Copy file to machine", reportFailure: false },
       );
       if (written._tag === "Failure")
-        failed.push(`${read.relativePath}: ${failureMessage(written)}`);
+        failed.push(`${read.targetRelativePath}: ${failureMessage(written)}`);
     }
     setFileCopy(
       copyKey,

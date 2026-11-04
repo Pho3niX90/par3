@@ -1,11 +1,18 @@
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, NonNegativeInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  PositiveInt,
+  ProjectId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import {
   SourceControlCloneProtocol,
   SourceControlProviderKind,
   SourceControlRepositoryInfo,
 } from "./sourceControl.ts";
+import { T3_PROJECT_FILE_MAX_REPOSITORIES, T3ProjectFileRepository } from "./t3ProjectFile.ts";
 
 export const PROJECT_CLONE_DETAIL_MAX_LENGTH = 200;
 export const PROJECT_CLONE_ERROR_MAX_LENGTH = 1000;
@@ -22,11 +29,21 @@ export type ProjectCloneStage = typeof ProjectCloneStage.Type;
 export const ProjectClonePhase = Schema.Literals(["running", "done", "failed", "cancelled"]);
 export type ProjectClonePhase = typeof ProjectClonePhase.Type;
 
+export const ProjectCloneMember = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  index: PositiveInt,
+  count: PositiveInt,
+});
+export type ProjectCloneMember = typeof ProjectCloneMember.Type;
+
 export const ProjectCloneSnapshot = Schema.Struct({
   projectId: ProjectId,
+  /** For a workspace, `remoteUrl` and `repository` describe `member`. */
   remoteUrl: TrimmedNonEmptyString,
   destinationPath: TrimmedNonEmptyString,
   repository: Schema.NullOr(SourceControlRepositoryInfo),
+  /** The workspace repository being cloned. Older servers omit it. */
+  member: Schema.optionalKey(ProjectCloneMember),
   phase: ProjectClonePhase,
   stage: ProjectCloneStage,
   percent: Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 }))),
@@ -55,6 +72,15 @@ export const ProjectCloneStartInput = Schema.Struct({
   remoteUrl: Schema.optional(TrimmedNonEmptyString),
   destinationPath: TrimmedNonEmptyString,
   protocol: Schema.optional(SourceControlCloneProtocol),
+  /** Clones a workspace into `destinationPath`; excludes `provider`, `repository` and `remoteUrl`. */
+  repositories: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        path: T3ProjectFileRepository.fields.path,
+        remoteUrl: TrimmedNonEmptyString,
+      }),
+    ).check(Schema.isMinLength(1), Schema.isMaxLength(T3_PROJECT_FILE_MAX_REPOSITORIES)),
+  ),
 });
 export type ProjectCloneStartInput = typeof ProjectCloneStartInput.Type;
 
@@ -100,9 +126,13 @@ export function projectCloneDisplayName(
 }
 
 export function projectCloneProgressSummary(
-  snapshot: Pick<ProjectCloneSnapshot, "stage" | "percent" | "detail" | "stalled">,
+  snapshot: Pick<ProjectCloneSnapshot, "stage" | "percent" | "detail" | "stalled" | "member">,
 ): string {
   const parts = [projectCloneStageLabel(snapshot.stage)];
+  if (snapshot.member) {
+    const { path, index, count } = snapshot.member;
+    parts.unshift(`${path} (${index}/${count})`);
+  }
   if (snapshot.percent !== null) parts.push(`${snapshot.percent}%`);
   // The detail carries git's last transfer speed, which a stall makes a lie.
   if (snapshot.stalled) parts.push("Stalled");

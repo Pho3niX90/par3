@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   ExecutionEnvironmentDescriptor,
   repositoryCloneRemoteUrl,
+  repositoryIsCloneable,
   repositoryGroupingKeyOf,
   workspaceRepositoryIdentity,
 } from "./environment.ts";
@@ -116,5 +117,18 @@ describe("repositoryCloneRemoteUrl", () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it("treats a workspace with members as cloneable, unlike one without", () => {
+    expect(repositoryIsCloneable({ canonicalKey: "host/a/b", locator })).toBe(true);
+    expect(
+      repositoryIsCloneable(
+        workspaceRepositoryIdentity({
+          rootPath: "/work/acme",
+          members: [{ path: "b", canonicalKey: "host/a/b", remoteUrl: locator.remoteUrl }],
+        }),
+      ),
+    ).toBe(true);
+    expect(repositoryIsCloneable({ canonicalKey: "workspace:", locator, members: [] })).toBe(false);
   });
 });

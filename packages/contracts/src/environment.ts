@@ -261,6 +261,13 @@ export function repositoryCloneRemoteUrl(identity: RepositoryIdentity): string |
     : (identity.origin?.remoteUrl ?? identity.locator.remoteUrl);
 }
 
+/** Whether another machine can get this project: a remote to clone, or a workspace's members. */
+export function repositoryIsCloneable(identity: RepositoryIdentity): boolean {
+  return isWorkspaceRepositoryIdentity(identity)
+    ? (identity.members?.length ?? 0) > 0
+    : repositoryCloneRemoteUrl(identity) !== null;
+}
+
 const WORKSPACE_DISPLAY_NAME_LIMIT = 3;
 
 const compareEnglish = (left: string, right: string) => left.localeCompare(right, "en");

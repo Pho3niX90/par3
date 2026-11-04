@@ -159,6 +159,11 @@ toast or from the banner above the composer. When the host refuses the machine's
 clones over HTTPS with Git's credentials for that host instead, and the project's remote uses the
 HTTPS URL.
 
+**Add to another machine** clones a project onto another connected machine and offers to copy the
+local files Git ignores, such as `.env`. A folder of several repositories clones each of them into
+the new folder and writes a `par3.json` listing them, and ignored files are offered per repository.
+If one repository fails, retry resumes from it and keeps the ones already cloned.
+
 For a local Git repository without a remote, **Publish Repository** creates a hosted repository,
 adds it as `origin`, and pushes your commits. If there are no commits yet, it creates the remote;
 make your first commit before pushing.

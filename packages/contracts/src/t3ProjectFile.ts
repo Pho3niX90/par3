@@ -19,7 +19,7 @@ export const PAR3_PROJECT_FILE_SCHEMA_URL = "https://par3.paritylabs.co.za/schem
 
 const T3_PROJECT_FILE_PATH_MAX_LENGTH = 512;
 const T3_PROJECT_FILE_MAX_SCRIPTS = 50;
-const T3_PROJECT_FILE_MAX_REPOSITORIES = 64;
+export const T3_PROJECT_FILE_MAX_REPOSITORIES = 64;
 // Each segment is a real name: no absolute paths, drive letters, empty, `.` or `..` segments.
 const T3_PROJECT_FILE_RELATIVE_FOLDER_PATTERN =
   /^(?![A-Za-z]:)(?!\.{1,2}(?:[\\/]|$))[^\\/]+(?:[\\/](?!\.{1,2}(?:[\\/]|$))[^\\/]+)*$/u;
