@@ -164,7 +164,7 @@ it("passes a good run and names every rule a bad run breaks", () => {
     maxCalls: { task_status: 0 },
     endsTurnAfter: "delegate_task",
     shellMustNot: ["\\bsleep\\b"],
-    textMust: ["t3-thread://v2/"],
+    textMust: ["par3-thread://v2/"],
     textMustNot: ["Paste .*token"],
     linked: ["~/pull/124"],
     linkedNumbers: [124],
@@ -178,7 +178,7 @@ it("passes a good run and names every rule a bad run breaks", () => {
         input: { task: "Prior findings: ...", target: { options: { reasoningEffort: "max" } } },
       },
     ],
-    text: "Started <t3-thread://v2/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/11111111-1111-4111-8111-111111111111>. Do not paste a token.",
+    text: "Started <par3-thread://v2/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/11111111-1111-4111-8111-111111111111>. Do not paste a token.",
     stopReason: "end_turn",
     linked: ["https://github.com/acme/app/pull/124"],
   };
@@ -207,7 +207,7 @@ it("passes a good run and names every rule a bad run breaks", () => {
     "maxCalls task_status <= 0",
     "endsTurnAfter delegate_task",
     "shellMustNot /\\bsleep\\b/",
-    "textMust /t3-thread://v2//",
+    "textMust /par3-thread://v2//",
     "textMustNot /Paste .*token/",
     "linked ~/pull/124",
     "linkedNumbers",
@@ -2258,7 +2258,7 @@ it("R6 separates ORC device routing from unrelated thread links", () => {
   assert.isFalse(
     gradeSample(c.expect, {
       calls: [{ step: 0, tool: "orchestrator_capabilities", input: {} }, ...calls],
-      text: "t3-thread://v1/example",
+      text: "par3-thread://v1/example",
       stopReason: "end_turn",
     }).every((c) => c.pass),
   );

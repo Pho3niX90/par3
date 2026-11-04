@@ -1480,7 +1480,7 @@ it.effect("wakes an idle parent once for approval and directs the human to the c
     const notices = parent.messages.filter((message) => message.notification !== undefined);
     assert.equal(notices.length, 1);
     const notice = notices[0]!;
-    assert.include(notice.text, "t3-thread://v1/" + task.childThreadId);
+    assert.include(notice.text, "par3-thread://v1/" + task.childThreadId);
     assert.include(notice.text, approval.payload.id);
     assert.include(notice.text, "Only the user can approve");
     assert.include(notice.text, "do not answer this request with t3_pending_request_respond");
