@@ -472,7 +472,9 @@ const config: ExpoConfig = {
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
     eas: {
-      ...(easProjectId ? { projectId: easProjectId } : {}),
+      // expo-observe's Android module throws in OnCreate without an id, stopping the app at launch.
+      // Par3's Expo project, so builds without the env still start. Updates stay keyed on easProjectId.
+      projectId: easProjectId ?? "53e29042-ff8e-4526-a3ec-e514aa4646e8",
       observe: { endpointUrl: observeEndpointUrl },
     },
   },
