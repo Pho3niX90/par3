@@ -31,3 +31,13 @@ it.each([
   expect(config.ios?.bundleIdentifier).toBe(identifier);
   expect(config.android?.package).toBe(identifier);
 });
+
+// expo-observe's Android module throws in OnCreate without one, which stops the app starting.
+it.each(["development", "preview", "production"])(
+  "gives Observe the GUID project id the relay requires, with updates off, for APP_VARIANT=%j",
+  async (variant) => {
+    const config = await loadConfig(variant);
+    expect(config.extra?.eas?.projectId).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+    expect(config.updates?.enabled).toBe(false);
+  },
+);
