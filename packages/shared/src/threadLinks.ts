@@ -4,15 +4,24 @@ import * as Schema from "effect/Schema";
 
 import { DEFAULT_HOSTED_APP_URL } from "./connectAuth.ts";
 
-export const THREAD_LINK_PROTOCOL = "t3-thread";
-const V1_PREFIX = `${THREAD_LINK_PROTOCOL}://v1/`;
-const V2_PREFIX = `${THREAD_LINK_PROTOCOL}://v2/`;
+const THREAD_LINK_PROTOCOL = "par3-thread";
+// Read only: stored messages and older machines still send this scheme.
+const LEGACY_THREAD_LINK_PROTOCOL = "t3-thread";
+export const THREAD_LINK_PROTOCOLS = [THREAD_LINK_PROTOCOL, LEGACY_THREAD_LINK_PROTOCOL];
+const V1_PREFIXES = THREAD_LINK_PROTOCOLS.map((protocol) => `${protocol}://v1/`);
+const V2_PREFIXES = THREAD_LINK_PROTOCOLS.map((protocol) => `${protocol}://v2/`);
+const THREAD_LINK_START = String.raw`(?:${THREAD_LINK_PROTOCOLS.join("|")}):\/\/v[12]\/`;
+/** Capture group 1 is the href of a Markdown-syntax thread link. */
+export const THREAD_LINK_MARKDOWN_HREF = new RegExp(
+  String.raw`\]\((${THREAD_LINK_START}[^\s)]+)\)`,
+  "g",
+);
 const HOSTED_PREFIX = `${DEFAULT_HOSTED_APP_URL}/threads/`;
 const HOSTED_SEGMENT = "[A-Za-z0-9_%-]+";
 const HOSTED_LINK = `${HOSTED_PREFIX.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}${HOSTED_SEGMENT}/${HOSTED_SEGMENT}`;
 // Code comes first in the alternation so a link written inside a code span or fence is skipped.
 const THREAD_LINK_OUTSIDE_CODE = new RegExp(
-  String.raw`(?<fence>(\`{3,}|~{3,})[\s\S]*?(?:\2|$))|(?<span>(\`+)[^\n]*?\4)|\[(?<label>[^\]\n]*)\]\((?<href>t3-thread:\/\/v[12]\/[^\s)]+|${HOSTED_LINK})\)|<(?<autolink>t3-thread:\/\/v[12]\/[^\s<>]+|${HOSTED_LINK})>|(?<bare>${HOSTED_LINK})(?![\w%/?#-])`,
+  String.raw`(?<fence>(\`{3,}|~{3,})[\s\S]*?(?:\2|$))|(?<span>(\`+)[^\n]*?\4)|\[(?<label>[^\]\n]*)\]\((?<href>${THREAD_LINK_START}[^\s)]+|${HOSTED_LINK})\)|<(?<autolink>${THREAD_LINK_START}[^\s<>]+|${HOSTED_LINK})>|(?<bare>${HOSTED_LINK})(?![\w%/?#-])`,
   "g",
 );
 
@@ -58,17 +67,23 @@ function parseHostedThreadLink(href: string): ThreadLink | null {
  */
 export function parseThreadLinkHref(href: string): ThreadLink | null {
   if (href.startsWith(HOSTED_PREFIX)) return parseHostedThreadLink(href);
-  if (href.startsWith(V1_PREFIX)) {
-    const threadId = Option.getOrNull(decodeThreadId(href.slice(V1_PREFIX.length)));
+  const v1Id = pathAfterPrefix(href, V1_PREFIXES);
+  if (v1Id !== null) {
+    const threadId = Option.getOrNull(decodeThreadId(v1Id));
     return threadId === null ? null : { environmentId: null, threadId };
   }
-  if (!href.startsWith(V2_PREFIX)) return null;
-  const path = href.slice(V2_PREFIX.length);
+  const path = pathAfterPrefix(href, V2_PREFIXES);
+  if (path === null) return null;
   const slash = path.indexOf("/");
   if (slash < 0) return null;
   const environmentId = Option.getOrNull(decodeEnvironmentId(path.slice(0, slash)));
   const threadId = Option.getOrNull(decodeThreadId(path.slice(slash + 1)));
   return environmentId === null || threadId === null ? null : { environmentId, threadId };
+}
+
+function pathAfterPrefix(href: string, prefixes: ReadonlyArray<string>): string | null {
+  const prefix = prefixes.find((candidate) => href.startsWith(candidate));
+  return prefix === undefined ? null : href.slice(prefix.length);
 }
 
 export function percentDecodedThreadLinkId(threadId: ThreadId): ThreadId | null {
@@ -112,8 +127,8 @@ export function guessThreadLinkRef(
 
 function threadLinkHref(link: ThreadLink): string {
   return link.environmentId === null
-    ? `${V1_PREFIX}${link.threadId}`
-    : `${V2_PREFIX}${link.environmentId}/${link.threadId}`;
+    ? `${THREAD_LINK_PROTOCOL}://v1/${link.threadId}`
+    : `${THREAD_LINK_PROTOCOL}://v2/${link.environmentId}/${link.threadId}`;
 }
 
 const linkLabel = (label: string | undefined) =>
@@ -140,7 +155,10 @@ export function formatHostedThreadLink(
 }
 
 export function hasThreadLinks(markdown: string): boolean {
-  return markdown.includes(`${THREAD_LINK_PROTOCOL}://v`) || markdown.includes(HOSTED_PREFIX);
+  return (
+    THREAD_LINK_PROTOCOLS.some((protocol) => markdown.includes(`${protocol}://v`)) ||
+    markdown.includes(HOSTED_PREFIX)
+  );
 }
 
 /** Every thread the markdown's links can name, so their titles are keyed reads. */

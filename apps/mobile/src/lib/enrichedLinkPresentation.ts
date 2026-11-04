@@ -12,7 +12,11 @@ import {
   formatComposerContextHref,
   parseComposerContextHref,
 } from "@t3tools/shared/composerContextReferences";
-import { hasThreadLinks, parseThreadLinkHref } from "@t3tools/shared/threadLinks";
+import {
+  hasThreadLinks,
+  parseThreadLinkHref,
+  THREAD_LINK_MARKDOWN_HREF,
+} from "@t3tools/shared/threadLinks";
 
 export function enrichedContextLinkPresentation(
   href: string,
@@ -58,7 +62,7 @@ export function threadChipTargets(
 ): ReadonlyArray<ThreadChipTarget> {
   const targets = new Map<string, ThreadChipTarget>();
   if (hasThreadLinks(markdown)) {
-    for (const [, href = ""] of markdown.matchAll(/\]\((t3-thread:\/\/v[12]\/[^\s)]+)\)/g)) {
+    for (const [, href = ""] of markdown.matchAll(THREAD_LINK_MARKDOWN_HREF)) {
       const link = parseThreadLinkHref(href);
       if (link) {
         targets.set(href, {

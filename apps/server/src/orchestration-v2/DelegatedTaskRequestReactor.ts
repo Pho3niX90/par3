@@ -12,6 +12,7 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { reportLabel } from "@t3tools/provider-core/server/notification";
+import { formatThreadLink } from "@t3tools/shared/threadLinks";
 
 import { forkParked } from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -48,7 +49,7 @@ const make = Effect.gen(function* () {
       threadId: task.threadId,
       messageId: MessageId.make(`message:delegated-task-question:${key}`),
       text: !question
-        ? `${situation} Ask the user to open [the child thread](t3-thread://v1/${task.childThreadId}) and handle request ${request.id} there. Only the user can approve; do not answer this request with t3_pending_request_respond. If it is no longer pending, no action is needed.`
+        ? `${situation} Ask the user to open ${formatThreadLink({ environmentId: null, threadId: task.childThreadId }, "the child thread")} and handle request ${request.id} there. Only the user can approve; do not answer this request with t3_pending_request_respond. If it is no longer pending, no action is needed.`
         : `${situation} Read it with t3_pending_request action read, threadId ${task.childThreadId}, and requestId ${request.id}. Answer it with action respond when the answer follows from the task or the user's instructions; otherwise ask the user, then answer it. If it is no longer pending, it was answered or dismissed.`,
       notification: {
         source: { kind: "delegated_task", taskIds: [task.id], childThreadId: task.childThreadId },
