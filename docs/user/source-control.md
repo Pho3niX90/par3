@@ -15,6 +15,12 @@ lists each repository inside it that the thread edited, with its branch, changes
 and the diff can switch between them. Only uncommitted and branch changes are shown there; turn diffs
 and restore need the project folder itself to be a repository. Repositories changed only through
 shell commands are not listed.
+
+Par3 identifies such a folder by the repositories inside it, so the same set of repositories on
+another machine is the same project for grouping, load balancing, and delegation, whatever the
+folder is called. To make that explicit when some are not cloned yet, list them under `repositories`
+in a `par3.json` at the root of the folder, each with a `path` and a `url`.
+
 On web and desktop, open the Diff pane source picker and choose **Commits** to review one local
 commit at a time. The list shows the newest 100 commits in the branch comparison. A merge commit
 shows its changes against its first parent.

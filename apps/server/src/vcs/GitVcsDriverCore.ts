@@ -25,7 +25,6 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
   GitCommandError,
   type GitCommandFailureReason,
-  T3_PROJECT_FILE_NAME,
   type ReviewBranchCommitsInput,
   type ReviewDiffFileContentsInput,
   type ReviewDiffPreviewInput,
@@ -52,6 +51,7 @@ import {
 import { removeEmptyDirectory } from "./removeEmptyDirectory.ts";
 import { explicitBareRepositoryEnv, gitConfigEnv } from "./VcsProcess.ts";
 import { removeLinkedWorktree } from "./worktreeRemoval.ts";
+import { findProjectFile } from "../project/T3ProjectFileLoader.ts";
 import { resolveWorktreesDirectory } from "../worktreesDirectory.ts";
 import {
   parseRemoteNames,
@@ -4349,16 +4349,23 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           options?.submodules ?? null,
           options?.submodules != null
             ? null
-            : yield* fileSystem.readFileString(path.join(worktreePath, T3_PROJECT_FILE_NAME)).pipe(
-                Effect.flatMap((contents) => {
-                  const file = parseT3ProjectFile(contents);
-                  return file === null
-                    ? Effect.logWarning("t3.json is invalid; initializing submodules recursively", {
-                        worktreePath,
-                      }).pipe(Effect.as(null))
-                    : Effect.succeed(file);
-                }),
-                Effect.orElseSucceed(() => null),
+            : yield* findProjectFile(fileSystem, path, worktreePath).pipe(
+                Effect.flatMap((found) =>
+                  found === null
+                    ? Effect.succeed(null)
+                    : fileSystem.readFileString(found.filePath).pipe(
+                        Effect.flatMap((contents) => {
+                          const file = parseT3ProjectFile(contents);
+                          return file === null
+                            ? Effect.logWarning(
+                                `${found.fileName} is invalid; initializing submodules recursively`,
+                                { worktreePath },
+                              ).pipe(Effect.as(null))
+                            : Effect.succeed(file);
+                        }),
+                        Effect.orElseSucceed(() => null),
+                      ),
+                ),
               ),
         );
     if (hasSubmodules && submoduleMode.value === "none" && progress?.onSubmodulesDisabled) {

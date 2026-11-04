@@ -1,4 +1,5 @@
 import {
+  PAR3_PROJECT_FILE_NAME,
   T3_PROJECT_FILE_NAME,
   type EnvironmentId,
   type T3ProjectFile,
@@ -20,9 +21,21 @@ export function useT3ProjectFileState(
   environmentId: EnvironmentId,
   cwd: string | null,
 ): T3ProjectFileState {
-  const query = useProjectFileQuery(environmentId, cwd ?? "", T3_PROJECT_FILE_NAME, cwd !== null);
-  const contents = query.data && !query.data.truncated ? query.data.contents : null;
-  const isPending = query.isPending;
+  const par3Query = useProjectFileQuery(
+    environmentId,
+    cwd ?? "",
+    PAR3_PROJECT_FILE_NAME,
+    cwd !== null,
+  );
+  const t3Query = useProjectFileQuery(
+    environmentId,
+    cwd ?? "",
+    T3_PROJECT_FILE_NAME,
+    cwd !== null && !par3Query.isPending && par3Query.data === null,
+  );
+  const data = par3Query.data ?? t3Query.data;
+  const contents = data && !data.truncated ? data.contents : null;
+  const isPending = par3Query.isPending || t3Query.isPending;
   if (contents === null) {
     return {
       status: isPending ? "loading" : "missing",

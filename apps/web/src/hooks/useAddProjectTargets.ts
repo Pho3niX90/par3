@@ -1,6 +1,10 @@
 import { canCreateProjectInEnvironment } from "@t3tools/client-runtime/operations/projects";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { AuthSourceControlWriteScope, resolveEnvironmentMachineKind } from "@t3tools/contracts";
+import {
+  AuthSourceControlWriteScope,
+  repositoryCloneRemoteUrl,
+  resolveEnvironmentMachineKind,
+} from "@t3tools/contracts";
 
 import type { EnvironmentOption } from "../components/BranchToolbar.logic";
 import { useEnvironments } from "../state/environments";
@@ -21,7 +25,9 @@ export function useAddProjectTargets(
 ): readonly AddProjectTarget[] {
   const { environments } = useEnvironments();
   const canClone = useEnvironmentsWithScope(environments, AuthSourceControlWriteScope);
-  if (!project?.repositoryIdentity?.locator.remoteUrl) return [];
+  if (!project?.repositoryIdentity || !repositoryCloneRemoteUrl(project.repositoryIdentity)) {
+    return [];
+  }
   const hasProject = new Set([
     project.environmentId,
     ...(projectEnvironments ?? [])

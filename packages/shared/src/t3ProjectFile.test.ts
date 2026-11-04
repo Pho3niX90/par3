@@ -29,4 +29,33 @@ describe("parseT3ProjectFile", () => {
       }`),
     ).toEqual({ defaultThreadEnvMode: "worktree" });
   });
+
+  it("reads the repositories a folder lists", () => {
+    const repositories = [
+      { path: "frontend", url: "git@github.com:acme/frontend.git" },
+      { path: "services/api", url: "https://github.com/acme/api.git" },
+      { path: "..hidden/a.b", url: "https://github.com/acme/hidden.git" },
+    ];
+    expect(parseT3ProjectFile(JSON.stringify({ repositories }))).toEqual({ repositories });
+  });
+
+  it.each([
+    "",
+    "/etc",
+    "\\\\host\\share",
+    "C:\\repo",
+    "C:repo",
+    ".",
+    "..",
+    "../up",
+    "a/../../up",
+    "a/./b",
+    "a//b",
+    "a/",
+    " .. ",
+  ])("rejects the repository path %j", (path) => {
+    expect(
+      parseT3ProjectFile(JSON.stringify({ repositories: [{ path, url: "git@host:a/b.git" }] })),
+    ).toBeNull();
+  });
 });

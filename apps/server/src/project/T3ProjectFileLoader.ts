@@ -6,7 +6,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { T3_PROJECT_FILE_NAME, type T3ProjectFile } from "@t3tools/contracts";
+import { PROJECT_FILE_NAMES, type T3ProjectFile } from "@t3tools/contracts";
 import { T3ProjectFileFromJson } from "@t3tools/shared/t3ProjectFile";
 
 const decodeT3ProjectFileJson = Schema.decodeEffect(T3ProjectFileFromJson);
@@ -16,14 +16,31 @@ export class T3ProjectFileLoadError extends Schema.TaggedError<T3ProjectFileLoad
   {
     operation: Schema.Literals(["read", "decode"]),
     workspaceRoot: Schema.String,
+    fileName: Schema.String,
     filePath: Schema.String,
     cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
-    return `Failed to ${this.operation} ${T3_PROJECT_FILE_NAME} at ${this.filePath}.`;
+    return `Failed to ${this.operation} ${this.fileName} at ${this.filePath}.`;
   }
 }
+
+/** The first project file present in `folder`, in `PROJECT_FILE_NAMES` order. */
+export const findProjectFile = Effect.fn("T3ProjectFileLoader.findProjectFile")(function* (
+  fileSystem: FileSystem.FileSystem,
+  path: Path.Path,
+  folder: string,
+) {
+  for (const fileName of PROJECT_FILE_NAMES) {
+    const filePath = path.join(folder, fileName);
+    // A file that cannot be probed counts as present, so its read error surfaces over a fallback.
+    if (yield* fileSystem.exists(filePath).pipe(Effect.orElseSucceed(() => true))) {
+      return { fileName, filePath };
+    }
+  }
+  return null;
+});
 
 export class T3ProjectFileLoader extends Context.Service<
   T3ProjectFileLoader,
@@ -50,7 +67,9 @@ export const make = Effect.gen(function* () {
 
   const load: T3ProjectFileLoader["Service"]["load"] = Effect.fn("T3ProjectFileLoader.load")(
     function* (workspaceRoot) {
-      const filePath = path.join(workspaceRoot, T3_PROJECT_FILE_NAME);
+      const found = yield* findProjectFile(fileSystem, path, workspaceRoot);
+      if (found === null) return Option.none<T3ProjectFile>();
+      const { fileName, filePath } = found;
       const raw = yield* fileSystem.readFileString(filePath).pipe(
         Effect.asSome,
         Effect.catchTags({
@@ -61,6 +80,7 @@ export const make = Effect.gen(function* () {
                   new T3ProjectFileLoadError({
                     operation: "read",
                     workspaceRoot,
+                    fileName,
                     filePath,
                     cause: error,
                   }),
@@ -78,6 +98,7 @@ export const make = Effect.gen(function* () {
               new T3ProjectFileLoadError({
                 operation: "decode",
                 workspaceRoot,
+                fileName,
                 filePath,
                 cause: error,
               }),

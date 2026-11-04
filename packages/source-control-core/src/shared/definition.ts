@@ -69,13 +69,14 @@ export type ChangeRequestHostIdentity =
   | {
       readonly canonicalKey?: string | undefined;
       readonly locator?: { readonly remoteUrl: string } | undefined;
+      readonly members?: unknown;
     }
   | null
   | undefined;
 
 export type RepositorySelectorIdentity = Pick<
   RepositoryIdentity,
-  "provider" | "displayName" | "owner" | "name"
+  "provider" | "displayName" | "owner" | "name" | "members"
 >;
 
 /** A git remote's host, as `recognizeRemote` reads it. */
@@ -458,7 +459,9 @@ export function projectChangeRequestHost<const Kind extends string | undefined>(
   identity: ChangeRequestHostIdentity,
   kind: Kind,
 ): string | Kind {
-  const host = identity?.canonicalKey?.split("/")[0]?.trim();
+  // A workspace's key names several repositories, so it has no host of its own.
+  const host =
+    identity?.members === undefined ? identity?.canonicalKey?.split("/")[0]?.trim() : undefined;
   return host === undefined || host.length === 0 ? kind : host.toLowerCase();
 }
 
@@ -541,7 +544,8 @@ export function recognizeRemoteWith(
 function defaultRepositorySelector(
   identity: RepositorySelectorIdentity | null | undefined,
 ): string | null {
-  if (!identity) return null;
+  // A workspace's display name lists several repositories, so it selects none of them.
+  if (!identity || identity.members !== undefined) return null;
   if (identity.displayName) return identity.displayName;
   return identity.owner && identity.name ? `${identity.owner}/${identity.name}` : null;
 }

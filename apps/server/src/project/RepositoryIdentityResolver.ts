@@ -1,4 +1,13 @@
-import type { RepositoryIdentity, SourceControlProviderError } from "@t3tools/contracts";
+import {
+  isWorkspaceRepositoryIdentity,
+  repositoryCloneRemoteUrl,
+  repositoryGroupingDisplayNameOf,
+  repositoryGroupingKeyOf,
+  workspaceRepositoryIdentity,
+  type RepositoryIdentity,
+  type RepositoryWorkspaceMember,
+  type SourceControlProviderError,
+} from "@t3tools/contracts";
 import { repositoryPathFromRemoteUrl } from "@t3tools/source-control-core/server/SourceControlProvider";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
@@ -13,12 +22,18 @@ import * as Path from "effect/Path";
 import * as ProcessRunner from "../processRunner.ts";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import { explicitBareRepositoryEnv } from "../vcs/VcsProcess.ts";
+import { findProjectFile } from "./T3ProjectFileLoader.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 
 const DEFAULT_REPOSITORY_IDENTITY_CACHE_CAPACITY = 512;
 // Minute-by-minute sweeps need cached hits; clone, publish and PR discovery force refresh.
 const DEFAULT_POSITIVE_CACHE_TTL = Duration.minutes(15);
 const DEFAULT_NEGATIVE_CACHE_TTL = Duration.minutes(1);
+// More repositories than this is a personal code folder, not a project.
+const MAX_WORKSPACE_REPOSITORIES = 64;
+const WORKSPACE_MEMBER_CONCURRENCY = 4;
+const WORKSPACE_SCAN_CONCURRENCY = 16;
 
 export interface RepositoryIdentityResolverOptions {
   readonly cacheCapacity?: number;
@@ -135,6 +150,7 @@ function buildRepositoryIdentity(input: {
 class RepositoryIdentityCacheKey extends Data.Class<{
   readonly rootPath: string;
   readonly isBare: boolean;
+  readonly kind: "repository" | "workspace";
 }> {}
 
 const resolveRepositoryIdentityCacheKey = Effect.fn("RepositoryIdentityResolver.resolveCacheKey")(
@@ -167,7 +183,7 @@ const resolveRepositoryIdentityCacheKey = Effect.fn("RepositoryIdentityResolver.
     if (topLevelResult.value.code === 0) {
       const rootPath = topLevelResult.value.stdout.trim();
       return rootPath.length > 0
-        ? new RepositoryIdentityCacheKey({ rootPath, isBare: false })
+        ? new RepositoryIdentityCacheKey({ rootPath, isBare: false, kind: "repository" })
         : null;
     }
 
@@ -214,10 +230,10 @@ const resolveRepositoryIdentityCacheKey = Effect.fn("RepositoryIdentityResolver.
         .map((line) => line.trim());
       // A checkout's .git directory contains remotes but is not a project root.
       return isBare === "true" && rootPath.length > 0
-        ? new RepositoryIdentityCacheKey({ rootPath, isBare: true })
+        ? new RepositoryIdentityCacheKey({ rootPath, isBare: true, kind: "repository" })
         : null;
     }
-    return null;
+    return new RepositoryIdentityCacheKey({ rootPath: cwd, isBare: false, kind: "workspace" });
   },
 );
 
@@ -261,9 +277,95 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
   const timeToLive = (exit: Exit.Exit<unknown>) =>
     Exit.match(exit, {
       onSuccess: (value) =>
-        value === null ? DEFAULT_NEGATIVE_CACHE_TTL : DEFAULT_POSITIVE_CACHE_TTL,
+        value === null ||
+        // A plain folder can become a repository at any time.
+        (value instanceof RepositoryIdentityCacheKey && value.kind === "workspace")
+          ? DEFAULT_NEGATIVE_CACHE_TTL
+          : DEFAULT_POSITIVE_CACHE_TTL,
       onFailure: () => Duration.zero,
     });
+
+  const readManifestRepositories = Effect.fn("RepositoryIdentityResolver.readManifest")(function* (
+    folder: string,
+  ) {
+    const found = yield* findProjectFile(fileSystem, path, folder);
+    if (found === null) return null;
+    const contents = yield* fileSystem
+      .readFileString(found.filePath)
+      .pipe(Effect.orElseSucceed(() => null));
+    const repositories = contents === null ? undefined : parseT3ProjectFile(contents)?.repositories;
+    return repositories !== undefined && repositories.length > 0 ? repositories : null;
+  });
+
+  const listMemberFolders = Effect.fn("RepositoryIdentityResolver.listMemberFolders")(function* (
+    folder: string,
+  ) {
+    const entries = yield* fileSystem
+      .readDirectory(folder)
+      .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+    const names = yield* Effect.filter(
+      entries.filter((name) => !name.startsWith(".")),
+      (name) =>
+        fileSystem.exists(path.join(folder, name, ".git")).pipe(Effect.orElseSucceed(() => false)),
+      { concurrency: WORKSPACE_SCAN_CONCURRENCY },
+    );
+    if (names.length > MAX_WORKSPACE_REPOSITORIES) {
+      yield* Effect.logWarning("Not treating a folder with this many repositories as a project", {
+        folder,
+        repositories: names.length,
+      });
+      return [];
+    }
+    return names;
+  });
+
+  const resolveWorkspaceIdentity = Effect.fn("RepositoryIdentityResolver.resolveWorkspace")(
+    function* (rootPath: string) {
+      const manifest = yield* readManifestRepositories(rootPath);
+      const members: ReadonlyArray<RepositoryWorkspaceMember> =
+        manifest !== null
+          ? manifest.flatMap((repository) => {
+              if (isLocalRemoteUrl(repository.url)) return [];
+              const canonicalKey = sourceControlDefinitions.repositoryKeyFromRemote(repository.url);
+              const displayName = repositoryPathOf(canonicalKey, repository.url);
+              return [
+                {
+                  path: repository.path.replaceAll("\\", "/"),
+                  canonicalKey,
+                  remoteUrl: repository.url,
+                  ...(displayName ? { displayName } : {}),
+                },
+              ];
+            })
+          : yield* listMemberFolders(rootPath).pipe(
+              Effect.flatMap((names) =>
+                Effect.forEach(
+                  names,
+                  (name) =>
+                    resolve(path.join(rootPath, name)).pipe(
+                      Effect.map((identity): ReadonlyArray<RepositoryWorkspaceMember> => {
+                        if (identity === null || isWorkspaceRepositoryIdentity(identity)) return [];
+                        const displayName = repositoryGroupingDisplayNameOf(identity);
+                        return [
+                          {
+                            path: name,
+                            // Keyed like plain-repo grouping, so a fork is not its upstream.
+                            canonicalKey: repositoryGroupingKeyOf(identity),
+                            remoteUrl:
+                              repositoryCloneRemoteUrl(identity) ?? identity.locator.remoteUrl,
+                            ...(displayName ? { displayName } : {}),
+                          },
+                        ];
+                      }),
+                    ),
+                  { concurrency: WORKSPACE_MEMBER_CONCURRENCY },
+                ),
+              ),
+              Effect.map((members) => members.flat()),
+            );
+      return members.length > 0 ? workspaceRepositoryIdentity({ rootPath, members }) : null;
+    },
+  );
 
   const repositoryRootCache = yield* Cache.makeWith<string, RepositoryIdentityCacheKey | null>(
     (cwd) =>
@@ -280,13 +382,15 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
     RepositoryIdentity | null
   >(
     (cacheKey) =>
-      resolveRepositoryIdentityFromCacheKey(cacheKey).pipe(
-        Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
-        Effect.filterOrElse(
-          (identity): identity is null => identity === null,
-          (identity) => refine(identity).pipe(Effect.orElseSucceed(() => identity)),
-        ),
-      ),
+      cacheKey.kind === "workspace"
+        ? resolveWorkspaceIdentity(cacheKey.rootPath)
+        : resolveRepositoryIdentityFromCacheKey(cacheKey).pipe(
+            Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
+            Effect.filterOrElse(
+              (identity): identity is null => identity === null,
+              (identity) => refine(identity).pipe(Effect.orElseSucceed(() => identity)),
+            ),
+          ),
     { capacity: cacheCapacity, timeToLive },
   );
 
@@ -295,7 +399,16 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
       if (options?.refresh) yield* Cache.invalidate(repositoryRootCache, cwd);
       const cacheKey = yield* Cache.get(repositoryRootCache, cwd);
       if (cacheKey === null) return null;
-      if (options?.refresh) yield* Cache.invalidate(repositoryIdentityCache, cacheKey);
+      if (options?.refresh) {
+        if (cacheKey.kind === "workspace" && (yield* readManifestRepositories(cwd)) === null) {
+          yield* Effect.forEach(
+            yield* listMemberFolders(cwd),
+            (name) => resolve(path.join(cwd, name), { refresh: true }),
+            { concurrency: WORKSPACE_MEMBER_CONCURRENCY, discard: true },
+          );
+        }
+        yield* Cache.invalidate(repositoryIdentityCache, cacheKey);
+      }
       return yield* Cache.get(repositoryIdentityCache, cacheKey);
     },
   );

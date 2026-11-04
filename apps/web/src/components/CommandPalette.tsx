@@ -1907,6 +1907,7 @@ function OpenCommandPaletteDialog(props: {
         "grouping",
         "checkout",
         "remove",
+        "par3.json",
         "t3.json",
       ],
       title: "Project settings",

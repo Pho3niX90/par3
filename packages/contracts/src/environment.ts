@@ -215,6 +215,15 @@ export const RepositoryOrigin = Schema.Struct({
 });
 export type RepositoryOrigin = typeof RepositoryOrigin.Type;
 
+export const RepositoryWorkspaceMember = Schema.Struct({
+  /** Posix-style path relative to the workspace folder. */
+  path: TrimmedNonEmptyString,
+  canonicalKey: TrimmedNonEmptyString,
+  remoteUrl: TrimmedNonEmptyString,
+  displayName: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type RepositoryWorkspaceMember = typeof RepositoryWorkspaceMember.Type;
+
 export const RepositoryIdentity = Schema.Struct({
   canonicalKey: TrimmedNonEmptyString,
   locator: RepositoryIdentityLocator,
@@ -226,6 +235,8 @@ export const RepositoryIdentity = Schema.Struct({
   owner: Schema.optionalKey(TrimmedNonEmptyString),
   name: Schema.optionalKey(TrimmedNonEmptyString),
   origin: Schema.optionalKey(RepositoryOrigin),
+  /** Old clients require a git-remote locator, so a workspace carries its key there and is told apart by this. */
+  members: Schema.optionalKey(Schema.Array(RepositoryWorkspaceMember)),
 });
 export type RepositoryIdentity = typeof RepositoryIdentity.Type;
 
@@ -237,6 +248,45 @@ export function repositoryGroupingDisplayNameOf(identity: RepositoryIdentity): s
   return identity.origin
     ? (identity.origin.displayName ?? identity.origin.canonicalKey)
     : identity.displayName;
+}
+
+export function isWorkspaceRepositoryIdentity(identity: RepositoryIdentity): boolean {
+  return identity.members !== undefined;
+}
+
+/** What to clone to get this repository elsewhere; a workspace has no single remote. */
+export function repositoryCloneRemoteUrl(identity: RepositoryIdentity): string | null {
+  return isWorkspaceRepositoryIdentity(identity)
+    ? null
+    : (identity.origin?.remoteUrl ?? identity.locator.remoteUrl);
+}
+
+const WORKSPACE_DISPLAY_NAME_LIMIT = 3;
+
+const compareEnglish = (left: string, right: string) => left.localeCompare(right, "en");
+
+export function workspaceRepositoryIdentity(input: {
+  readonly rootPath: string;
+  readonly members: ReadonlyArray<RepositoryWorkspaceMember>;
+}): RepositoryIdentity {
+  const keys = [...new Set(input.members.map((member) => member.canonicalKey))];
+  const canonicalKey = `workspace:${keys.sort(compareEnglish).join("|")}`;
+  const names = [
+    ...new Set(
+      input.members.map(
+        (member) => member.displayName ?? member.canonicalKey.split("/").at(-1) ?? "",
+      ),
+    ),
+  ].sort(compareEnglish);
+  const shown = names.slice(0, WORKSPACE_DISPLAY_NAME_LIMIT).join(" + ");
+  const hidden = names.length - WORKSPACE_DISPLAY_NAME_LIMIT;
+  return {
+    canonicalKey,
+    locator: { source: "git-remote", remoteName: "workspace", remoteUrl: canonicalKey },
+    rootPath: input.rootPath,
+    displayName: hidden > 0 ? `${shown} +${hidden} more` : shown,
+    members: [...input.members].sort((left, right) => compareEnglish(left.path, right.path)),
+  };
 }
 
 export const ScopedProjectRef = Schema.Struct({

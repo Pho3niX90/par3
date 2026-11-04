@@ -10,6 +10,7 @@ import {
   type EnvironmentId,
   type ProjectIgnoredFile,
   type ScopedProjectRef,
+  repositoryCloneRemoteUrl,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import {
@@ -100,10 +101,9 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
   const [targetId, setTargetId] = useState(request.targetEnvironmentId);
   const target = targets.find((t) => t.environmentId === targetId) ?? targets[0] ?? null;
   const source = environments.find((env) => env.environmentId === request.projectRef.environmentId);
-  const sourceUrl =
-    project?.repositoryIdentity?.origin?.remoteUrl ??
-    project?.repositoryIdentity?.locator.remoteUrl ??
-    "";
+  const sourceUrl = project?.repositoryIdentity
+    ? (repositoryCloneRemoteUrl(project.repositoryIdentity) ?? "")
+    : "";
   const [protocol, setProtocol] = useState<CloneProtocol | null>(() => cloneUrlProtocol(sourceUrl));
   const sshUrl = cloneUrlForProtocol(sourceUrl, "ssh");
   const httpsUrl = cloneUrlForProtocol(sourceUrl, "https");
