@@ -62,9 +62,10 @@ as long as the GitHub Copilot app is not installed to handle them. An issue open
 asks the agent to work on it, in that repository. A pull request opens like a `pr` link. A
 Copilot session link uses its `repo`, `pr` and `prompt`, and ignores its mode and branch.
 
-## GitHub Copilot app links
+## Share a thread
 
-On Windows and macOS, the desktop app also opens GitHub's **Open in GitHub Copilot app** links,
-as long as the GitHub Copilot app is not installed to handle them. An issue opens a draft that
-asks the agent to work on it, in that repository. A pull request opens like a `pr` link. A
-Copilot session link uses its `repo`, `pr` and `prompt`, and ignores its mode and branch.
+**Copy thread** copies a link such as `https://app.paritylabs.co.za/threads/<environment>/<thread>`. Paste
+it anywhere, such as Slack, a GitHub comment, or your notes. On a phone with Par3 installed, it
+opens the thread in the app. Elsewhere, opening it asks where to open it, like a prompt link, then
+opens the thread. Only someone connected to the machine that runs the thread can see it. In Par3,
+a thread link in a message opens the thread in the app.

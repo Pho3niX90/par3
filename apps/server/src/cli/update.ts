@@ -5,6 +5,8 @@ import {
   cliReleaseIndexPageUrl,
   cliReleaseChannelOf,
   newestCliReleaseVersion,
+  releaseAssetUrl,
+  updateFeedFileName,
   type CliReleaseChannel,
 } from "@t3tools/shared/cliRelease";
 import * as Console from "effect/Console";
@@ -24,6 +26,7 @@ import {
   ensurePinnedRuntimeInstalled,
   launcherOwnsVersionsDir,
   pinnedRuntimeCommand,
+  isUnpublishedRelease,
   PinnedRuntimeInstallError,
   pinnedRuntimePaths,
   pinnedRuntimeVersionsDir,
@@ -33,7 +36,7 @@ import {
 } from "../cloud/pinnedRuntime.ts";
 import { compareExactServiceVersions, isExactServiceVersion } from "../cloud/serviceProtocol.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
-import { managedUpdateRefusal } from "../policy/managedUpdates.ts";
+import { managedUpdateMirror, managedUpdateRefusal } from "../policy/managedUpdates.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
@@ -98,6 +101,47 @@ export const resolveNewestVersion = Effect.fn("cli.update.resolve_newest")(funct
 /** The command the install scripts put on PATH, and the short alias that runs it. */
 const LAUNCHER_NAME = "par3";
 const LAUNCHER_ALIAS = "p3";
+
+/** The version an update mirror's feed file for this platform offers on `channel`. */
+export const resolveMirrorVersion = Effect.fn("cli.update.resolve_mirror")(function* (
+  mirror: { readonly organization: string; readonly feedUrl: string },
+  channel: CliReleaseChannel,
+) {
+  if (channel === "preview") {
+    return yield* new CliUpdateError({
+      reason: `${mirror.organization}'s update mirror has no preview builds.`,
+    });
+  }
+  const httpClient = yield* HttpClient.HttpClient;
+  const fileName = updateFeedFileName(
+    channel === "nightly" ? "nightly" : "latest",
+    yield* HostProcess.Platform,
+    yield* HostProcess.Architecture,
+  );
+  const url = releaseAssetUrl(mirror.feedUrl, fileName);
+  // Not the URL, whose query can hold the mirror's access token.
+  const unreadable = new CliUpdateError({
+    reason: `Could not read ${fileName} from ${mirror.organization}'s update mirror.`,
+  });
+  const body = yield* httpClient.get(url).pipe(
+    Effect.flatMap(HttpClientResponse.filterStatusOk),
+    Effect.flatMap((response) => response.text),
+    Effect.mapError(() => unreadable),
+    Effect.timeoutOrElse({
+      duration: RELEASE_INDEX_TIMEOUT,
+      orElse: () => Effect.fail(unreadable),
+    }),
+  );
+  const version = /^version:\s*["']?([^"'\s]+)/m.exec(body)?.[1];
+  if (
+    version === undefined ||
+    !isExactServiceVersion(version) ||
+    cliReleaseChannelOf(version) !== channel
+  ) {
+    return yield* unreadable;
+  }
+  return version;
+});
 
 /**
  * The `p3` alias beside a launcher. The install scripts point it at the
@@ -348,6 +392,7 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   const httpClient = yield* HttpClient.HttpClient;
   const service = yield* BootService.BootService;
   const policy = yield* ManagedPolicy.ManagedPolicy;
+  const mirror = managedUpdateMirror(policy.document);
 
   const currentVersion = packageJson.version;
   const channel = input.channel ?? cliReleaseChannelOf(currentVersion);
@@ -366,9 +411,11 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   const progress = createUpdateProgress();
   progress.status("Checking for updates...");
   const targetVersion = yield* (
-    input.requestedVersion === undefined
-      ? resolveNewestVersion(channel)
-      : Effect.succeed(input.requestedVersion)
+    input.requestedVersion !== undefined
+      ? Effect.succeed(input.requestedVersion)
+      : mirror === undefined
+        ? resolveNewestVersion(channel)
+        : resolveMirrorVersion(mirror, channel)
   ).pipe(Effect.ensuring(Effect.sync(progress.finish)));
   const targetChannel = cliReleaseChannelOf(targetVersion);
 
@@ -483,7 +530,8 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
     httpClient,
     platform,
     arch,
-    releaseBaseUrl: environment[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined,
+    releaseBaseUrl: mirror?.feedUrl ?? (environment[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined),
+    requirePublishedRelease: mirror !== undefined,
     validate: (paths) =>
       runner
         .run({
@@ -509,17 +557,15 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
         ),
   }).pipe(
     Effect.ensuring(Effect.sync(progress.finish)),
-    Effect.catchIf(
-      (error): error is PinnedRuntimeInstallError =>
-        error._tag === "PinnedRuntimeInstallError" &&
-        error.step.startsWith("downloading the Par3 release checksums") &&
-        String(error.cause).includes("404"),
-      () =>
-        Effect.fail(
-          new CliUpdateError({
-            reason: `No release archive was published for par3@${targetVersion}.`,
-          }),
-        ),
+    Effect.catchIf(isUnpublishedRelease, () =>
+      Effect.fail(
+        new CliUpdateError({
+          reason:
+            mirror === undefined
+              ? `No release archive was published for par3@${targetVersion}.`
+              : `${mirror.organization}'s update mirror has no par3@${targetVersion} for this machine.`,
+        }),
+      ),
     ),
   );
 
@@ -585,8 +631,15 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   } else if (serviceInstalled && serviceCurrent) {
     yield* Console.log(`  Background service already on ${targetVersion}`);
   } else if (serviceInstalled) {
+    // A pending restart means the service already points at serviceVersion but runs an older one.
+    const running =
+      serviceVersion === undefined
+        ? "an unknown version"
+        : restartPending
+          ? `the version before ${serviceVersion}`
+          : serviceVersion;
     yield* Console.log(
-      `  Background service still running ${serviceVersion ?? "an unknown version"}. Run \`par3 service restart\` when you are ready to switch it to ${targetVersion}.`,
+      `  Background service still running ${running}. Run \`par3 service restart\` when you are ready to switch it to ${targetVersion}.`,
     );
   } else if (status.installed && !servesThisHome) {
     yield* Console.log(

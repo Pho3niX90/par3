@@ -64,6 +64,7 @@ import {
   ThreadId,
   sameModelSelection,
   isOrchestrationV2WorkActive,
+  resolveProjectProviderInstanceEnabled,
 } from "@t3tools/contracts";
 import { SIDEKICK_CHILD_PREAMBLE } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
@@ -2500,8 +2501,16 @@ const make = Effect.gen(function* () {
               },
             }),
         providers: providers.map((provider) => {
+          // Snapshots list instances any project enables; delegate_task checks the caller's project.
+          const enabledForCaller =
+            parent === undefined ||
+            resolveProjectProviderInstanceEnabled(
+              settings,
+              parent.thread.projectId,
+              provider.instanceId,
+            );
           const constraints = providerConstraints(
-            provider,
+            enabledForCaller ? provider : { ...provider, enabled: false },
             orchestrationCapableInstanceIds.has(provider.instanceId),
           );
           const exhaustedUsageLimits = exhaustedUsageWindows(provider, now);

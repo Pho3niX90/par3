@@ -18,7 +18,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { Platform, ScrollView, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AndroidSheetHeader } from "../../components/ui/AndroidScreenHeader";
+import { AppBar } from "../../components/ui/AppBar";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
@@ -96,11 +96,7 @@ export function MergeConflictsSheet(props: MergeConflictsSheetProps) {
         />
       ) : null}
       {Platform.OS === "android" ? (
-        <AndroidSheetHeader
-          title="Merge conflicts"
-          onBack={() => navigation.goBack()}
-          hideBottomBorder
-        />
+        <AppBar sheet title="Merge conflicts" onBack={() => navigation.goBack()} hideBottomBorder />
       ) : (
         <View className="min-h-4 pt-2" />
       )}

@@ -22,6 +22,7 @@ describe("shouldHandleAppLink", () => {
     "par3://pair?pairingUrl=x",
     "par3-dev://settings/usage?tab=limits",
     "t3code://threads/env-1/thread-1",
+    "https://app.paritylabs.co.za/threads/env/thread?prompt=Fix%20expo-development-client%20and%20t3code://expo-sharing",
   ])("handles path-bearing URL %s", (url) => {
     expect(shouldHandleAppLink(url, true)).toBe(true);
   });

@@ -1,0 +1,26 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.paritylabs.par3",
+      "sha256_cert_fingerprints": []
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.paritylabs.par3.preview",
+      "sha256_cert_fingerprints": []
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.paritylabs.par3.dev",
+      "sha256_cert_fingerprints": []
+    }
+  }
+]
