@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://par3.paritylabs.co.za/sitemap.xml

@@ -3,6 +3,7 @@ import { getImage } from "astro:assets";
 import desktopScreenshot from "../assets/app-desktop.webp";
 import Layout from "../layouts/Layout.astro";
 import { GITHUB_REPOSITORY_URL, RELEASES_URL } from "../lib/site";
+import { softwareJsonLd } from "../lib/seo";
 
 const screenshot = await getImage({
   src: desktopScreenshot,
@@ -12,7 +13,7 @@ const screenshot = await getImage({
 });
 ---
 
-<Layout>
+<Layout jsonLd={[softwareJsonLd()]}>
   <section class="hero">
     <div class="hero-grid" aria-hidden="true"></div>
 
