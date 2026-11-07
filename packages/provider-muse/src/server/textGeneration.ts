@@ -277,7 +277,7 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
           new TextGenerationError({
             operation,
             detail:
-              "Muse Code text generation failed. Check Muse login and availability on this T3 server host.",
+              "Muse Code text generation failed. Check Muse login and availability on this Par3 server host.",
             cause,
           }),
       ),

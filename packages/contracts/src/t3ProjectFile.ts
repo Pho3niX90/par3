@@ -61,7 +61,7 @@ export const T3ProjectFileScript = Schema.Struct({
   stopOnSettle: Schema.optionalKey(
     Schema.Boolean.annotate({
       description:
-        "When true, T3 stops this action's terminal and child processes when its thread settles.",
+        "When true, Par3 stops this action's terminal and child processes when its thread settles.",
     }),
   ),
   async: Schema.optionalKey(
@@ -149,7 +149,7 @@ export const T3ProjectFile = Schema.Struct({
       .check(Schema.isMaxLength(T3_PROJECT_FILE_MAX_REPOSITORIES)),
   ),
 }).annotate({
-  title: "T3 project file",
+  title: "Par3 project file",
   description: `Checked-in project configuration for Par3 (par3.json at the repository root, or at the root of a folder that holds several repositories). See ${PAR3_PROJECT_FILE_SCHEMA_URL} for the schema.`,
 });
 export type T3ProjectFile = typeof T3ProjectFile.Type;

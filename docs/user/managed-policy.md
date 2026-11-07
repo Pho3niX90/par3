@@ -15,7 +15,7 @@ the desktop app, a browser, or the mobile app.
 5. Run `par3 policy show` on the machine to
    [check what the server loaded](#check-what-the-server-loaded).
 
-The desktop app includes the `par3` command; see [The `par3` command](./install.md#the-t3-command).
+The desktop app includes the `par3` command; see [The `par3` command](./install.md#the-par3-command).
 
 ## Write a policy
 
@@ -23,7 +23,7 @@ The desktop app includes the `par3` command; see [The `par3` command](./install.
 {
   "schemaVersion": 1,
   "organization": "Example Corp",
-  "supportUrl": "https://it.example.com/t3",
+  "supportUrl": "https://it.example.com/par3",
   "settings": {
     "defaultRuntimeMode": { "value": "approval-required", "locked": false },
     "enableAgentBrowserAccess": { "value": false, "locked": true }

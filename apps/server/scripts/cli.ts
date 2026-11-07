@@ -252,7 +252,7 @@ const publishCmd = Command.make(
 ).pipe(Command.withDescription("Publish the @paritylabs/par3 and par3-cli launchers to npm."));
 
 const cli = Command.make("cli").pipe(
-  Command.withDescription("T3 server build & publish CLI."),
+  Command.withDescription("Par3 server build & publish CLI."),
   Command.withSubcommands([buildCmd, buildExeCmd, publishCmd]),
 );
 

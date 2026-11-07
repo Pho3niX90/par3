@@ -19,7 +19,7 @@ Custom Cursor MCP servers and plugins are not configured in Par3. They load from
 machine's Cursor config when the agent opens: project `.cursor/mcp.json`, user `~/.cursor/mcp.json`,
 and installed plugins under `~/.cursor/plugins`. Plugin tools
 can appear without a login; OAuth MCP servers still need credentials. Run `agent mcp login <server>`
-with the cwd set to the T3 project root (tokens land in
+with the cwd set to the Par3 project root (tokens land in
 `~/.cursor/projects/<folder-slug>/mcp-auth.json`). Cursor desktop Connections auth does not write
 that file, and the local SDK cannot complete interactive MCP OAuth itself—auth attempts fail with
 messages such as "MCP authentication is not supported in local SDK runs" or that the auth server

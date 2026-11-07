@@ -299,7 +299,7 @@ export function T3ConnectUserProfilePage() {
               <EmptyHeader>
                 <EmptyTitle>No Parity Connect environments</EmptyTitle>
                 <EmptyDescription>
-                  Link an environment from its local Settings to make it available through T3
+                  Link an environment from its local Settings to make it available through Parity
                   Connect.
                 </EmptyDescription>
               </EmptyHeader>

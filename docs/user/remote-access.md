@@ -237,7 +237,7 @@ directly. Every other device, and the desktop app for other environments,
 streams them from the host. Agents keep using them while no device is
 connected, and `localhost` addresses reach servers on the host.
 
-The first tab downloads a headless Chrome, about 120 MB, into the T3 home. It
+The first tab downloads a headless Chrome, about 120 MB, into the Par3 home. It
 is the same browser [HTML renders](html-renders.md) use, so a host downloads it
 only once. Some Linux hosts need [setup](#browser-host-setup) before it can
 start.
@@ -303,7 +303,7 @@ T3CODE_SERVER_BROWSER_SANDBOX=0 par3 serve
 
 For a systemd service, add `Environment=T3CODE_SERVER_BROWSER_SANDBOX=0` under
 `[Service]` in its configuration, run `sudo systemctl daemon-reload`, then restart
-your T3 service. Setting the variable in an agent's terminal does not change the
+your Par3 service. Setting the variable in an agent's terminal does not change the
 environment of an already running Par3 server.
 
 ## Connect an outside agent
