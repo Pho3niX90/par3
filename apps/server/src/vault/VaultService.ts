@@ -22,6 +22,7 @@ import {
   vaultReference,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Signature from "effect/crypto/Signature";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -222,6 +223,8 @@ function importSources(settings: ServerSettings): ReadonlyArray<ImportSource> {
 
 /** @public */
 export const make = Effect.gen(function* () {
+  // Generating the environment signing key on first use needs it.
+  const signature = yield* Signature.Signature;
   const store = yield* ServerSecretStore.ServerSecretStore;
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const settings = yield* ServerSettingsModule.ServerSettingsService;
@@ -281,6 +284,7 @@ export const make = Effect.gen(function* () {
     const pair = yield* keyPair;
     const environmentId = yield* environment.getEnvironmentId;
     const signing = yield* getOrCreateEnvironmentKeyPairFromSecretStore(store).pipe(
+      Effect.provideService(Signature.Signature, signature),
       Effect.catch(ioError),
     );
     return {

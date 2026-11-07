@@ -268,6 +268,7 @@ export async function runServerArm(
       const handle = Effect.fn(function* (item: OrchestrationV2ThreadStreamItem) {
         const at = performance.now();
         const atEpochMs = Date.now();
+        // @effect-diagnostics-next-line globalJsonInEffect:off -- bench log of already-decoded stream items.
         NodeFS.appendFileSync(eventsPath, `${JSON.stringify({ at, item })}\n`);
         const turn = turns[active];
         if (turn === undefined) return;

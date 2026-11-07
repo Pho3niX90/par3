@@ -25,6 +25,7 @@ import {
 } from "./testkit/syntheticClaudeTranscript.ts";
 
 const EVENT_SINK_SPAN_PREFIX = "orchestrationV2.EventSink.";
+const EVENT_SINK_PROVIDER_BATCH_SPAN = "orchestrationV2.EventSink.providerBatch";
 const CHECKPOINT_CAPTURE_SPAN = "orchestrationV2.checkpointCapture.execute";
 const TIMED = process.env.T3CODE_BENCH_TIMED === "1";
 // Gap between replayed frames in timed mode, roughly a fast model's pace.
@@ -41,42 +42,43 @@ interface Budget {
   readonly wallBudgetMs: number;
 }
 
-// Measured on the replay harness (2026-10); lower them when the server gets cheaper. Streaming
+// Measured on the replay harness (2026-10; transactions 2026-11, once provider writes were
+// batched); lower them when the server gets cheaper. Streaming
 // deltas are buffered per turn, so W4's 208 frames commit in a few transactions. EventSink writes
 // run with tracing off, so their statements are counted only through the transaction count.
 const BUDGETS: ReadonlyArray<Budget> = [
   {
     name: "W1 text reply, cold and warm",
     turns: [{ kind: "text" }, { kind: "text" }],
-    maxTransactions: 27,
+    maxTransactions: 23,
     maxSqlStatementsPerTurn: 194,
     wallBudgetMs: 2500,
   },
   {
     name: "W2 eight sequential tool calls",
     turns: [{ kind: "sequential_tools", toolCalls: 8 }],
-    maxTransactions: 55,
+    maxTransactions: 29,
     maxSqlStatementsPerTurn: 200,
     wallBudgetMs: 1600,
   },
   {
     name: "W3 edit then test",
     turns: [{ kind: "sequential_tools", toolCalls: 2 }],
-    maxTransactions: 25,
+    maxTransactions: 17,
     maxSqlStatementsPerTurn: 200,
     wallBudgetMs: 1600,
   },
   {
     name: "W4 long streamed answer",
     turns: [{ kind: "streamed_text", deltas: 200 }],
-    maxTransactions: 16,
+    maxTransactions: 14,
     maxSqlStatementsPerTurn: 200,
     wallBudgetMs: 1600,
   },
   {
     name: "W5 eight parallel reads",
     turns: [{ kind: "parallel_tools", toolCalls: 8 }],
-    maxTransactions: 54,
+    maxTransactions: 15,
     maxSqlStatementsPerTurn: 200,
     wallBudgetMs: 1600,
   },
@@ -139,6 +141,13 @@ function makeOverheadTracer(): { readonly tracer: Tracer.Tracer; readonly measur
         const endedAt = performance.now();
         if (isCommit) {
           measured.commitDurationsMs.push(endedAt - startedAt);
+          // A provider batch is one transaction around EventSink writes that were each
+          // counted when their own span started.
+          if (options.name === EVENT_SINK_PROVIDER_BATCH_SPAN) {
+            measured.transactions -= Number(
+              span.attributes.get("orchestration_v2.batch_writes") ?? 0,
+            );
+          }
         } else {
           measured.captureDurationsMs.push(endedAt - startedAt);
         }

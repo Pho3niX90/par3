@@ -91,6 +91,8 @@ import Migration0079 from "./Migrations/077_RepairBooleanSettledOverride.ts";
 import Migration0080 from "./Migrations/078_DropOrchestrationEventCorrelationIndex.ts";
 // Upstream numbers this 79; Par3 runs it as 81.
 import Migration0081 from "./Migrations/079_DelegatedRecoveryIndexes.ts";
+// Upstream numbers this 80; Par3 runs it as 82.
+import Migration0082 from "./Migrations/080_ScheduledTaskThreadMode.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -175,6 +177,7 @@ const migrationEntries = [
   [79, "RepairBooleanSettledOverride", Migration0079],
   [80, "DropOrchestrationEventCorrelationIndex", Migration0080],
   [81, "DelegatedRecoveryIndexes", Migration0081],
+  [82, "ScheduledTaskThreadMode", Migration0082],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

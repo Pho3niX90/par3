@@ -5,6 +5,11 @@ import * as Schema from "effect/Schema";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { decryptEntry } from "./vaultCrypto.ts";
 
+class VaultEntryDecryptError extends Schema.TaggedError<VaultEntryDecryptError>()(
+  "VaultEntryDecryptError",
+  { secretName: Schema.String, cause: Schema.Defect() },
+) {}
+
 /**
  * The vault lives in the secret store, so it gets the same at-rest protection as every other
  * server secret. These helpers carry no service of their own: settings resolve `vault:NAME`
@@ -81,7 +86,12 @@ export const resolveVaultValues = Effect.fn("vaultStorage.resolveValues")(functi
     const entry = entries[name];
     if (entry === undefined || values.has(name)) continue;
     // Left unresolved on failure; the caller reports the missing name.
-    const value = yield* Effect.option(Effect.try(() => decryptEntry(key.value, name, entry)));
+    const value = yield* Effect.option(
+      Effect.try({
+        try: () => decryptEntry(key.value, name, entry),
+        catch: (cause) => new VaultEntryDecryptError({ secretName: name, cause }),
+      }),
+    );
     if (Option.isSome(value)) values.set(name, value.value);
   }
   return values;

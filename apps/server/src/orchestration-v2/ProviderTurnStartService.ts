@@ -300,8 +300,7 @@ export const layer: Layer.Layer<
                 const request = turnItems.find((item) => item.type === "run_interrupt_request");
                 return request?.type === "run_interrupt_request" ? request.message : undefined;
               }),
-              // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
-              Effect.catchCause(() => Effect.succeed(undefined)),
+              Effect.catchCause(() => Effect.undefined),
             ),
       };
     };
@@ -731,15 +730,9 @@ export const layer: Layer.Layer<
         return;
       }
       const specRun = specCheck.success;
-      // A side chat shares its parent's worktree; the turn that gets its context asks before acting.
       const resolvedPolicy = yield* runtimePolicy
         .resolve({
-          thread:
-            projection.thread.lineage.sideChat === true &&
-            (sideChatHandoff !== undefined ||
-              !projection.runs.some((previous) => previous.ordinal < run.ordinal))
-              ? { ...projection.thread, runtimeMode: "approval-required" }
-              : projection.thread,
+          thread: projection.thread,
           modelSelection: run.modelSelection,
         })
         .pipe(Effect.result);

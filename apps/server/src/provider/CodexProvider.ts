@@ -576,8 +576,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       // Plan limits only exist for a ChatGPT login; Codex rejects the read
       // (-32600) for a custom `model_provider`, which reports no account.
       input.skipNativeUsage || accountResponse.account?.type !== "chatgpt"
-        ? // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
-          Effect.succeed(undefined)
+        ? Effect.undefined
         : withCodexDiscoveryDeadline(
             client.request("account/rateLimits/read", null),
             deadlineMs,
