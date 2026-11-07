@@ -1059,10 +1059,13 @@ export default function GitActionsControl({
   const isRepo = gitStatus?.isRepo ?? true;
   const hasPrimaryRemote = gitStatus?.hasPrimaryRemote ?? false;
   const gitStatusForActions = gitStatus;
-  const changesTotals = resolveChangesTotals(gitStatusForActions) ?? {
-    insertions: 0,
-    deletions: 0,
-  };
+  const resolvedChangesTotals = resolveChangesTotals(gitStatusForActions);
+  const changesTotals = resolvedChangesTotals ?? { insertions: 0, deletions: 0 };
+  const changesBaseLabel = resolvedChangesTotals
+    ? resolvedChangesTotals.baseRef === null
+      ? "Uncommitted"
+      : `vs ${resolvedChangesTotals.baseRef}`
+    : null;
 
   const allFiles = gitStatusForActions?.workingTree.files ?? [];
   // Changed-file paths are repository-relative, so they must resolve against
@@ -1651,39 +1654,52 @@ export default function GitActionsControl({
           onClick={onOpenChanges}
         >
           <FileDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
-          {repositoryLabel === undefined ? (
-            <span className={cn("flex-1 text-left", THREAD_DETAILS_PANEL_LABEL_CLASS)}>
-              Changes
-            </span>
-          ) : (
-            <span
-              className={cn(
-                "flex min-w-0 flex-1 gap-1.5 text-left",
-                THREAD_DETAILS_PANEL_LABEL_CLASS,
-              )}
-            >
-              <span className="truncate">{repositoryLabel}</span>
-              {gitStatusForActions?.refName ? (
-                <span className="truncate text-muted-foreground">
-                  {gitStatusForActions.refName}
-                </span>
-              ) : null}
-            </span>
-          )}
-          <span className="flex items-center gap-1.5 font-mono text-xs tabular-nums">
-            <span
-              className={
-                changesTotals.insertions ? "text-diff-addition-foreground" : "text-muted-foreground"
-              }
-            >
-              +{formatDiffCount(changesTotals.insertions)}
-            </span>
-            <span
-              className={
-                changesTotals.deletions ? "text-diff-deletion-foreground" : "text-muted-foreground"
-              }
-            >
-              -{formatDiffCount(changesTotals.deletions)}
+          <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            {repositoryLabel === undefined ? (
+              <span className="shrink-0">Changes</span>
+            ) : (
+              <>
+                <span className="min-w-0 truncate">{repositoryLabel}</span>
+                {gitStatusForActions?.refName ? (
+                  <span className="min-w-0 truncate text-muted-foreground">
+                    {gitStatusForActions.refName}
+                  </span>
+                ) : null}
+              </>
+            )}
+            {changesBaseLabel ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="pointer-events-auto min-w-0 truncate font-normal text-muted-foreground" />
+                  }
+                >
+                  {changesBaseLabel}
+                </TooltipTrigger>
+                <TooltipPopup side="top" className="max-w-96 break-words">
+                  {changesBaseLabel}
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
+            <span className="ml-auto flex shrink-0 items-baseline gap-2 ps-2 font-mono tabular-nums">
+              <span
+                className={
+                  changesTotals.insertions
+                    ? "text-diff-addition-foreground"
+                    : "text-muted-foreground"
+                }
+              >
+                +{formatDiffCount(changesTotals.insertions)}
+              </span>
+              <span
+                className={
+                  changesTotals.deletions
+                    ? "text-diff-deletion-foreground"
+                    : "text-muted-foreground"
+                }
+              >
+                -{formatDiffCount(changesTotals.deletions)}
+              </span>
             </span>
           </span>
         </ThreadDetailsControl>
