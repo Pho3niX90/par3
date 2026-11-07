@@ -1,12 +1,12 @@
 import { useAuth, useClerk } from "@clerk/react";
-import { MessageSquareIcon, ServerIcon, SmartphoneIcon } from "lucide-react";
+import { ServerIcon, SmartphoneIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { MobileClientsUserProfilePage } from "./MobileClientsUserProfilePage";
-import { T3ChatUserProfilePage } from "./T3ChatUserProfilePage";
 import { T3ConnectUserProfilePage } from "./T3ConnectUserProfilePage";
 
+// Par3's relay has no T3 Chat plans, so upstream's "T3 Chat" account page is left out.
 export const T3_CONNECT_ACCOUNT_PAGES = [
   {
     label: "Mobile clients",
@@ -19,12 +19,6 @@ export const T3_CONNECT_ACCOUNT_PAGES = [
     url: "t3-connect",
     icon: <ServerIcon className="size-4" />,
     content: <T3ConnectUserProfilePage />,
-  },
-  {
-    label: "T3 Chat",
-    url: "t3-chat",
-    icon: <MessageSquareIcon className="size-4" />,
-    content: <T3ChatUserProfilePage />,
   },
 ] as const;
 

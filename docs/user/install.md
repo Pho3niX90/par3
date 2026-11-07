@@ -50,11 +50,11 @@ Node.js for `npx`).
 
 There is no `par3` executable for Intel Macs (the desktop app is available). To
 run a server there, build it from source with `vp`, which provides the Node version it needs
-([Install vp](https://github.com/pingdotgg/t3code#install-vp)):
+([Install vp](https://github.com/Pho3niX90/par3#install-vp)):
 
 ```bash
-git clone https://github.com/pingdotgg/t3code
-cd t3code && vp i && vp run build:desktop
+git clone https://github.com/Pho3niX90/par3
+cd par3 && vp i && vp run build:desktop
 node apps/server/dist/bin.mjs
 ```
 
@@ -63,17 +63,8 @@ update it with `git pull` and a rebuild.
 
 ## Desktop app
 
-Download a release from [GitHub Releases](https://github.com/Pho3niX90/par3/releases),
-or use a package manager:
-
-| Platform           | Install                                                      |
-| ------------------ | ------------------------------------------------------------ |
-| Windows            | `winget install T3Tools.T3Code`                              |
-| macOS              | `brew install --cask t3-code`                                |
-| Debian, Ubuntu     | `sudo apt install ./T3-Code-*.deb`                           |
-| Arch Linux         | `yay -S t3code-bin`                                          |
-| Arch Linux nightly | `yay -S t3code-nightly-bin`                                  |
-| Nix                | `nix profile add github:NixOS/nixpkgs/nixos-unstable#t3code` |
+Download a release from [GitHub Releases](https://github.com/Pho3niX90/par3/releases).
+On Debian or Ubuntu, install the `.deb` with `sudo apt install ./Par3-*.deb`.
 
 ### Linux
 
@@ -83,42 +74,16 @@ architecture with `uname -m`: for `x86_64`, choose a file ending in
 `arm64.deb`.
 
 To launch an AppImage, open a terminal in its download folder. Replace
-`T3-Code.AppImage` below with the exact filename you downloaded:
+`Par3.AppImage` below with the exact filename you downloaded:
 
 ```bash
-chmod +x ./T3-Code.AppImage
-./T3-Code.AppImage
+chmod +x ./Par3.AppImage
+./Par3.AppImage
 ```
 
 The `.deb` updates itself like the other desktop builds. It asks for your
 password to install each update. If your desktop has no password prompt, the
 update fails. Download the new `.deb` and install it the same way.
-
-The AUR packages currently support x86_64 only; on ARM64, use the AppImage.
-Update AUR installs with your AUR helper, such as `yay -Syu`, instead of the
-in-app updater.
-
-### Nix (nixpkgs)
-
-Par3 is maintained in [nixpkgs](https://github.com/NixOS/nixpkgs/tree/nixos-unstable/pkgs/by-name/t3/t3code).
-The command above installs from `nixos-unstable` and requires Nix 2.30 or later with
-`nix-command` and `flakes` enabled. Launch the desktop app with `t3code-desktop`;
-the package also includes the `t3` command.
-
-On NixOS, you can instead add the package to your system configuration, using
-a nixpkgs revision that includes `t3code`:
-
-```nix
-environment.systemPackages = [ pkgs.t3code ];
-```
-
-Apply the change with `sudo nixos-rebuild switch`. For Home Manager, add
-`pkgs.t3code` to `home.packages` and run `home-manager switch`.
-
-Update a profile installation with `nix profile upgrade t3code`. For NixOS or
-Home Manager, update your configuration's nixpkgs input or channel and rebuild.
-Nix manages both the desktop app and the bundled
-`t3` command; use Nix to update them instead of the in-app updater or `t3 update`.
 
 ### The `par3` command
 
@@ -151,18 +116,15 @@ command cannot reach the app, start or update the desktop app and try again.
 
 ## Mobile app
 
-Install Par3 from the
-[App Store](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824) or
-[Google Play](https://play.google.com/store/apps/details?id=com.t3tools.t3code).
-The phone connects to a server on another machine. Follow
+On Android, install Par3 from
+[Google Play](https://play.google.com/store/apps/details?id=com.paritylabs.par3). There is no
+iPhone or iPad app in the App Store yet. The phone connects to a server on another machine. Follow
 [remote access](./remote-access.md) to link it through Parity Connect or a pairing URL.
 
-Store links and QR codes are also available in **Settings → About → Mobile app**
-on web and desktop. The store apps work with both stable and Nightly servers. Test builds are optional:
-
-- **iPhone and iPad:** join the [TestFlight beta](https://testflight.apple.com/join/XgaxaRtd).
-- **Android:** download and install the APK from the
-  [Android beta release](https://github.com/Pho3niX90/par3/releases/tag/android-nightly).
+The store link and QR code are also available in **Settings → About → Mobile app**
+on web and desktop. The store app works with both stable and Nightly servers. To try test builds,
+download and install the APK from the
+[Android beta release](https://github.com/Pho3niX90/par3/releases/tag/android-nightly).
 
 If the app crashes during launch, open Settings → Diagnostics on the next launch
 that succeeds. It lists startup crashes from the last 7 days with the error and

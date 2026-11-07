@@ -92,7 +92,7 @@ export const make = Effect.gen(function* () {
   const configure = Effect.gen(function* () {
     const commitHash = yield* resolveAboutCommitHash;
     // Electron strips spaces but keeps parentheses in its User-Agent token, breaking Turnstile in preview sessions.
-    // The name stays "Par3 …" after the rename to Par3: macOS Keychain and Linux
+    // The name stays "T3 Code …" after the rename to Par3: macOS Keychain and Linux
     // libsecret name the safeStorage key after it, and a new name would make existing
     // installs lose their encrypted sign-ins and saved environments.
     yield* electronApp.setName(`T3 Code ${environment.branding.stageLabel}`);

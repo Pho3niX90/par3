@@ -121,9 +121,8 @@ an active link between your account and the host.
   Par3 retries on its own. If it keeps waiting, reload or restart Par3 on
   this device.
 - **Your account reached its tunnel limit.** Remove an environment you do not
-  use from your T3 account's Parity Connect page, or
-  [link a paid T3 Chat account](./remote-access.md#more-machines-with-t3-chat)
-  for a higher limit. Then restart Par3 on the host.
+  use from your account's Parity Connect page, or connect it another way (see
+  [Machine limit](./remote-access.md#machine-limit)). Then restart Par3 on the host.
 
 ## The clock is off
 
@@ -155,7 +154,7 @@ If Par3 on the host disappears when SSH closes, see
 ## Report a problem
 
 If none of this helps, open an issue on
-[GitHub](https://github.com/pingdotgg/t3code/issues). Include:
+[GitHub](https://github.com/Pho3niX90/par3/issues). Include:
 
 - The text from **Copy diagnostics** in the environment's **Details**.
 - The output of `par3 connect status` on the host.

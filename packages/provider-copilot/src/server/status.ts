@@ -121,7 +121,7 @@ export const buildInitialCopilotProviderSnapshot = Effect.fn(
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "GitHub Copilot is disabled in T3 Code settings.",
+        message: "GitHub Copilot is disabled in Par3 settings.",
       },
     });
   }
@@ -175,7 +175,7 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "GitHub Copilot is disabled in T3 Code settings.",
+        message: "GitHub Copilot is disabled in Par3 settings.",
       },
     });
   }

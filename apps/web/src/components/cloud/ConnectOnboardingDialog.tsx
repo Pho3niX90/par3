@@ -366,7 +366,7 @@ function OnboardingTunnelLimitAlert({
   return (
     <TunnelLimitAlert
       upgrade={upgrade}
-      onLinkT3Chat={onOpenAccountPage ? () => onOpenAccountPage("t3-chat") : null}
+      onLinkT3Chat={null}
       onManageTunnels={onOpenAccountPage ? () => onOpenAccountPage("t3-connect") : null}
     />
   );

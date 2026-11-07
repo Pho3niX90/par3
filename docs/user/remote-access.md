@@ -28,7 +28,7 @@ window stops its local server. Saving your sign-in alone does not start a server
 or make the machine reachable.
 
 On your other device, sign in to the same Parity Connect account and choose the
-environment. On the app.t3.codes home page with no computer added yet, signing
+environment. On the app.paritylabs.co.za home page with no computer added yet, signing
 in adds compatible computers linked to your account. Over SSH, the CLI prints a
 browser link and a short code. Open the link on any device, confirm the code
 matches, and approve. The CLI continues on its own, so you do not need to forward
@@ -52,17 +52,10 @@ the defaults. Without a terminal:
 `par3 status --json` prints the settings. `par3 up --help` lists every flag with
 examples.
 
-### More machines with T3 Chat
+### Machine limit
 
 Each Parity Connect account can link up to 3 machines. Phones and browsers do not
-count. A paid T3 Chat plan raises the limit to 10 machines with Pro, or 100 with
-Premier.
-
-To link T3 Chat, open your account menu on the web or desktop app, go to
-**T3 Chat**, and select **Link T3 Chat**. Sign in to T3 Chat in the window that
-opens and approve. The new limit applies the next time you add a machine. If you
-cancel or downgrade T3 Chat, machines you already linked stay linked, but you
-cannot add more until you are under the limit again.
+count. For more machines, pair over a LAN or a private network such as Tailscale.
 
 ## Pair over a LAN or private network
 
@@ -197,7 +190,7 @@ If that port is already in use, choose another with
 
 ### Hosted web app
 
-[app.t3.codes](https://app.t3.codes) needs an HTTPS endpoint. It connects directly
+[app.paritylabs.co.za](https://app.paritylabs.co.za) needs an HTTPS endpoint. It connects directly
 to your server; a hosted pairing link does not make an unreachable backend
 reachable or convert HTTP to HTTPS.
 
@@ -229,8 +222,8 @@ running is left alone.
 
 Each desktop app keeps one session on the host for its SSH connection and reuses
 it when it reconnects. Revoke sessions you no longer use in **Settings →
-Sharing & access** on the host, or on a headless host with `t3 auth session list` and
-`t3 auth session revoke <id>`. A desktop that can still sign in over SSH pairs
+Sharing & access** on the host, or on a headless host with `par3 auth session list` and
+`par3 auth session revoke <id>`. A desktop that can still sign in over SSH pairs
 again on its next connect.
 
 For Antigravity's Google callback on a remote host, see
@@ -337,7 +330,7 @@ holds the machines this app knows and those on your Parity Connect account. If t
 app is connected to that machine with a session that manages access there, it
 makes the pairing code itself; otherwise paste one from that machine's
 **Settings → Sharing & access**. From a terminal, use
-`t3 environment link <address> --pairing-code <code> --access <mode>`.
+`par3 environment link <address> --pairing-code <code> --access <mode>`.
 
 You can also ask an agent to link a machine by name, such as "delegate this to
 my vps". It shows a card in the thread where you pick the machine the same way
@@ -371,7 +364,7 @@ management is available through `par3 auth --help`.
 
 When the app connects to more than one environment, choose one at the top of the
 page. A desktop app with **Local environment** off can manage a background
-service on the same machine this way, including its T3 Connect link.
+service on the same machine this way, including its Parity Connect link.
 
 A session with an open connection stays listed after its access credential
 expires.

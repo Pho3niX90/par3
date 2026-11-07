@@ -47,7 +47,7 @@ Kiro asks before tool calls such as writes and commands, and Par3 answers by the
 - **Full access** approves them without asking you. Autopilot stays on, so there is no review step.
 
 Kiro offers no **Auto** or **Auto-accept edits**. Approvals offer only the choices Kiro sends. Kiro's
-**Always allow** saves a rule for the whole workspace, so T3 Code shows it only when Kiro offers no
+**Always allow** saves a rule for the whole workspace, so Par3 shows it only when Kiro offers no
 one-time choice.
 
 ## Steering, Forks and Compaction

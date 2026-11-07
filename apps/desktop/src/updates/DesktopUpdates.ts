@@ -573,7 +573,7 @@ export const make = Effect.gen(function* () {
     if (!isProxyRelevantFailure(error.cause)) return error.message;
     return Option.match(envProxy, {
       onNone: () =>
-        `${error.message} Check your network connection. If you use a proxy, set HTTPS_PROXY before starting T3 Code.`,
+        `${error.message} Check your network connection. If you use a proxy, set HTTPS_PROXY before starting Par3.`,
       onSome: (proxy) =>
         `${error.message} Tried both the system proxy settings and ${proxy.source} (${proxy.server}).`,
     });

@@ -3884,7 +3884,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     license: "MIT",
     // Required by the .deb control file.
     homepage: "https://paritylabs.co.za",
-    author: "T3 Tools",
+    author: "Parity Labs",
     main: "apps/desktop/dist-electron/boot.cjs",
     build: yield* createBuildConfig(
       options.platform,

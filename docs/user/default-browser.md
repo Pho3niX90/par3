@@ -12,6 +12,6 @@ Pull request links for a connected project open in the pull request view when op
 request links in the app is enabled. Other links still open in the browser panel.
 
 HTML files you open from Finder open the same way. [Prompt links](prompt-links.md) to
-app.t3.codes open in the app as a draft.
+app.paritylabs.co.za open in the app as a draft.
 
 A link that launches Par3 waits until the app has connected to its environment, then opens.

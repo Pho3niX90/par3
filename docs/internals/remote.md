@@ -60,7 +60,7 @@ headless machines. It listens on every IPv4 interface and closes each
 connection unless both addresses of the direct peer are loopback, private, or
 tailnet IPv4. That keeps a VPS's public address closed, including a cloud VM
 whose public address is NATed to a private interface. It is not a firewall:
-T3 Connect and Tailscale Serve reach the server over loopback by design, and a
+Parity Connect and Tailscale Serve reach the server over loopback by design, and a
 proxy that rewrites the source address looks private. One listener per address would
 miss a DHCP change, and the wildcard keeps the reported addresses current.
 
@@ -101,7 +101,7 @@ Unlinking on the linking side only forgets the token.
   so idempotency keys are hashed with the caller's namespace before they
   leave. Without that, two agents reusing a key would collide on the far side.
 - **A forwarded wait is split into calls of at most 50 s**, because the
-  receiving `/mcp` sends nothing while a wait is open and T3 Connect's edge
+  receiving `/mcp` sends nothing while a wait is open and Parity Connect's edge
   drops idle requests after about 100 s.
 
 **Work a link paired below full access starts stays within that link.** The
