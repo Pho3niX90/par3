@@ -25,7 +25,7 @@ import {
   explainSpecRoleSupport,
 } from "../../state/specs";
 import { SpecStatusBadge } from "./SpecStatusBadge";
-import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 
 export interface SpecDetailScreenProps {
   readonly environmentId: EnvironmentId;
