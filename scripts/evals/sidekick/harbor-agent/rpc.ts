@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalFetch:off - Standalone eval tooling; the driver runs in task containers without the monorepo's Effect runtime.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalFetch:off extendsNativeError:off - Standalone eval tooling; the driver runs in task containers without the monorepo's Effect runtime.
 /**
  * Minimal client for Par3's Effect RPC over WebSocket (JSON serialization), speaking the encoded
  * RpcMessage shapes directly so it runs in a task container without the monorepo. Unary RPCs only;

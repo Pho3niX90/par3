@@ -1595,7 +1595,7 @@ describe("relay managed tunnel recovery limit", () => {
 
       expect(response.status).toBe(403);
       expect(JSON.stringify(response.body)).toContain("environment_link_limit_exceeded");
-    }).pipe(Effect.scoped),
+    }).pipe(Effect.scoped, Effect.provide(NodeCryptoLayer.layerSignature)),
   );
 });
 
