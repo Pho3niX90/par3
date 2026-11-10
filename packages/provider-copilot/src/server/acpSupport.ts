@@ -29,6 +29,7 @@ export interface CopilotAcpRuntimeInput extends Omit<
 > {
   readonly copilotSettings: CopilotAcpRuntimeSettings | null | undefined;
   readonly environment?: NodeJS.ProcessEnv;
+  readonly processEnvironment?: NodeJS.ProcessEnv;
   readonly runtimeMode?: RuntimeMode;
 }
 
@@ -41,16 +42,19 @@ function copilotAcpSpawnArgs(): ReadonlyArray<string> {
   return ["--acp"];
 }
 
-function buildCopilotAcpSpawnInput(
+export function buildCopilotAcpSpawnInput(
   copilotSettings: CopilotAcpRuntimeSettings | null | undefined,
   cwd: string,
   environment?: NodeJS.ProcessEnv,
+  processEnvironment?: NodeJS.ProcessEnv,
 ): AcpSessionRuntime.AcpSpawnInput {
   return {
     command: copilotSettings?.binaryPath || "copilot",
     args: [...copilotAcpSpawnArgs()],
     cwd,
-    ...(environment !== undefined ? { env: environment } : {}),
+    ...(environment !== undefined || processEnvironment !== undefined
+      ? { env: { ...environment, ...processEnvironment } }
+      : {}),
   };
 }
 
@@ -136,6 +140,7 @@ export const makeCopilotAcpRuntime = Effect.fn("makeCopilotAcpRuntime")(function
         input.copilotSettings,
         input.cwd ?? process.cwd(),
         input.environment,
+        input.processEnvironment,
       ),
     }),
   );

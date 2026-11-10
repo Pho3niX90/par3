@@ -31,6 +31,8 @@ import {
   type ProviderUserInputAnswers,
 } from "@t3tools/contracts";
 import { GrokSettings } from "@t3tools/provider-grok/settings";
+import { makeCopilotAdapterV2 } from "../../../../../packages/provider-copilot/src/server/adapter.ts";
+import { CopilotSettings } from "@t3tools/provider-copilot/settings";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { deriveBlockedOnThreadWait } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
@@ -101,6 +103,7 @@ import {
 import type { T3SidekickLeadState } from "@t3tools/provider-core/server/orchestrationInstructions";
 
 const DEFAULT_GROK_SETTINGS = Schema.decodeSync(GrokSettings)({});
+const DEFAULT_COPILOT_SETTINGS = Schema.decodeSync(CopilotSettings)({});
 const DROID_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({ agentId: "factory-droid" });
 
 const layerHost = TestProviderHost.layer().pipe(
@@ -766,6 +769,65 @@ function assertReinjectedInstructions(
 }
 
 describe("AcpAdapterV2", () => {
+  it.effect("sends Copilot the authenticated MCP server over HTTP", () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("copilot-mcp-transport");
+      const threadId = ThreadId.make("copilot-mcp-transport");
+      const endpoint = "http://127.0.0.1:43123/mcp";
+      yield* (yield* McpProviderSessions.McpProviderSessions).set({
+        environmentId: EnvironmentId.make("copilot-mcp-transport"),
+        threadId,
+        providerSessionId: "copilot-mcp-transport",
+        providerInstanceId: instanceId,
+        endpoint,
+        authorizationHeader: "Bearer test-token",
+        browserToolsAvailable: false,
+      });
+      const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
+      const runtimeInputs: Array<AcpAdapterV2RuntimeInput> = [];
+      const mockRuntime = makeMockRuntime({
+        childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+        mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        ),
+        environment: { T3_ACP_MCP_HTTP: "1" },
+        protocolEvents,
+      });
+      const adapter = yield* makeCopilotAdapterV2({
+        instanceId,
+        settings: DEFAULT_COPILOT_SETTINGS,
+        environment: {},
+        selfInvocation: { command: "par3", entrypoint: undefined },
+        makeRuntime: (input) =>
+          Effect.sync(() => runtimeInputs.push(input)).pipe(Effect.andThen(mockRuntime(input))),
+      });
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const modelSelection = { instanceId, model: "default" } as const;
+      const runtime = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("copilot-mcp-transport"),
+        modelSelection,
+        runtimePolicy,
+      });
+      yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+      assert.equal(runtimeInputs[0]?.processEnvironment?.T3_ACP_MCP_ENTRYPOINT, "");
+      const frame = Array.from(yield* Queue.takeAll(protocolEvents)).find(
+        (event) => event.direction === "outgoing" && rawProtocolMethod(event) === "session/new",
+      );
+      assert.deepEqual(frame && rawProtocolRequestParam(frame, "mcpServers"), [
+        {
+          type: "http",
+          name: "t3-code",
+          url: endpoint,
+          headers: [{ name: "Authorization", value: "Bearer test-token" }],
+        },
+      ]);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
   it.live("reports per-turn usage unavailable on a continuation turn that never prompts", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;

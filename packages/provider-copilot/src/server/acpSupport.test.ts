@@ -3,7 +3,27 @@ import * as Effect from "effect/Effect";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 
-import { applyCopilotAcpModelSelection } from "./acpSupport.ts";
+import { applyCopilotAcpModelSelection, buildCopilotAcpSpawnInput } from "./acpSupport.ts";
+
+it("passes thread-specific MCP context to the Copilot process", () => {
+  const spawn = buildCopilotAcpSpawnInput(
+    null,
+    "/workspace",
+    {
+      PATH: "provider-path",
+      T3_ACP_MCP_NODE: "stale",
+    },
+    {
+      T3_ACP_MCP_NODE: "node",
+      T3_ACP_MCP_AUTHORIZATION: "thread-token",
+    },
+  );
+  expect(spawn.env).toEqual({
+    PATH: "provider-path",
+    T3_ACP_MCP_NODE: "node",
+    T3_ACP_MCP_AUTHORIZATION: "thread-token",
+  });
+});
 
 type SessionSetupResult = AcpSessionRuntime.AcpSessionRuntimeStartResult["sessionSetupResult"];
 

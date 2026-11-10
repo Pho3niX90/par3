@@ -110,6 +110,8 @@ function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapt
   return {
     driver: COPILOT_PROVIDER,
     capabilities: CopilotProviderCapabilitiesV2,
+    // Copilot rejects client-supplied stdio MCP servers.
+    mcpOverHttp: true,
     promptFailure: copilotPromptFailure,
     clientCapabilitiesMeta: copilotClientCapabilitiesMeta,
     registerExtensions: routing.registerExtensions,
@@ -141,7 +143,7 @@ function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapt
   };
 }
 
-const makeCopilotAdapterV2 = Effect.fn("makeCopilotAdapterV2")(function* (
+export const makeCopilotAdapterV2 = Effect.fn("makeCopilotAdapterV2")(function* (
   options: CopilotAdapterV2Options,
 ) {
   return yield* makeAcpAdapterV2({
