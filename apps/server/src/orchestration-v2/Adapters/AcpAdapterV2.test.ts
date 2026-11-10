@@ -783,25 +783,23 @@ describe("AcpAdapterV2", () => {
         authorizationHeader: "Bearer test-token",
         browserToolsAvailable: false,
       });
-      const requests: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
+      const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
+      const runtimeInputs: Array<AcpAdapterV2RuntimeInput> = [];
+      const mockRuntime = makeMockRuntime({
+        childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+        mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        ),
+        environment: { T3_ACP_MCP_HTTP: "1" },
+        protocolEvents,
+      });
       const adapter = yield* makeCopilotAdapterV2({
         instanceId,
         settings: DEFAULT_COPILOT_SETTINGS,
         environment: {},
-        selfInvocation: yield* resolveSelfInvocation(),
-        makeRuntime: makeMockRuntime({
-          childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
-          mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
-            new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
-          ),
-          environment: { T3_ACP_MCP_HTTP: "1" },
-        }),
-        nativeLogging: () => ({
-          requestLogger: (event) =>
-            Effect.sync(() => {
-              if (event.status === "started") requests.push(event);
-            }),
-        }),
+        selfInvocation: { command: "par3", entrypoint: undefined },
+        makeRuntime: (input) =>
+          Effect.sync(() => runtimeInputs.push(input)).pipe(Effect.andThen(mockRuntime(input))),
       });
       const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
         runtimeMode: "full-access",
@@ -816,8 +814,11 @@ describe("AcpAdapterV2", () => {
         runtimePolicy,
       });
       yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
-      const payload = requests.find((event) => event.method === "session/new")?.payload;
-      assert.deepEqual(Reflect.get(payload as object, "mcpServers"), [
+      assert.equal(runtimeInputs[0]?.processEnvironment?.T3_ACP_MCP_ENTRYPOINT, "");
+      const frame = Array.from(yield* Queue.takeAll(protocolEvents)).find(
+        (event) => event.direction === "outgoing" && rawProtocolMethod(event) === "session/new",
+      );
+      assert.deepEqual(frame && rawProtocolRequestParam(frame, "mcpServers"), [
         {
           type: "http",
           name: "t3-code",
