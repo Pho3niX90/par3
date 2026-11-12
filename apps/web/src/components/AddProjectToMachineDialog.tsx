@@ -212,12 +212,11 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
     }
     setSubmitting(true);
     setError(null);
-    const projectId = newProjectId();
     try {
-      await addProjectToMachine({
+      const projectId = await addProjectToMachine({
         sourceEnvironmentId: project.environmentId,
         target: { environmentId: target.environmentId, label: target.label },
-        projectId,
+        projectId: newProjectId(),
         title: project.title,
         clone: members
           ? {

@@ -151,7 +151,7 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
         model: selection.model,
         modelOptions: selection.options,
         allowPromptInjectedEffort: false,
-        planModeEnabled: false,
+        includePlanAgent: false,
       }).hasAnyControls ? (
         <>
           <MenuSeparator />
@@ -165,7 +165,7 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
                 model={selection.model}
                 modelOptions={selection.options}
                 allowPromptInjectedEffort={false}
-                planModeEnabled={false}
+                includePlanAgent={false}
                 onModelOptionsChange={(options) =>
                   props.onChange({ ...selection, options: options ?? [] })
                 }

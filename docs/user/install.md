@@ -20,20 +20,23 @@ On Windows, in PowerShell:
 irm https://par3.paritylabs.co.za/install.ps1 | iex
 ```
 
-This installs the `par3` command, and `p3` as a shorter alias, to `~/.local/bin`. If your shell reports `command not found`
-afterwards, that directory is not on your `PATH` yet; the installer prints the
-line to add. Set `T3CODE_CHANNEL=nightly` to install the nightly train, or
+This installs the `par3` command, and `p3` as a shorter alias, to `~/.local/bin`.
+If that folder is not on your `PATH` yet, the installer says so and, for zsh,
+bash on Linux, and fish, prints a command to add it. On Windows, `par3` works in
+the same PowerShell window right away; add the folder to your `PATH` for new
+windows. If a `par3` that the installer or the desktop app did not create is
+already there, it leaves that one alone and stops. Set `T3CODE_CHANNEL=nightly` to install the nightly train, or
 `T3CODE_VERSION` to pin an exact version.
 
-| Task                                             | Command                                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------------------- |
-| Start the server and open the web app            | `par3`                                                                    |
-| Start the server without a browser               | `par3 serve`                                                              |
-| Use it from your other devices                   | `par3 up` ([details](./remote-access.md))                                 |
-| Keep it running in the background (macOS, Linux) | `par3 service install` ([details](./background-service.md))               |
-| Move to the newest release                       | `par3 update`                                                             |
-| Reclaim database space                           | `par3 doctor` ([details](./background-service.md#reclaim-database-space)) |
-| Remove it again                                  | `par3 uninstall`                                                          |
+| Task                                  | Command                                                                   |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| Start the server and open the web app | `par3`                                                                    |
+| Start the server without a browser    | `par3 serve`                                                              |
+| Use it from your other devices        | `par3 up` ([details](./remote-access.md))                                 |
+| Keep it running in the background     | `par3 service install` ([details](./background-service.md))               |
+| Move to the newest release            | `par3 update`                                                             |
+| Reclaim database space                | `par3 doctor` ([details](./background-service.md#reclaim-database-space)) |
+| Remove it again                       | `par3 uninstall`                                                          |
 
 Run `par3 help` or `par3 --help` for the full reference. To start in a new working
 directory, use an explicit path such as `par3 ./my-project`. A bare directory name
@@ -44,7 +47,11 @@ instead. Stop it before starting a replacement, or use a different `--base-dir`
 for an independent server.
 
 To try Par3 once without installing it, run `npx par3-cli@latest` instead (needs
-Node.js for `npx`).
+Node.js for `npx`). It offers to install the `par3` command first. If you say no,
+it asks again at the next minor release, and `npx par3-cli install` installs it
+later. `npx par3-cli` always runs the version npm picked, even when a `par3` is
+installed. On the nightly train, run your installed `par3` (for example
+`par3 connect`), not `npx par3-cli`, which runs the latest stable release.
 
 ### Intel Macs
 
@@ -87,12 +94,14 @@ update fails. Download the new `.deb` and install it the same way.
 
 ### The `par3` command
 
-The desktop app includes the `par3` command-line tool. To run it from any
-terminal, open **Settings → About** and choose **Install** next to
-**par3 command**. On macOS and Linux it adds `par3` and `p3` links to a folder on your
-`PATH`; on Windows it adds the app's command folder to your `PATH`. Open a new
-terminal afterwards. **Remove** takes it off again. If you already have `par3`
-from npm, it stays as it is.
+The desktop app includes the `par3` command-line tool. A new install sets it up
+on first launch; after an update, or any time, choose **Install** next to
+**par3 command** in **Settings → About**. On macOS and Linux it adds `par3` and
+`p3` links in `~/.local/bin` (or `~/bin`); on Windows it adds the app's command
+folder to your `PATH`. Open a new terminal afterwards. If the folder is not on
+your `PATH`, **Add to PATH** on the Welcome page or in **Settings → About** adds
+one line to your shell's startup file. **Remove** takes it off, and the app does
+not add it again. If you already have another `par3`, it stays as it is.
 
 ### Windows Subsystem for Linux
 
@@ -167,12 +176,17 @@ on the environment's machine. An unlisted version is unverified.
 
 When a provider CLI is behind its latest release, its provider card shows the
 available version. **Update now** runs the installer that owns the CLI
-(Homebrew, or a global npm, pnpm, Yarn, Bun, Volta, or Vite+ install), or the
-CLI's own update command when Par3 cannot tell. Update a CLI installed with
-mise through mise. Cursor and Antigravity update with Par3. Homebrew and
-Chocolatey installs compare against the version their package manager offers,
-which can trail the npm release; update Claude installed with Chocolatey
-through Chocolatey.
+(Homebrew, mise, or a global npm, pnpm, Yarn, Bun, Volta, or Vite+ install), or
+the CLI's own update command when Par3 cannot tell. Claude, Codex, and
+OpenCode installs Par3 cannot identify stay manual: update them through the
+installer you used. Par3 runs `mise upgrade`
+only for a tool your mise config requests as `latest` when the provider's binary
+path is a mise shim or under the tool's `installs/<tool>/latest` link; update a
+pinned version, or a path into one version's directory, through mise yourself.
+Update a CLI installed with Nix through Nix.
+Cursor and Antigravity update with Par3. Homebrew and Chocolatey installs
+compare against the version their package manager offers, which can trail the
+npm release; update Claude installed with Chocolatey through Chocolatey.
 
 Add another provider instance for a separate account or configuration. Each
 instance can have its own environment variables, such as API keys or a custom
@@ -189,6 +203,6 @@ For provider-specific setup and accounts, see [Codex](./providers-codex.md),
 - [Working with threads](./thread-sidebar.md): start tasks and organize parallel work.
 - [Permission modes](./permission-modes.md): choose when agents ask before acting.
 - [Remote access](./remote-access.md): connect from another device.
-- [Running in the background](./background-service.md): keep a Linux or macOS host available.
+- [Running in the background](./background-service.md): keep a host available.
 - [Updating Par3](./updating.md): update the app and connected servers.
 - [Managed policy](./managed-policy.md): configure Par3 for everyone on a machine.

@@ -114,6 +114,15 @@ export const hostedAppUrlConfig = makePublicValueConfig(
   DEFAULT_HOSTED_APP_URL,
 ).pipe(Config.mapEffect(validateHostedAppUrl));
 
+/**
+ * Where agent sign-ins on the Parity Connect address are approved. Par3 has one hosted app for
+ * every channel, so nightly builds approve there too.
+ */
+export const agentApprovalAppUrlConfig = makePublicValueConfig(
+  "T3CODE_HOSTED_APP_URL",
+  DEFAULT_HOSTED_APP_URL,
+).pipe(Config.mapEffect(validateHostedAppUrl));
+
 function validateHostedAppUrl(value: string) {
   try {
     const url = new URL(value);

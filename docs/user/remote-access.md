@@ -16,16 +16,15 @@ par3 up
 ```
 
 It asks how your other devices reach the machine: Parity Connect, the local network,
-or both. Choose Parity Connect and follow the sign-in instructions. On Linux and
-macOS, it then runs Par3 as a [background service](./background-service.md).
+or both. Choose Parity Connect and follow the sign-in instructions. It then runs
+Par3 as a [background service](./background-service.md).
 `par3 connect` is the same as `par3 up --connect`. Run `par3 up` again to change your
 choice, and `par3 status` to see it.
 
-The background service is not available on Windows, so there `par3 up` prints the
-`par3 serve` command to keep running in a terminal. You can also keep the desktop
-app running with its local environment enabled. Closing the desktop app's last
-window stops its local server. Saving your sign-in alone does not start a server
-or make the machine reachable.
+Instead of the background service, you can keep the desktop app running with
+its local environment enabled. Closing the desktop app's last window stops its
+local server. Saving your sign-in alone does not start a server or make the
+machine reachable.
 
 On your other device, sign in to the same Parity Connect account and choose the
 environment. On the app.paritylabs.co.za home page with no computer added yet, signing
@@ -281,9 +280,8 @@ command to run on the host:
 sudo par3 browser setup
 ```
 
-The server shows the exact line for how you started it, such as
-`sudo npx par3-cli browser setup`, and keeps your `PATH` when Node is installed only
-for your user. Where `par3` is not on your `PATH`, such as with only the
+The server shows the exact line for how you started it, and keeps your `PATH`
+when you started it with `npx` and Node is installed only for your user. Where `par3` is not on your `PATH`, such as with only the
 desktop app installed, it names the full path of the app's own `par3` instead. It allows Chrome's sandbox with an AppArmor profile and installs
 any missing libraries and system fonts with apt; pages that load without text
 can mean the host has no fonts. It is safe to run again. Without `sudo`, it only
@@ -327,14 +325,17 @@ off, its result arrives once it is back on.
 On the machine you will work from, open **Settings → Environments → Linked environments**,
 choose **Link**, and pick the other machine or enter its address. The list
 holds the machines this app knows and those on your Parity Connect account. If this
-app is connected to that machine with a session that manages access there, it
-makes the pairing code itself; otherwise paste one from that machine's
-**Settings → Sharing & access**. From a terminal, use
+app has an address for that machine and is connected to it with a session that
+manages access there, it makes the pairing code itself; otherwise paste one
+from that machine's **Settings → Sharing & access**. An address you type always
+needs a pasted code. From a terminal, use
 `par3 environment link <address> --pairing-code <code> --access <mode>`.
 
 You can also ask an agent to link a machine by name, such as "delegate this to
 my vps". It shows a card in the thread where you pick the machine the same way
-and the access, then approve.
+and the access, then approve. An address the agent gives that this app does
+not know for one of your machines also needs a pasted code. Paste one only for
+an address you trust: the code is sent there.
 
 - The access you pick is the most agents from this machine may do there. An
   agent also never gets more there than its own mode here.
@@ -372,11 +373,11 @@ expires.
 To choose a token's permissions, pass `--scope` once for each scope you want:
 
 ```sh
-npx par3-cli pair --scope orchestration:read --scope relay:read
+par3 pair --scope orchestration:read --scope relay:read
 ```
 
 The selected scopes replace the default permissions. The same option works with
-`npx par3-cli auth pairing create` and `npx par3-cli auth session issue`; each command's
+`par3 auth pairing create` and `par3 auth session issue`; each command's
 `--help` lists the available scopes. Without `--scope`, pairing tokens and issued
 bearer sessions get every permission, including managing access and Parity Connect.
 A terminal or a full-access agent on the host can reach those as well, so a
@@ -456,6 +457,9 @@ desktop app, open **Settings → Environments** and switch off **Local
 environment**. Par3 restarts without a local server: no local agents or terminals run, WSL
 backends stay off, and other devices can no longer connect to this computer. Your projects,
 history, and saved connections are kept, and you keep working through pairing, Parity Connect, or SSH.
+If a [background service](./background-service.md) on this computer uses the same Par3 home, the
+app still treats it as this computer: **Open in** and file reveal for its projects run here,
+whichever connection you reach it through.
 
 Switch **Local environment** back on in the same place to restart with your previous local
 settings.

@@ -99,6 +99,41 @@ describe("pickWorkspaceBasenameMatch", () => {
   });
 });
 
+describe("chat file links an agent shortened", () => {
+  const cwd = "/home/user/acme";
+  const entries = [
+    { path: "packages/server/src/cloud/http.ts", kind: "file" as const },
+    { path: "packages/server/src/cloud", kind: "directory" as const },
+    { path: "packages/web/src/api/http.ts", kind: "file" as const },
+    { path: "packages/server/src/index.ts", kind: "file" as const },
+    { path: "packages/web/src/index.ts", kind: "file" as const },
+  ];
+
+  it("searches for package-relative paths and repeated prefixes, not exact ones", () => {
+    expect(workspaceFileLookup("cloud/http.ts", cwd)?.query).toBe("cloud/http.ts");
+    expect(workspaceFileLookup("acme/packages/web/src/index.ts", cwd)?.query).toBe(
+      "packages/web/src/index.ts",
+    );
+    expect(workspaceFileLookup("./cloud/http.ts", cwd)).toBeNull();
+    expect(workspaceFileLookup("~/acme/src/config.ts", cwd)).toBeNull();
+    expect(workspaceFileLookup("packages/server/", cwd)).toBeNull();
+  });
+
+  it("opens the one file a package-relative path is the suffix of", () => {
+    expect(workspaceFileLookup("cloud/http.ts", cwd)?.pick(entries)).toBe(
+      "packages/server/src/cloud/http.ts",
+    );
+    expect(workspaceFileLookup("acme/packages/web/src/index.ts", cwd)?.pick(entries)).toBe(
+      "packages/web/src/index.ts",
+    );
+  });
+
+  it("opens nothing when the suffix names several files or splits a segment", () => {
+    expect(workspaceFileLookup("src/index.ts", cwd)?.pick(entries)).toBeNull();
+    expect(workspaceFileLookup("ud/http.ts", cwd)?.pick(entries)).toBeNull();
+  });
+});
+
 describe("claimWorkspaceBasenameLookup", () => {
   it("keeps only the newest claim, whatever order the lookups settle in", () => {
     const first = claimWorkspaceBasenameLookup();

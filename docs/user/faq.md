@@ -9,7 +9,7 @@ Bring your own: Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigra
 ## Why use Par3 instead of Claude Code or the Codex app?
 
 - Bring your own subscription. Claude, Codex, and whatever else you already have installed.
-- Remote first. Run `npx @paritylabs/par3 up` on any machine and drive it from your desktop, browser, or phone.
+- Remote first. Run `par3 up` on any machine and drive it from your desktop, browser, or phone.
 - Review before agents act. Plan mode lets you see and approve a plan before an agent touches your code.
 - Open source (MIT), based on T3 Code.
 
@@ -29,7 +29,7 @@ Par3 drives Claude through Anthropic's Agent SDK. Agent SDK usage has been repor
 
 ## How do I use Par3 remotely?
 
-Your agents run wherever Par3 runs: your desktop, a server, a VPS. You connect to it from anywhere. Run `npx @paritylabs/par3 up` on that machine. Parity Connect is the easiest path; LAN pairing and Tailscale work too, and [app.paritylabs.co.za](https://app.paritylabs.co.za) is the web client. [Remote access](./remote-access.md)
+Your agents run wherever Par3 runs: your desktop, a server, a VPS. You connect to it from anywhere. Run `par3 up` on that machine. Parity Connect is the easiest path; LAN pairing and Tailscale work too, and [app.paritylabs.co.za](https://app.paritylabs.co.za) is the web client. [Remote access](./remote-access.md)
 
 ## How do I use Par3 on my phone?
 

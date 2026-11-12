@@ -345,10 +345,17 @@ export function usePullRequestHandoffs({
   ): Promise<PreparedPullRequestCheckout | null> => {
     if (!detail || handoff !== null) return null;
     setHandoff(kind);
+    // Dismissing the loading toast cancels the handoff before it touches a draft.
+    let cancelled = false;
     // Explicit timeouts survive toast updates and would pin the result after loading.
     const toastId = toastManager.add({
       type: "loading",
       title: `Preparing the ${terminology.singular} checkout...`,
+      data: {
+        onClose: () => {
+          cancelled = true;
+        },
+      },
     });
     const projectRef = scopeProjectRef(environmentId, detail.projectId);
     // Checkout setup requires the thread to exist first.
@@ -356,6 +363,10 @@ export function usePullRequestHandoffs({
       (session) => session,
       () => null,
     );
+    if (cancelled) {
+      setHandoff(null);
+      return null;
+    }
     if (opened === null) {
       setHandoff(null);
       toastManager.update(toastId, {
@@ -370,6 +381,10 @@ export function usePullRequestHandoffs({
       mode,
       threadId: opened.threadId,
     });
+    if (cancelled) {
+      setHandoff(null);
+      return null;
+    }
     if (prepared._tag === "Failure") {
       setHandoff(null);
       toastManager.update(toastId, {
@@ -389,6 +404,10 @@ export function usePullRequestHandoffs({
       (session) => session,
       () => null,
     );
+    if (cancelled) {
+      setHandoff(null);
+      return null;
+    }
     if (pointed === null) {
       setHandoff(null);
       toastManager.update(toastId, {
@@ -398,6 +417,13 @@ export function usePullRequestHandoffs({
       });
       return null;
     }
+    // The draft carries the pull request until its first send makes it a thread, which links it.
+    useComposerDraftStore.getState().setDraftThreadContext(pointed.draftId, {
+      checkoutPullRequest: {
+        url: prepared.value.pullRequest.url,
+        branch: prepared.value.branch,
+      },
+    });
     setHandoff(null);
     const checkout: PreparedPullRequestCheckout = {
       threadRef: scopeThreadRef(environmentId, pointed.threadId),
@@ -425,7 +451,9 @@ export function usePullRequestHandoffs({
       );
       return checkout;
     }
-    await openThreadWithTask(projectRef, task, opened);
+    // The task goes on the checkout draft: if the user typed into `opened` while the
+    // checkout ran, that is no longer the draft the user is looking at.
+    await openThreadWithTask(projectRef, task, pointed);
     toastManager.update(
       toastId,
       prepared.value.isOnPullRequestHead

@@ -42,7 +42,7 @@ irm https://par3.paritylabs.co.za/install.ps1 | iex
 
 Then run `par3` to start the server and open the local web app. `par3 service install` keeps it running in the background, `par3 update` moves to a newer release, and `par3 --help` has the full reference.
 
-To try it once without installing, run `npx par3-cli@latest` instead.
+To try it once without installing, run `npx par3-cli@latest`. It offers to install the `par3` command for you.
 
 ### Desktop app
 

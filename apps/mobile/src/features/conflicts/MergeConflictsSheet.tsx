@@ -336,7 +336,7 @@ function RepositoryConflicts(props: {
         {props.thread ? (
           <Button
             label="Ask agent"
-            icon="sparkles"
+            icon="brain"
             fullWidth
             disabled={disabled || state.conflictCount === 0}
             loading={pending === "agent"}

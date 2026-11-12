@@ -1,6 +1,7 @@
 import {
   AntigravitySettings,
   ClaudeSettings,
+  CloudSpeechCredentials,
   CodexSettings,
   EasDeviceHostConfig,
   JiraSettings,
@@ -8,6 +9,7 @@ import {
   type ServerSettings,
   type SettingsSecretValue,
   SimlockDeviceHostConfig,
+  TextGeneratorConfig,
   UsageLimitSourceConfig,
   isSecretReference,
   secretSettingsFields,
@@ -46,6 +48,8 @@ const providerSecretFields = new Map([
   ),
 ]);
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
+const textGeneratorSecretFields = secretSettingsFields(TextGeneratorConfig);
+const voiceSecretFields = secretSettingsFields(CloudSpeechCredentials);
 const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const jiraSecretFields = secretSettingsFields(JiraSettings);
 const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
@@ -252,6 +256,19 @@ function mapSecretFieldGroups(
     ]),
   ) as ServerSettings["usageLimitSources"];
 
+  const textGenerators = Object.fromEntries(
+    Object.entries(settings.textGenerators).map(([id, generator]) => [
+      id,
+      mapFields(
+        generator,
+        textGeneratorSecretFields,
+        (field, serverHost) =>
+          `text-generator-${encode(id)}-${encode(field)}` +
+          (serverHost === null ? "" : `-${encode(serverHost)}`),
+      ),
+    ]),
+  ) as ServerSettings["textGenerators"];
+
   const easDeviceHosts = settings.easDeviceHosts.map(
     (host) =>
       mapFields(
@@ -283,9 +300,15 @@ function mapSecretFieldGroups(
 
   return {
     ...settings,
+    cloudSpeechCredentials: mapFields(
+      settings.cloudSpeechCredentials,
+      voiceSecretFields,
+      (provider) => `voice-cloud-${provider}`,
+    ) as ServerSettings["cloudSpeechCredentials"],
     providerInstances,
     sourceControlHosts,
     usageLimitSources,
+    textGenerators,
     easDeviceHosts,
     simlockDeviceHosts,
     jira,

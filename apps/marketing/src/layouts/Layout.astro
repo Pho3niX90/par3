@@ -6,6 +6,15 @@ import dmSansLatinUrl from "../assets/fonts/dm-sans-latin.woff2?url";
 import "../styles/fonts.css";
 import { GITHUB_REPOSITORY_URL, PRIVACY_POLICY_URL, TERMS_URL } from "../lib/site";
 import { type JsonLd, jsonLdGraph, organizationJsonLd, websiteJsonLd } from "../lib/seo";
+import { messagesFor } from "../i18n";
+import {
+  DEFAULT_LOCALE,
+  LOCALES,
+  type Locale,
+  localeInfo,
+  type LocalizedPath,
+  localizedHref,
+} from "../i18n/locales";
 
 interface Props {
   title?: string;
@@ -14,15 +23,31 @@ interface Props {
   /** Page-specific schema.org nodes. Organization and WebSite are always included. */
   jsonLd?: ReadonlyArray<JsonLd>;
   noindex?: boolean;
+  locale?: Locale;
+  /** Set when the page exists in every locale; enables the language picker and hreflang links. */
+  localizedPath?: LocalizedPath;
 }
 
+const { locale = DEFAULT_LOCALE, localizedPath } = Astro.props;
+const t = messagesFor(locale).layout;
 const {
-  title = "Par3",
-  description = "Par3 by Parity Labs. Review the plan, then let your coding agents ship.",
+  title = t.defaultTitle,
+  description = t.defaultDescription,
   pageClass,
   jsonLd = [],
   noindex = false,
 } = Astro.props;
+const currentLocale = localeInfo(locale);
+const homeHref = localizedHref(locale, "/");
+const downloadHref = localizedHref(locale, "/download");
+// English-only pages still declare themselves, so every indexable page carries hreflang and x-default.
+const alternates = localizedPath
+  ? LOCALES.map((entry) => ({
+      hreflang: entry.code,
+      href: new URL(localizedHref(entry.code, localizedPath), Astro.site).href,
+    }))
+  : [{ hreflang: DEFAULT_LOCALE, href: new URL(Astro.url.pathname, Astro.site).href }];
+const defaultAlternate = alternates.find((entry) => entry.hreflang === DEFAULT_LOCALE)!;
 const structuredData = jsonLdGraph([organizationJsonLd(), websiteJsonLd(), ...jsonLd]);
 
 // Link unfurlers require a 1200x630 JPG/PNG at an absolute URL.
@@ -34,12 +59,11 @@ const socialImage = await getImage({
   quality: 90,
 });
 const socialImageUrl = new URL(socialImage.src, Astro.site);
-const socialImageAlt =
-  "Par3: the control plane for coding agents, with Claude Code, Codex, Cursor, OpenCode, Grok and Antigravity.";
+const socialImageAlt = t.socialImageAlt;
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
 ---
 
-<html lang="en">
+<html lang={locale}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -71,6 +95,12 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
     <link rel="icon" type="image/png" href="/favicon-16x16.png" sizes="16x16" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+    {!noindex && (
+      <>
+        {alternates.map((entry) => <link rel="alternate" hreflang={entry.hreflang} href={entry.href} />)}
+        <link rel="alternate" hreflang="x-default" href={defaultAlternate.href} />
+      </>
+    )}
     <title>{title}</title>
     <script is:inline type="application/ld+json" set:html={structuredData} />
   </head>
@@ -78,7 +108,7 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
     <div class:list={["page", pageClass]}>
       <nav class="nav">
         <div class="nav-inner">
-          <a href="/" class="nav-brand" aria-label="Par3 home">
+          <a href={homeHref} class="nav-brand" aria-label={t.homeLabel}>
             <svg
               class="nav-brand-mark"
               viewBox="0 0 114.8 60"
@@ -90,13 +120,39 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
             </svg>
           </a>
           <div class="nav-right">
-            <a class="nav-link" href="/download">Download</a>
+            {localizedPath && (
+              <details class="nav-lang">
+                <summary class="nav-lang-trigger" aria-label={t.language}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>
+                  <span class="nav-lang-current">{currentLocale.name}</span>
+                  <svg class="nav-lang-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </summary>
+                <ul class="nav-lang-menu">
+                  {LOCALES.map((entry) => (
+                    <li>
+                      <a
+                        href={localizedHref(entry.code, localizedPath)}
+                        hreflang={entry.code}
+                        lang={entry.code}
+                        aria-current={entry.code === locale ? "true" : undefined}
+                      >
+                        {entry.name}
+                        {entry.code === locale && (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg>
+                        )}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            <a class="nav-link" href={downloadHref}>{t.download}</a>
             <a
               class="nav-stars"
               href={GITHUB_REPOSITORY_URL}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Par3 on GitHub"
+              aria-label={t.githubLabel}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M12 2.3l2.9 5.88 6.49.94-4.7 4.58 1.11 6.47L12 17.12l-5.8 3.05 1.11-6.47-4.7-4.58 6.49-.94L12 2.3z"/>
@@ -125,13 +181,13 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
               loading="lazy"
               decoding="async"
             />
-            <span>&copy; {new Date().getFullYear()} Parity Labs (Pty) Ltd · MIT licensed · Based on T3 Code</span>
+            <span>&copy; {new Date().getFullYear()} Parity Labs (Pty) Ltd · {t.mitLicensed} · {t.basedOn}</span>
           </div>
           <div class="footer-links">
             <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a href="/download">Download</a>
-            <a href={TERMS_URL}>Terms</a>
-            <a href={PRIVACY_POLICY_URL}>Privacy</a>
+            <a href={downloadHref}>{t.download}</a>
+            <a href={TERMS_URL}>{t.terms}</a>
+            <a href={PRIVACY_POLICY_URL}>{t.privacy}</a>
           </div>
         </div>
       </footer>
@@ -146,6 +202,23 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
       };
       window.addEventListener("scroll", onScroll, { passive: true });
       onScroll();
+
+      // <details> does not close itself on outside clicks or Escape.
+      const picker = document.querySelector<HTMLDetailsElement>(".nav-lang");
+      if (picker) {
+        document.addEventListener("click", (event) => {
+          if (picker.open && !picker.contains(event.target as Node)) picker.open = false;
+        });
+        picker.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape" || !picker.open) return;
+          picker.open = false;
+          picker.querySelector("summary")?.focus();
+        });
+        picker.addEventListener("focusout", (event) => {
+          const next = event.relatedTarget as Node | null;
+          if (next && !picker.contains(next)) picker.open = false;
+        });
+      }
     </script>
   </body>
 </html>
@@ -445,6 +518,88 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
     flex-shrink: 0;
   }
 
+  .nav-lang {
+    position: relative;
+  }
+
+  .nav-lang-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 36px;
+    padding: 0 10px;
+    color: var(--fg-muted);
+    font-size: 13px;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    list-style: none;
+    cursor: pointer;
+    transition: color 0.18s ease;
+  }
+
+  .nav-lang-trigger::-webkit-details-marker {
+    display: none;
+  }
+
+  .nav-lang-trigger svg {
+    flex-shrink: 0;
+  }
+
+  .nav-lang-trigger:hover,
+  .nav-lang[open] .nav-lang-trigger {
+    color: var(--fg);
+  }
+
+  .nav-lang-chevron {
+    opacity: 0.6;
+    transition: transform 0.18s ease;
+  }
+
+  .nav-lang[open] .nav-lang-chevron {
+    transform: rotate(180deg);
+  }
+
+  .nav-lang-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 200px;
+    padding: 6px;
+    list-style: none;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.65);
+    animation: fade-in 0.18s ease both;
+  }
+
+  .nav-lang-menu a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--fg-muted);
+    font-size: 13px;
+    white-space: nowrap;
+    transition: color 0.18s ease, background 0.18s ease;
+  }
+
+  .nav-lang-menu a:hover {
+    color: var(--fg);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .nav-lang-menu a[aria-current="true"] {
+    color: var(--fg);
+  }
+
+  .nav-lang-menu svg {
+    color: var(--ok);
+    flex-shrink: 0;
+  }
+
   .main {
     flex: 1;
     display: flex;
@@ -510,6 +665,12 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
       display: none;
     }
 
+    /* The trigger sits near the left on narrow screens, so the menu opens rightward. */
+    .nav-lang-menu {
+      right: auto;
+      left: 0;
+    }
+
     .footer {
       padding-bottom: max(32px, env(safe-area-inset-bottom));
     }
@@ -532,6 +693,16 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
   @media (max-width: 420px) {
     .nav-inner {
       gap: 12px;
+    }
+
+    .nav-lang-current,
+    .nav-lang-chevron {
+      display: none;
+    }
+
+    .nav-lang-trigger {
+      height: 34px;
+      padding: 0 8px;
     }
 
     .nav-stars {

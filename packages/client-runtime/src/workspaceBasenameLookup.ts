@@ -21,7 +21,7 @@ function basenameOfPath(path: string): string {
   return separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
 }
 
-function needsWorkspaceBasenameLookup(relativePath: string): boolean {
+export function needsWorkspaceBasenameLookup(relativePath: string): boolean {
   const trimmed = relativePath.trim();
   return (
     trimmed !== "." &&
@@ -63,6 +63,28 @@ function stripRepeatedWorkspacePrefix(relativePath: string, cwd: string): string
     }
   }
   return null;
+}
+
+/** The one file a chat link names: its basename, its path past a repeated prefix, or its suffix. */
+export function pickWorkspaceLinkMatch(
+  relativePath: string,
+  cwd: string,
+  entries: ReadonlyArray<WorkspaceEntryCandidate>,
+): string | null {
+  const trimmed = relativePath.trim();
+  if (needsWorkspaceBasenameLookup(trimmed)) return pickWorkspaceBasenameMatch(trimmed, entries);
+  const stripped = stripRepeatedWorkspacePrefix(trimmed, cwd);
+  const strippedMatch =
+    stripped === null ? null : pickStrippedWorkspaceMatch(stripped, cwd, entries);
+  if (strippedMatch !== null) return strippedMatch;
+  const suffix = trimmed.replaceAll("\\", "/");
+  const matches = entries.filter(
+    (entry) =>
+      entry.kind === "file" &&
+      (entry.path.replaceAll("\\", "/") === suffix ||
+        entry.path.replaceAll("\\", "/").endsWith(`/${suffix}`)),
+  );
+  return matches.length === 1 ? (matches[0]?.path ?? null) : null;
 }
 
 function workspacePathKey(cwd: string): (path: string) => string {
