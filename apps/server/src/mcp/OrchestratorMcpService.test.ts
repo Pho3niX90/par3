@@ -3025,6 +3025,33 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
     );
 
+    it.effect("runs in the project folder when it is not a Git repository", () =>
+      Effect.gen(function* () {
+        const saved = yield* Ref.make<ReadonlyArray<ScheduledTask["workspaceStrategy"]>>([]);
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.provide(
+            service(
+              {
+                ...masterRepository,
+                resolveCommit: ({ cwd }) =>
+                  Effect.fail(
+                    new GitCommandError({
+                      operation: "GitVcsDriver.test",
+                      command: "git",
+                      cwd,
+                      detail: "not a git repository",
+                    }),
+                  ),
+              },
+              saved,
+            ),
+          ),
+        );
+        yield* mcp.scheduleTask(client, { projectId, prompt: "Check the build", schedule });
+        assert.deepEqual(yield* Ref.get(saved), [{ type: "root" }]);
+      }),
+    );
+
     it.effect("keeps one thread when fresh sessions are turned off before the first run", () =>
       Effect.gen(function* () {
         const modes = yield* Ref.make<ReadonlyArray<ScheduledTaskUpsertInput["threadMode"]>>([]);
@@ -3183,7 +3210,7 @@ describe("OrchestratorMcpService provider resolution", () => {
                     : Effect.succeed(remote),
                 resolveDefaultBranchName: () => Effect.succeed(remoteDefault),
                 resolveCommit: ({ cwd, revision }) =>
-                  refs.includes(revision)
+                  revision === "HEAD" || refs.includes(revision)
                     ? Effect.succeed({ commitSha: "abc123" })
                     : Effect.fail(gitFailure(cwd, "Needed a single revision")),
               },

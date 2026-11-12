@@ -2082,6 +2082,8 @@ const make = Effect.gen(function* () {
   )(function* (boundToThread: boolean, projectId: ProjectId) {
     if (boundToThread) return { type: "root" as const };
     const { workspaceRoot } = yield* requireProject(projectId);
+    // A folder that is not a Git repository, or has no commits, cannot hold a worktree.
+    if (!(yield* refExists(workspaceRoot, "HEAD"))) return { type: "root" as const };
     return {
       type: "worktree" as const,
       baseRef: yield* resolveScheduledTaskBaseRef(workspaceRoot),
