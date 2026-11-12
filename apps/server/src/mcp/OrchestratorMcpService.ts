@@ -2053,6 +2053,25 @@ const make = Effect.gen(function* () {
   )(function* (boundToThread: boolean, projectId: ProjectId) {
     if (boundToThread) return { type: "root" as const };
     const { workspaceRoot } = yield* requireProject(projectId);
+    // Only a definite "not a repository" picks root; the task keeps it after Git recovers.
+    const insideWorkTree = yield* gitDriver
+      .execute({
+        operation: "OrchestratorMcpService.scheduledTaskWorkspaceStrategy",
+        cwd: workspaceRoot,
+        args: ["rev-parse", "--is-inside-work-tree"],
+        allowNonZeroExit: true,
+        timeoutMs: 5_000,
+      })
+      .pipe(
+        Effect.map((result) => result.exitCode === 0 && result.stdout.trim() === "true"),
+        Effect.mapError((error) =>
+          failure(
+            "orchestration_error",
+            `Unable to check whether ${workspaceRoot} is a Git repository: ${error.message}`,
+          ),
+        ),
+      );
+    if (!insideWorkTree) return { type: "root" as const };
     return {
       type: "worktree" as const,
       baseRef: yield* resolveScheduledTaskBaseRef(workspaceRoot),
