@@ -118,12 +118,15 @@ const createFixtureSource = Effect.fn("createMigrateDevDbFixtureSource")(functio
           created_at, updated_at, last_run_status, run_count)
         VALUES ('task-1', 'Nightly', 'Run it', 1, '{}', 'project-kept', '{}', '{}',
           'full-access', 'default', 'user', 'user', '2026-08-01', '2026-08-01', 'never', 0)`;
-      yield* sql`INSERT INTO scheduled_task_webhook_replay_keys
-        (task_id, replay_key, delivery_id, expires_at)
-        VALUES ('task-1', 'replay-1', 'delivery-1', 1900000000000)`;
-      yield* sql`INSERT INTO scheduled_task_webhook_pending
-        (delivery_id, task_id, coalesce_key, due_at, task_json, request_json, delivery_ids_json)
-        VALUES ('delivery-1', 'task-1', 'key-1', 1900000000000, '{}', '{}', '[]')`;
+      // Par3 creates the webhook tables in migration 69, after seeds that stop at 67.
+      if (toMigrationInclusive === undefined || toMigrationInclusive >= 69) {
+        yield* sql`INSERT INTO scheduled_task_webhook_replay_keys
+          (task_id, replay_key, delivery_id, expires_at)
+          VALUES ('task-1', 'replay-1', 'delivery-1', 1900000000000)`;
+        yield* sql`INSERT INTO scheduled_task_webhook_pending
+          (delivery_id, task_id, coalesce_key, due_at, task_json, request_json, delivery_ids_json)
+          VALUES ('delivery-1', 'task-1', 'key-1', 1900000000000, '{}', '{}', '[]')`;
+      }
       yield* sql`INSERT INTO auth_sessions (session_id, subject, scopes, method, issued_at, expires_at)
         VALUES ('session-1', 'user', '[]', 'pairing', '2026-08-01', '2027-08-01')`;
       if (toMigrationInclusive === undefined) yield* insertPeerLink(sql);

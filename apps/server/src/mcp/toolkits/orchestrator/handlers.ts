@@ -115,6 +115,7 @@ const handlers = {
         title,
         schedule,
         enabled,
+        freshSession,
         bindToCurrentThread,
         fallbackModelSelection,
       }) =>
@@ -128,6 +129,7 @@ const handlers = {
             title,
             schedule,
             enabled,
+            freshSession,
             bindToCurrentThread,
             fallbackModelSelection,
           });

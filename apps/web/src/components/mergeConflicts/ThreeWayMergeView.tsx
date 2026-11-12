@@ -6,8 +6,8 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   GitCompareIcon,
-  SparklesIcon,
-  WandSparklesIcon,
+  CheckCheckIcon,
+  ListChecksIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 
@@ -336,7 +336,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
         </span>
         <Menu>
           <MenuTrigger render={<Button size="xs" variant="outline" disabled={busy} />}>
-            <WandSparklesIcon />
+            <CheckCheckIcon />
             Apply non-conflicting
           </MenuTrigger>
           <MenuPopup align="end">
@@ -369,7 +369,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
           disabled={busy || summary.conflicts === 0}
           onClick={() => withContext((context) => planResolveSimple(timeline.model, context))}
         >
-          <SparklesIcon />
+          <ListChecksIcon />
           Resolve simple conflicts
         </Button>
         {file.base === null ? null : (

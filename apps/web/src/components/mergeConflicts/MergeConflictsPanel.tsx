@@ -11,7 +11,7 @@ import type {
   ResolvedKeybindingsConfig,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { SparklesIcon } from "lucide-react";
+import { BotIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { useProjects, useThreadShells } from "~/state/entities";
@@ -352,7 +352,7 @@ function RepositorySection(props: {
             disabled={disabled || conflictState.conflictCount === 0}
             onClick={() => void askAgent()}
           >
-            <SparklesIcon aria-hidden />
+            <BotIcon aria-hidden />
             Ask agent
           </Button>
         ) : null}
