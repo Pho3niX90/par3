@@ -35,6 +35,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import { ChildProcessSpawner } from "effect/process";
 import * as TestClock from "effect/testing/TestClock";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -3004,7 +3005,18 @@ describe("OrchestratorMcpService provider resolution", () => {
           ),
         ),
       );
+    const workTreeCheck =
+      (exitCode: number, stdout: string): GitVcsDriver.GitVcsDriver["Service"]["execute"] =>
+      () =>
+        Effect.succeed({
+          exitCode: ChildProcessSpawner.ExitCode(exitCode),
+          stdout,
+          stderr: "",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
     const masterRepository: Partial<GitVcsDriver.GitVcsDriver["Service"]> = {
+      execute: workTreeCheck(0, "true\n"),
       resolvePrimaryRemoteName: () => Effect.succeed("origin"),
       resolveDefaultBranchName: (cwd, remoteName) =>
         Effect.succeed(cwd === workspaceRoot && remoteName === "origin" ? "master" : null),
@@ -3022,6 +3034,47 @@ describe("OrchestratorMcpService provider resolution", () => {
         assert.deepEqual(yield* Ref.get(saved), [
           { type: "worktree", baseRef: "origin/master", startFromOrigin: true },
         ]);
+      }),
+    );
+
+    it.effect("runs in the project folder when it is not a Git repository", () =>
+      Effect.gen(function* () {
+        const saved = yield* Ref.make<ReadonlyArray<ScheduledTask["workspaceStrategy"]>>([]);
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.provide(service({ ...masterRepository, execute: workTreeCheck(128, "") }, saved)),
+        );
+        yield* mcp.scheduleTask(client, { projectId, prompt: "Check the build", schedule });
+        assert.deepEqual(yield* Ref.get(saved), [{ type: "root" }]);
+      }),
+    );
+
+    it.effect("saves nothing when Git cannot say whether the folder is a repository", () =>
+      Effect.gen(function* () {
+        const saved = yield* Ref.make<ReadonlyArray<ScheduledTask["workspaceStrategy"]>>([]);
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.provide(
+            service(
+              {
+                ...masterRepository,
+                execute: ({ cwd }) =>
+                  Effect.fail(
+                    new GitCommandError({
+                      operation: "GitVcsDriver.test",
+                      command: "git",
+                      cwd,
+                      detail: "timed out",
+                    }),
+                  ),
+              },
+              saved,
+            ),
+          ),
+        );
+        const refused = yield* mcp
+          .scheduleTask(client, { projectId, prompt: "Check the build", schedule })
+          .pipe(Effect.flip);
+        assert.include(refused.message, "is a Git repository");
+        assert.deepEqual(yield* Ref.get(saved), []);
       }),
     );
 
@@ -3177,6 +3230,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           Effect.provide(
             service(
               {
+                execute: workTreeCheck(0, "true\n"),
                 resolvePrimaryRemoteName: (cwd) =>
                   remote === null
                     ? Effect.fail(gitFailure(cwd, "No git remote is configured."))
