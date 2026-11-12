@@ -35,6 +35,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import { ChildProcessSpawner } from "effect/process";
 import * as TestClock from "effect/testing/TestClock";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -3004,7 +3005,18 @@ describe("OrchestratorMcpService provider resolution", () => {
           ),
         ),
       );
+    const workTreeCheck =
+      (exitCode: number, stdout: string): GitVcsDriver.GitVcsDriver["Service"]["execute"] =>
+      () =>
+        Effect.succeed({
+          exitCode: ChildProcessSpawner.ExitCode(exitCode),
+          stdout,
+          stderr: "",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
     const masterRepository: Partial<GitVcsDriver.GitVcsDriver["Service"]> = {
+      execute: workTreeCheck(0, "true\n"),
       resolvePrimaryRemoteName: () => Effect.succeed("origin"),
       resolveDefaultBranchName: (cwd, remoteName) =>
         Effect.succeed(cwd === workspaceRoot && remoteName === "origin" ? "master" : null),
@@ -3029,17 +3041,28 @@ describe("OrchestratorMcpService provider resolution", () => {
       Effect.gen(function* () {
         const saved = yield* Ref.make<ReadonlyArray<ScheduledTask["workspaceStrategy"]>>([]);
         const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.provide(service({ ...masterRepository, execute: workTreeCheck(128, "") }, saved)),
+        );
+        yield* mcp.scheduleTask(client, { projectId, prompt: "Check the build", schedule });
+        assert.deepEqual(yield* Ref.get(saved), [{ type: "root" }]);
+      }),
+    );
+
+    it.effect("saves nothing when Git cannot say whether the folder is a repository", () =>
+      Effect.gen(function* () {
+        const saved = yield* Ref.make<ReadonlyArray<ScheduledTask["workspaceStrategy"]>>([]);
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
           Effect.provide(
             service(
               {
                 ...masterRepository,
-                resolveCommit: ({ cwd }) =>
+                execute: ({ cwd }) =>
                   Effect.fail(
                     new GitCommandError({
                       operation: "GitVcsDriver.test",
                       command: "git",
                       cwd,
-                      detail: "not a git repository",
+                      detail: "timed out",
                     }),
                   ),
               },
@@ -3047,8 +3070,11 @@ describe("OrchestratorMcpService provider resolution", () => {
             ),
           ),
         );
-        yield* mcp.scheduleTask(client, { projectId, prompt: "Check the build", schedule });
-        assert.deepEqual(yield* Ref.get(saved), [{ type: "root" }]);
+        const refused = yield* mcp
+          .scheduleTask(client, { projectId, prompt: "Check the build", schedule })
+          .pipe(Effect.flip);
+        assert.include(refused.message, "is a Git repository");
+        assert.deepEqual(yield* Ref.get(saved), []);
       }),
     );
 
@@ -3204,13 +3230,14 @@ describe("OrchestratorMcpService provider resolution", () => {
           Effect.provide(
             service(
               {
+                execute: workTreeCheck(0, "true\n"),
                 resolvePrimaryRemoteName: (cwd) =>
                   remote === null
                     ? Effect.fail(gitFailure(cwd, "No git remote is configured."))
                     : Effect.succeed(remote),
                 resolveDefaultBranchName: () => Effect.succeed(remoteDefault),
                 resolveCommit: ({ cwd, revision }) =>
-                  revision === "HEAD" || refs.includes(revision)
+                  refs.includes(revision)
                     ? Effect.succeed({ commitSha: "abc123" })
                     : Effect.fail(gitFailure(cwd, "Needed a single revision")),
               },
