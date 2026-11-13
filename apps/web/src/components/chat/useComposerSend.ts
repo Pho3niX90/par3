@@ -80,6 +80,7 @@ import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
 import { recordPromptSent } from "../GitHubStarPrompt";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
@@ -253,6 +254,7 @@ interface ComposerSendInput {
   readonly clearUsageLimitsFor: UsageLimitsPanel["clearFor"];
   readonly needsLoadBalancing: boolean;
   readonly loadBalancing: DraftEnvironmentRouting["loadBalancing"];
+  readonly refreshBeforeSend: DraftEnvironmentRouting["refreshBeforeSend"];
   readonly readPendingEnvironmentChange: DraftEnvironmentRouting["readPendingEnvironmentChange"];
   readonly pendingApprovals: PendingThreadRequests["pendingApprovals"];
   readonly respondingRequestIds: PendingThreadRequests["respondingRequestIds"];
@@ -357,6 +359,7 @@ export function useComposerSend(input: ComposerSendInput) {
     clearUsageLimitsFor,
     needsLoadBalancing,
     loadBalancing,
+    refreshBeforeSend,
     readPendingEnvironmentChange,
     pendingApprovals,
     respondingRequestIds,
@@ -603,15 +606,27 @@ export function useComposerSend(input: ComposerSendInput) {
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
       !activeThread ||
-      (isSendBusy && !sendQueuesBehindSetup) ||
       isRevertingCheckpoint ||
       !clientSettingsHydrated ||
       threadDetailLoading ||
       readPendingEnvironmentChange() !== null ||
-      sendInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
     ) {
       notifyDirectAnnotationAttached();
+      return;
+    }
+    if ((isSendBusy && !sendQueuesBehindSetup) || sendInFlightRef.current) {
+      if (directAnnotation) {
+        notifyDirectAnnotationAttached();
+      } else {
+        toastManager.add(
+          stackedThreadToast({
+            type: "info",
+            title: "Still sending your previous message.",
+            description: "Send again once it goes through or fails.",
+          }),
+        );
+      }
       return;
     }
     if (needsLoadBalancing) {
@@ -1694,17 +1709,41 @@ export function useComposerSend(input: ComposerSendInput) {
         );
         clearBackgroundDraftSubmissionByRef(scopeThreadRef(environmentId, threadIdForSend));
       }
+      // Only an acknowledged send replaces its optimistic row, so a failed one leaves here.
+      setOptimisticUserMessages((existing) => {
+        const next = existing.filter((message) => message.id !== messageIdForSend);
+        return next.length === existing.length ? existing : next;
+      });
+      // A restored draft clones its images, so the sent copies are no longer used.
+      optimisticBlobPreviews.release(optimisticMessage);
       if (
-        !composerDraftHasUserContent(
+        composerDraftHasUserContent(
           useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
         )
       ) {
-        setOptimisticUserMessages((existing) => {
-          const next = existing.filter((message) => message.id !== messageIdForSend);
-          return next.length === existing.length ? existing : next;
-        });
-        // The restored draft clones its images, so the sent copies are no longer used.
-        optimisticBlobPreviews.release(optimisticMessage);
+        // A draft typed meanwhile keeps the composer, so the failed text stays reachable here.
+        const failedText = sendSnapshot.draftText;
+        if (failedText.trim().length > 0) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: isAtomCommandInterrupted(failure)
+                ? "Message may not have been sent"
+                : "Message not sent",
+              description: "Your new draft was kept. Copy the failed message to send it again.",
+              // The toast holds the only copy of the failed text, so it stays until dismissed.
+              timeout: 0,
+              data: { hideCopyButton: true },
+              actionProps: {
+                children: "Copy message",
+                onClick: () => {
+                  void writeTextToClipboard(failedText, "failed message").catch(() => undefined);
+                },
+              },
+            }),
+          );
+        }
+      } else {
         const retryComposerImages = restoreComposerDraft(composerDraftTarget, sendSnapshot);
         if (currentRouteThreadKeyRef.current === routeThreadKey) {
           promptRef.current = sendSnapshot.draftText;
@@ -1790,8 +1829,23 @@ export function useComposerSend(input: ComposerSendInput) {
     );
   };
 
+  const onSendLatest = useStableCallback(onSend);
+  const onSendWithRouting = async (...args: Parameters<typeof onSend>) => {
+    args[0]?.preventDefault();
+    const refresh =
+      args[3] || sendInFlightRef.current || readPendingEnvironmentChange() !== null
+        ? null
+        : refreshBeforeSend();
+    if (refresh === null) return onSend(...args);
+    sendInFlightRef.current = true;
+    const ready = await refresh.finally(() => {
+      sendInFlightRef.current = false;
+    });
+    if (ready) return onSendLatest(...args);
+  };
+
   return {
-    onSend,
+    onSend: onSendWithRouting,
     onImplementPlanInNewThread: implementActivePlanInNewThread,
     implementTimelinePlan,
     submitPlanAction: submitPlanActionStable,
