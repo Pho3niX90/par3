@@ -1230,6 +1230,7 @@ export function PullRequestDetailPanel({
         state: detail.state,
         isDraft: detail.isDraft,
         finding,
+        inThisThread: attachTarget !== null,
       }),
     );
   };
@@ -1250,6 +1251,7 @@ export function PullRequestDetailPanel({
         comments: detail.comments,
         checks: checksStale ? [] : detail.checks,
         commentsTruncated: detail.commentsTruncated,
+        inThisThread: attachTarget !== null,
       }),
     );
   };
@@ -1262,6 +1264,7 @@ export function PullRequestDetailPanel({
         url: handoffSummary.url,
         headBranch: handoffSummary.headBranch,
         baseBranch: handoffSummary.baseBranch,
+        inThisThread: attachTarget !== null,
       }),
     });
   };
