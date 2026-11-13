@@ -415,3 +415,11 @@ describe("describeThreadCost", () => {
     ).toEqual(["This thread has not used a provider yet."]);
   });
 });
+
+describe("token formatting", () => {
+  it("moves to the next unit when rounding reaches it", () => {
+    expect(formatTokens(999_999)).toBe("1M");
+    expect(formatTokens(999_999_999)).toBe("1B");
+    expect(formatTokens(-999_999)).toBe("-1M");
+  });
+});
