@@ -416,8 +416,16 @@ the environment by thread ID. A deleted thread returns `thread_not_found`. The
 default `messages` view returns user messages, assistant
 messages, and proposed plans. The `activity` view also returns summarized tool,
 reasoning, checkpoint, handoff, and runtime-request items. Large item text is
-bounded and reports whether it was truncated. `afterPosition` and
-`nextPosition` support incremental reads.
+bounded and reports whether it was truncated. An agent in a T3 thread that
+reads without a cursor gets the newest items, and `beforePosition=earlierPosition`
+reads older ones. Client callers (the CLI, linked environments, outside MCP
+clients) start at the oldest item instead, because the CLI and linked
+environments on older versions read that way and follow only `hasMore`.
+`afterPosition=-1` starts any read at the oldest item, and
+`afterPosition=nextPosition` reads newer items. The server stops adding items once the result reaches about 30,000 characters and
+reports the rest through `earlierPosition` or `hasMore`. Claude Code saves MCP
+results over its token limit to a file instead of showing them, so a read has
+to fit whatever `limit` an agent asks for.
 
 `t3_thread_cost` estimates what a thread used. It rolls up `subagent` children,
 and separates sub-agents a provider runs inside a conversation
@@ -452,6 +460,12 @@ List and read results report `snoozed` and `snoozedUntil`, and
 client's `effectiveSnoozed`, so agents and the sidebar agree: a snoozed thread
 wakes early only when it has a pending request or fails after snoozing. Completed
 runs, background wakes, and delegated completions keep it snoozed.
+
+They also report `blockedOnThreadWait` and `pendingBackgroundTasks`, the shell
+fields behind the sidebar's Waiting label, so an agent can see what a thread
+still waits on after its run completed. A subagent or `background_task` holds
+the thread. A command or monitor holds it only with `awaited: true`, since agents
+often leave a dev server running.
 
 ### `t3_thread_update`
 

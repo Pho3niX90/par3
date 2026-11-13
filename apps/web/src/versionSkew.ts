@@ -99,11 +99,15 @@ export function manualServerUpdateCommand(
   targetVersion: string,
   installation?: ServerInstallation,
 ): string {
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
   if (installation?.kind === "npm-global") {
-    const prefix = `'${installation.prefix.replaceAll("'", "'\\''")}'`;
     // Installing the other package name into the same prefix collides on the `par3` bin.
     const packageName = installation.packageName ?? "@paritylabs/par3";
-    return `npm install --global --prefix ${prefix} ${packageName}@${targetVersion}`;
+    return `npm install --global --prefix ${quote(installation.prefix)} ${packageName}@${targetVersion}`;
+  }
+  if (installation?.kind === "t3-launcher") {
+    // An inherited T3CODE_HOME would otherwise send the update to a home the launcher is not in.
+    return `${quote(installation.launcher)} update --base-dir ${quote(installation.baseDir)} ${targetVersion}`;
   }
   const runner =
     installation?.kind === "pnpm-dlx" ? "pnpm dlx" : installation?.kind === "bunx" ? "bunx" : "npx";

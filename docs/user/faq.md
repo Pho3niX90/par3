@@ -4,7 +4,7 @@
 
 No. A harness is what turns an LLM into an agent: it gives the model tools, a way to call them, runs them, and hands the results back. Claude Code is an interface (the TUI, the Code tab in the desktop app) plus a harness underneath (the Anthropic Agent SDK). Codex is the same split: the app plus the Codex App Server. Par3 uses those harnesses. It is not a harness, and it does not work without one.
 
-Bring your own: Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, GitHub Copilot, Kiro, Pi, or Muse Code. [Provider setup](./install.md#providers)
+Bring your own: Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, GitHub Copilot, Kiro, Pi, Muse Code, or fx. [Provider setup](./install.md#providers)
 
 ## Why use Par3 instead of Claude Code or the Codex app?
 
@@ -25,7 +25,7 @@ Par3 is free and open source (MIT). You bring your own subscription and keep pay
 
 ## Why is my Claude 5-hour limit draining so fast?
 
-Par3 drives Claude through Anthropic's Agent SDK. Agent SDK usage has been reported to drain the 5-hour limit faster than using Claude Code directly. Weekly limits are not affected.
+It shouldn't anymore. Par3 drives Claude through Anthropic's Agent SDK, and Anthropic's 5-hour meter used to charge Agent SDK usage about 1.7x more than using Claude Code directly. Weekly limits were never affected. Claude in Par3 now drains your 5-hour limit at the same rate as Claude Code. Still seeing it? [Update Par3](./updating.md) on the machine that runs your agents.
 
 ## How do I use Par3 remotely?
 
