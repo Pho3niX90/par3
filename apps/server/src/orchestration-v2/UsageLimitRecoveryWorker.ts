@@ -23,7 +23,7 @@ const hasAvailableCapacity = (limits: ServerProviderUsageLimits) =>
   limits.windows.length > 0 &&
   limits.windows.every((window) => window.usedPercent < 100);
 
-const MAX_OVERDUE_ARM_MS = 24 * 60 * 60 * 1000;
+export const MAX_OVERDUE_ARM_MS = 24 * 60 * 60 * 1000;
 
 export function limitRecoveryCommand(
   thread: ProjectionStore.ProjectionLimitRecoveryCandidate,
