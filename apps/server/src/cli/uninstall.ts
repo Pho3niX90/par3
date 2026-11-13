@@ -16,10 +16,11 @@ import {
   generatedWindowsShimTarget,
   isVersionExecutable,
   pinnedRuntimeVersionsDir,
+  resolveLauncherPath,
 } from "../cloud/pinnedRuntime.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 import * as CliService from "./service.ts";
-import { findWindowsShim, launcherAliasPath, resolveLauncherPath } from "./update.ts";
+import { findWindowsShim, launcherAliasPath } from "./update.ts";
 
 export class CliUninstallError extends Schema.TaggedError<CliUninstallError>()(
   "CliUninstallError",
@@ -32,6 +33,7 @@ export class CliUninstallError extends Schema.TaggedError<CliUninstallError>()(
 
 export interface UninstallPlan {
   readonly service: boolean;
+  readonly otherHomeService: string | undefined;
   readonly versionsDir: string;
   /** The `par3` launchers (symlinks or `.cmd` shims) that point into this home's runtime tree. */
   readonly launchers: ReadonlyArray<string>;
@@ -167,9 +169,11 @@ const planUninstall = Effect.fn("cli.uninstall.plan")(function* (input: {
   const path = yield* Path.Path;
   const service = yield* BootService.BootService;
   const status = yield* service.status;
+  const installedBaseDir =
+    status.supported && status.installed ? status.installedBaseDir : undefined;
   const servesThisHome =
-    status.installedBaseDir !== undefined &&
-    path.resolve(status.installedBaseDir) === path.resolve(input.baseDir);
+    installedBaseDir !== undefined &&
+    path.resolve(installedBaseDir) === path.resolve(input.baseDir);
   const versionsDir = pinnedRuntimeVersionsDir(path, input.baseDir);
   const runtimeDir = path.dirname(versionsDir);
   const launchedAs = (yield* HostProcess.IsExecutable) ? yield* resolveLauncherPath : undefined;
@@ -186,7 +190,8 @@ const planUninstall = Effect.fn("cli.uninstall.plan")(function* (input: {
     if (alias !== undefined && !launchers.includes(alias)) launcherAliases.push(alias);
   }
   const plan: UninstallPlan = {
-    service: status.supported && status.installed && servesThisHome,
+    service: servesThisHome,
+    otherHomeService: servesThisHome ? undefined : installedBaseDir,
     versionsDir,
     launchers,
     launcherAliases,
@@ -222,6 +227,13 @@ export const uninstallCommand = Command.make("uninstall", {
   ),
 );
 
+const logOtherHomeService = (plan: UninstallPlan) =>
+  plan.otherHomeService === undefined
+    ? Effect.void
+    : Console.log(
+        `The Par3 service serves ${plan.otherHomeService}, so it was not removed. Pass \`${BootService.formatBootServiceBaseDirOption(plan.otherHomeService)}\` to remove it.`,
+      );
+
 const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
   readonly baseDir: string;
   readonly assumeYes: boolean;
@@ -239,6 +251,7 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
         "  This Par3 runs from a Node script, so it was installed by npm or built from source. Remove it the same way (`npm uninstall -g par3-cli` or `npm uninstall -g @paritylabs/par3`, whichever you installed, or delete the checkout).",
       );
     }
+    yield* logOtherHomeService(plan);
     return;
   }
 
@@ -324,4 +337,5 @@ const runUninstall = Effect.fn("cli.uninstall.run")(function* (input: {
   }
   yield* Console.log("");
   yield* Console.log("Par3 is uninstalled. Thanks for trying it.");
+  yield* logOtherHomeService(plan);
 });

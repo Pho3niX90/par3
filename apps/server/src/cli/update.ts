@@ -27,11 +27,14 @@ import {
   launcherOwnsVersionsDir,
   pinnedRuntimeCommand,
   isUnpublishedRelease,
+  LAUNCHER_ALIAS,
+  LAUNCHER_NAME,
   PinnedRuntimeInstallError,
   pinnedRuntimePaths,
   pinnedRuntimeVersionsDir,
   prunePinnedRuntimes,
   recordPinnedRuntimeLauncher,
+  resolveLauncherPath,
   windowsShimTarget,
 } from "../cloud/pinnedRuntime.ts";
 import { compareExactServiceVersions, isExactServiceVersion } from "../cloud/serviceProtocol.ts";
@@ -97,10 +100,6 @@ export const resolveNewestVersion = Effect.fn("cli.update.resolve_newest")(funct
   }
   return yield* new CliUpdateError({ reason: `No published ${channel} release was found.` });
 });
-
-/** The command the install scripts put on PATH, and the short alias that runs it. */
-const LAUNCHER_NAME = "par3";
-const LAUNCHER_ALIAS = "p3";
 
 /** The version an update mirror's feed file for this platform offers on `channel`. */
 export const resolveMirrorVersion = Effect.fn("cli.update.resolve_mirror")(function* (
@@ -212,36 +211,6 @@ export const repointLauncher = Effect.fn("cli.update.repoint_launcher")(function
     ),
   );
   return Option.some(input.launchedAs);
-});
-
-/** Node preserves argv0's spelling; resolve bare names on PATH to find the launcher symlink. */
-export const resolveLauncherPath = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const fs = yield* FileSystem.FileSystem;
-  const invokedAs = yield* HostProcess.InvokedAs;
-  const cwd = yield* HostProcess.WorkingDirectory;
-  const environment = yield* HostProcess.Environment;
-  const platform = yield* HostProcess.Platform;
-  const throughAlias = Effect.fn("update.throughAlias")(function* (launcher: string) {
-    if (path.basename(launcher) !== LAUNCHER_ALIAS) return launcher;
-    const target = yield* fs.readLink(launcher).pipe(Effect.option);
-    const primary = path.join(path.dirname(launcher), LAUNCHER_NAME);
-    return Option.isSome(target) && path.resolve(path.dirname(launcher), target.value) === primary
-      ? primary
-      : launcher;
-  });
-  if (invokedAs.includes("/") || invokedAs.includes("\\")) {
-    return yield* throughAlias(path.resolve(cwd, invokedAs));
-  }
-  const delimiter = platform === "win32" ? ";" : ":";
-  for (const directory of (environment["PATH"] ?? "").split(delimiter)) {
-    if (directory.length === 0) continue;
-    const candidate = path.join(directory, invokedAs);
-    if (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => false))) {
-      return yield* throughAlias(candidate);
-    }
-  }
-  return undefined;
 });
 
 /** Windows executables see their own path, so find the installer shim by matching t3.cmd targets on PATH. */

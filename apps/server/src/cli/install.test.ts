@@ -173,7 +173,7 @@ it.layer(NodeServices.layer)("par3 install", (it) => {
         ),
       ).pipe(Effect.flip);
       assert.include(unrunnable.message, "has % or non-ASCII characters");
-    }).pipe(Effect.scoped),
+    }),
   );
 
   it.effect(
@@ -280,7 +280,7 @@ it.layer(NodeServices.layer)("par3 install", (it) => {
         assert.isTrue(yield* Fiber.join(unanswered));
         assert.isTrue(yield* fs.exists(declined));
         assert.isFalse(yield* fs.exists(link));
-      }).pipe(Effect.scoped),
+      }),
   );
 
   it.effect("reads the terminal's foreground group from /proc and ps", () =>

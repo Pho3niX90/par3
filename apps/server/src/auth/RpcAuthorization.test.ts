@@ -159,7 +159,7 @@ describe("RPC scope middleware", () => {
         requiredPermission: missing,
       });
       expect(handled).toEqual([]);
-    }).pipe(Effect.scoped),
+    }),
   );
 });
 
@@ -215,7 +215,7 @@ it.effect.each([WS_METHODS.subscribeVcsBranch, WS_METHODS.subscribeVcsStatus] as
           : granted[method]({ cwd: "/repo" }).pipe(Stream.drain),
       );
       expect(handled).toBe(1);
-    }).pipe(Effect.scoped),
+    }),
 );
 
 describe("settings mutation authorization", () => {
@@ -284,7 +284,7 @@ describe("settings mutation authorization", () => {
         }).pipe(Effect.flip),
       ).toMatchObject({ requiredPermission: AuthSettingsWriteScope });
       expect(handled).toBe(2);
-    }).pipe(Effect.scoped),
+    }),
   );
 
   it.effect("does not let a settings grant create or remove providers or secret providers", () =>
@@ -315,7 +315,7 @@ describe("settings mutation authorization", () => {
         }).pipe(Effect.flip),
       ).toMatchObject({ requiredPermission: AuthProvidersManageScope });
       expect(handled).toBe(false);
-    }).pipe(Effect.scoped),
+    }),
   );
 });
 
@@ -353,7 +353,7 @@ it.effect("requires task permission before attaching a prepared worktree to a th
       }).pipe(Effect.flip),
     ).toMatchObject({ requiredPermission: AuthOrchestrationOperateScope });
     expect(handled).toBe(false);
-  }).pipe(Effect.scoped),
+  }),
 );
 
 describe("thread context authorization", () => {
@@ -405,7 +405,7 @@ describe("thread context authorization", () => {
           reader[WS_METHODS.gitRunStackedAction]({ ...withThread, actionId: "allowed" }),
         );
         expect(handled.at(-1)).toBe("allowed");
-      }).pipe(Effect.scoped),
+      }),
   );
 });
 
@@ -453,7 +453,7 @@ it.effect("separates host file URLs from readable attachment URLs", () =>
       });
     }
     expect(handled).toBe(2);
-  }).pipe(Effect.scoped),
+  }),
 );
 
 it.effect("denies manual cleanup before the handler without settings permission", () =>
@@ -494,5 +494,5 @@ it.effect("denies manual cleanup before the handler without settings permission"
       requiredPermission: AuthSettingsWriteScope,
     });
     expect(handled).toBe(false);
-  }).pipe(Effect.scoped),
+  }),
 );
