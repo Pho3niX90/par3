@@ -67,6 +67,13 @@ the instance settings. Custom models do not unlock models excluded by your plan.
 - Subagents that Copilot starts with its `task` tool appear as child sessions in the thread.
 - Par3's tools and the MCP servers configured for the thread are available to Copilot.
 
+## Skills
+
+Type `$` to pick a skill Copilot loads for the thread's folder: `.github/skills`, `.agents/skills`
+and `.claude/skills` in the project and its parent folders, then `~/.copilot/skills` and
+`~/.agents/skills`. Par3 hands it to Copilot as `/name`. Skills from Copilot plugins are not listed;
+type `/name` to use one.
+
 ## Commit messages, branch names, and titles
 
 GitHub Copilot can write commit messages, branch names, pull request text, and thread titles. Par3

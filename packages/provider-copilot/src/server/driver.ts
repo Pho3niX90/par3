@@ -47,6 +47,7 @@ import {
   type ProviderSnapshotSettings,
 } from "@t3tools/provider-core/server/snapshotSettings";
 import { copilotLaunchEnvironment } from "./enterpriseHost.ts";
+import { discoverCopilotSkills } from "./skills.ts";
 import { copilotUsageReader } from "./usage.ts";
 
 const decodeCopilotSettings = Schema.decodeSync(CopilotSettings);
@@ -276,6 +277,16 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv, Pa
       accentColor,
       enabled,
       snapshot,
+      snapshotForCwd: (cwd) =>
+        effectiveConfig.enabled
+          ? Effect.all([
+              snapshot.getSnapshot,
+              discoverCopilotSkills(cwd, launchEnv).pipe(
+                Effect.provideService(FileSystem.FileSystem, fileSystem),
+                Effect.provideService(Path.Path, path),
+              ),
+            ]).pipe(Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills })))
+          : snapshot.getSnapshot,
       orchestrationAdapter,
       textGeneration,
     };

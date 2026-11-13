@@ -46,6 +46,7 @@ import {
 } from "@t3tools/provider-acp/server/adapter";
 import { resolveSelfInvocation, type SelfInvocation } from "@t3tools/shared/nodeRuntime";
 import { copilotLaunchEnvironment } from "./enterpriseHost.ts";
+import { discoverCopilotSkills, rewriteCopilotSkillMentions } from "./skills.ts";
 
 const COPILOT_PROVIDER = ProviderDriverKind.make("copilot");
 
@@ -101,7 +102,10 @@ interface CopilotAdapterV2Options {
   readonly assertComplete?: Effect.Effect<void, EffectAcpErrors.AcpError>;
 }
 
-function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapterV2Flavor {
+function makeCopilotAcpAdapterFlavor(
+  options: CopilotAdapterV2Options,
+  services: { readonly fileSystem: FileSystem.FileSystem; readonly path: Path.Path },
+): AcpAdapterV2Flavor {
   const routing = makeCopilotSubagentRouting();
   // An empty advertisement means the session offered no model list, not that there are no models.
   const advertiseModels = (models: ReadonlyArray<CopilotAdvertisedModel>): Effect.Effect<void> =>
@@ -121,6 +125,15 @@ function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapt
     ...makeCopilotNoticeFilter(),
     extractSubagentUpdate: extractCopilotSubagentUpdate,
     restartRuntimeAfterPromptError: isCopilotLostSessionError,
+    // Skills are looked up again only for a prompt that names one, so other `$` text stays.
+    rewriteUserText: (text, turnInput) =>
+      /\p{Sc}/u.test(text)
+        ? discoverCopilotSkills(turnInput.runtimePolicy.cwd ?? undefined, options.environment).pipe(
+            Effect.map((skills) => rewriteCopilotSkillMentions(text, skills)),
+            Effect.provideService(FileSystem.FileSystem, services.fileSystem),
+            Effect.provideService(Path.Path, services.path),
+          )
+        : Effect.succeed(text),
     approvalOptions: copilotApprovalOptions,
     resolveModelId: (selection) => resolveCopilotAcpBaseModelId(selection.model),
     applyModelSelection: ({ runtime, startResult, modelSelection }) =>
@@ -150,9 +163,11 @@ function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapt
 export const makeCopilotAdapterV2 = Effect.fn("makeCopilotAdapterV2")(function* (
   options: CopilotAdapterV2Options,
 ) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   return yield* makeAcpAdapterV2({
     instanceId: options.instanceId,
-    flavor: makeCopilotAcpAdapterFlavor(options),
+    flavor: makeCopilotAcpAdapterFlavor(options, { fileSystem, path }),
     selfInvocation: options.selfInvocation,
     ...(options.nativeLogging === undefined ? {} : { nativeLogging: options.nativeLogging }),
     ...(options.continuationRequests === undefined
