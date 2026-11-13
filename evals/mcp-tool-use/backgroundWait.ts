@@ -40,6 +40,7 @@ import * as PeerLinks from "../../apps/server/src/peer/PeerLinks.ts";
 import * as RemoteDelegation from "../../apps/server/src/peer/RemoteDelegation.ts";
 import * as SqlitePersistence from "../../apps/server/src/persistence/Sqlite.ts";
 import * as ServerSettings from "../../apps/server/src/serverSettings.ts";
+import * as ThreadCostService from "../../apps/server/src/usage/ThreadCostService.ts";
 
 const threadId = ThreadId.make("mcp-tool-use-eval");
 const providerThreadId = ProviderThreadId.make("provider-thread:mcp-tool-use-eval");
@@ -106,6 +107,7 @@ export const makeBackgroundWait = Effect.fn("evaluateMcpToolUse.makeBackgroundWa
       Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
       Layer.provide(Layer.mock(PeerLinks.PeerLinks)({})),
       Layer.provide(Layer.mock(RemoteDelegation.RemoteDelegation)({})),
+      Layer.provide(Layer.mock(ThreadCostService.ThreadCostService)({})),
     ),
   );
   type Entry = Parameters<McpServer.McpServer["Service"]["addTool"]>[0];
