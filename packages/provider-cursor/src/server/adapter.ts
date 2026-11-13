@@ -28,6 +28,7 @@ import {
   type OrchestrationV2TurnItem,
   type ProviderInstanceId,
   type ServerProviderModel,
+  type ServerProviderSkill,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -36,6 +37,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -48,11 +50,13 @@ import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import { CursorTransportFailure } from "./transportFailure.ts";
 import { cursorContextWindowTokens, cursorSdkModelSelection } from "./sdkModel.ts";
 import {
+  appendCursorInvokedSkills,
+  cursorSlashSkillNames,
   discoverCursorSkills,
-  type CursorSkillTarget,
   hasCursorSkillMention,
   rewriteCursorSkillMentions,
 } from "./skills.ts";
+import { cursorWorkspaceMcpServers } from "./workspaceMcpServers.ts";
 import {
   t3PromptWithOrchestrationInstructions,
   type T3PromptInstructionState,
@@ -980,6 +984,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
   options: CursorAdapterV2Options,
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const path = yield* Path.Path;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const runner = yield* CursorAgentSdk.CursorAgentSdkRunner;
@@ -2242,6 +2247,22 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           }
         };
 
+        const resolveWorkspaceMcpServers = (cwd: string | null) =>
+          cwd === null
+            ? Effect.succeed({})
+            : cursorWorkspaceMcpServers(cwd, adapterOptions.environment).pipe(
+                Effect.provideService(FileSystem.FileSystem, fileSystem),
+                Effect.provideService(Path.Path, path),
+                Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+                // Unreadable Cursor state leaves startup to the SDK rather than failing the turn.
+                Effect.catch((cause) =>
+                  Effect.logWarning("orchestration-v2.cursor-workspace-mcp-unresolved", {
+                    cwd,
+                    cause,
+                  }).pipe(Effect.as({})),
+                ),
+              );
+
         const openAgent = Effect.fnUntraced(function* (openInput: {
           readonly operation: "create" | "resume";
           readonly threadId: ThreadId;
@@ -2309,10 +2330,13 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           return next;
         });
 
-        let cursorSkills: ReadonlyMap<string, CursorSkillTarget> | undefined;
+        let cursorSkills: ReadonlyMap<string, ServerProviderSkill> | undefined;
         const resolveCursorSkillText = Effect.fn("CursorAdapterV2.resolveCursorSkillText")(
           function* (rawText: string, cwd: string | undefined) {
-            if (hasCursorSkillMention(rawText) && cursorSkills === undefined) {
+            if (
+              cursorSkills === undefined &&
+              (hasCursorSkillMention(rawText) || cursorSlashSkillNames(rawText).size > 0)
+            ) {
               const skills = yield* discoverCursorSkills(cwd, adapterOptions.environment).pipe(
                 Effect.provideService(FileSystem.FileSystem, fileSystem),
                 Effect.provideService(Path.Path, path),
@@ -2320,12 +2344,22 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               cursorSkills = new Map(
                 skills
                   .filter((skill) => skill.enabled && skill.userInvocable !== false)
-                  .map((skill) => [skill.name, skill] as const),
+                  .map((skill) => [skill.name, skill]),
               );
             }
-            return cursorSkills === undefined
-              ? rawText
-              : rewriteCursorSkillMentions(rawText, cursorSkills);
+            if (cursorSkills === undefined) return rawText;
+            const skillsByName = cursorSkills;
+            const text = rewriteCursorSkillMentions(rawText, new Set(skillsByName.keys()));
+            const invoked = yield* Effect.forEach(cursorSlashSkillNames(text), (name) => {
+              const skill = skillsByName.get(name);
+              return skill?.userInvocationOnly === true
+                ? fileSystem.readFileString(skill.path).pipe(
+                    Effect.map((contents) => [{ name, contents }]),
+                    Effect.orElseSucceed(() => []),
+                  )
+                : Effect.succeed([]);
+            });
+            return appendCursorInvokedSkills(text, invoked.flat());
           },
         );
         const resolveUserMessage = Effect.fnUntraced(function* (
@@ -2443,7 +2477,12 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             const prompt = resolved.prompt;
             const pendingUpdates: Array<InteractionUpdate> = [];
             let context: ActiveCursorTurn | null = null;
-            // Create-time and send-time mcpServers merge with settingSources (SDK >= 1.0.39).
+            // A send-time set replaces the create-time set, so the workspace servers go only here and are
+            // read again each turn from mcp.json and mcp-disabled.json; both merge with settingSources.
+            const turnMcpServers = {
+              ...(yield* resolveWorkspaceMcpServers(turnInput.runtimePolicy.cwd)),
+              ...mcpServers,
+            };
             const sdkRun = yield* agent.session
               .send({
                 message: resolved.message,
@@ -2451,7 +2490,9 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 options: {
                   model: cursorSdkModelSelection(turnInput.modelSelection),
                   mode: turnInput.runtimePolicy.interactionMode === "plan" ? "plan" : "agent",
-                  ...(mcpServers === undefined ? {} : { mcpServers }),
+                  ...(Object.keys(turnMcpServers).length === 0
+                    ? {}
+                    : { mcpServers: turnMcpServers }),
                 },
                 onDelta: (update) => {
                   if (context === null) {
@@ -2953,6 +2994,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
 
 export type CursorAdapterV2DriverEnv =
   | CursorAgentSdk.CursorAgentSdkRunner
+  | ChildProcessSpawner.ChildProcessSpawner
   | FileSystem.FileSystem
   | Path.Path
   | IdAllocator.IdAllocatorV2

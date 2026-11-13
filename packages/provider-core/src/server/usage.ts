@@ -22,6 +22,8 @@ export interface UsageRecord {
   /** Parent session of a separately recorded native subagent. */
   readonly parentSessionId?: string;
   readonly totals: UsageTokenTotals;
+  /** The part of `totals.cacheCreationTokens` written with a 1-hour TTL. */
+  readonly cacheCreation1hTokens?: number;
   readonly reportedCostUsd: number | null;
   readonly speed: UsageSpeed;
   readonly unresolvedServiceTierTurnId?: string;
