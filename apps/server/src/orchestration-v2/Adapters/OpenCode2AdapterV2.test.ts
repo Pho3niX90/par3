@@ -4802,9 +4802,14 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         out("mcp.remove", { server, "location[directory]": WORK }),
         reply("mcp.remove", null),
       ]);
-      for (const state of [null, sidekick, sidekick, null]) {
+      for (const [index, state] of [null, sidekick, sidekick, null].entries()) {
         const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
-        yield* runtime.startTurn({ ...turnInput(thread), sidekick: state });
+        const started = yield* runtime
+          .startTurn({ ...turnInput(thread), sidekick: state })
+          .pipe(Effect.forkScoped);
+        // OpenCode before 2.2.6 loads a newly added server's tools after a debounce.
+        if (index === 0) yield* TestClock.adjust("250 millis");
+        yield* Fiber.join(started);
         assert.equal((yield* Fiber.join(terminal))?.status, "completed");
       }
     }).pipe(Effect.scoped),

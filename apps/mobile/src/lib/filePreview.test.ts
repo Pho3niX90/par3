@@ -371,6 +371,8 @@ describe("ThreadInlineFilePreview playback", () => {
     await act(async () => root?.unmount());
     root = undefined;
     vi.clearAllMocks();
+    // A cancelled link lookup skips its search, so its queued result must not reach the next case.
+    audio.query.mockReset();
     audio.refresh.mockReset();
     audio.setAudioMode.mockReset();
     audio.setActive.mockReset();
