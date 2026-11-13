@@ -21,6 +21,12 @@ const MAX_DESCRIPTION_LENGTH = 1_024;
 const MAX_SKILL_BYTES = 1_000_000;
 const MAX_DEPTH = 10;
 const MAX_DIRECTORIES = 10_000;
+// Copilot 1.0.111's own commands win over a skill of the same name; it hides `goal` and `loop` from ACP.
+const COPILOT_COMMAND_NAMES = new Set(
+  "add-dir after allow-all autopilot blame chronicle compact context cwd env every fleet goal index init list-dirs loop mcp memory model permissions plan plugin remote rename research reset-allowed-tools review rubber-duck sandbox security-review session share skills subconscious usage".split(
+    " ",
+  ),
+);
 
 interface SkillRoot {
   readonly directory: string;
@@ -142,7 +148,13 @@ export const discoverCopilotSkills = Effect.fn("discoverCopilotSkills")(function
           skillPath,
           scope,
         );
-        if (skill !== undefined && !skills.has(skill.name)) skills.set(skill.name, skill);
+        if (
+          skill !== undefined &&
+          !skills.has(skill.name) &&
+          !COPILOT_COMMAND_NAMES.has(skill.name)
+        ) {
+          skills.set(skill.name, skill);
+        }
         return;
       }
       if (depth >= MAX_DEPTH) return;

@@ -50,16 +50,16 @@ describe("discoverCopilotSkills", () => {
         skillFile("above-root"),
       );
       yield* writeSkill(
-        path.join(cwd, ".claude", "skills", "review"),
-        skillFile("review", "package review"),
+        path.join(cwd, ".claude", "skills", "triage"),
+        skillFile("triage", "package triage"),
       );
       yield* writeSkill(
-        path.join(repo, ".github", "skills", "review"),
-        skillFile("review", "repo review"),
+        path.join(repo, ".github", "skills", "triage"),
+        skillFile("triage", "repo triage"),
       );
       yield* writeSkill(
-        path.join(home, ".copilot", "skills", "review"),
-        skillFile("review", "user review"),
+        path.join(home, ".copilot", "skills", "triage"),
+        skillFile("triage", "user triage"),
       );
       yield* writeSkill(path.join(home, ".agents", "skills", "pdf"), skillFile("pdf"));
       yield* writeSkill(path.join(projectSkills, "folder"), "---\nname: renamed\n---\n");
@@ -68,6 +68,8 @@ describe("discoverCopilotSkills", () => {
       yield* writeSkill(path.join(projectSkills, "group", "nested", "inner"), skillFile("inner"));
       yield* writeSkill(path.join(projectSkills, ".hidden", "secret"), skillFile("secret"));
       yield* writeSkill(path.join(projectSkills, "plain"), "No frontmatter\n");
+      yield* writeSkill(path.join(projectSkills, "loop"), skillFile("loop"));
+      yield* writeSkill(path.join(projectSkills, "my-review"), skillFile("review"));
       yield* writeSkill(path.join(projectSkills, "wordy"), skillFile("wordy", "a".repeat(1_025)));
       yield* writeSkill(
         path.join(projectSkills, "agent-only"),
@@ -81,11 +83,11 @@ describe("discoverCopilotSkills", () => {
         { name: "nested", description: "nested skill", scope: "project" },
         { name: "pdf", description: "pdf skill", scope: "user" },
         { name: "renamed", scope: "project" },
-        { name: "review", description: "package review", scope: "project" },
+        { name: "triage", description: "package triage", scope: "project" },
         { name: "unnamed", description: "no name", scope: "project" },
       ]);
-      expect(skills.find((skill) => skill.name === "review")?.path).toBe(
-        path.join(cwd, ".claude", "skills", "review", "SKILL.md"),
+      expect(skills.find((skill) => skill.name === "triage")?.path).toBe(
+        path.join(cwd, ".claude", "skills", "triage", "SKILL.md"),
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
@@ -121,7 +123,7 @@ describe("discoverCopilotSkills", () => {
 
 describe("rewriteCopilotSkillMentions", () => {
   const skills: ReadonlyArray<ServerProviderSkill> = [
-    { name: "review", path: "/skills/review/SKILL.md", enabled: true },
+    { name: "triage", path: "/skills/triage/SKILL.md", enabled: true },
     {
       name: "agent-only",
       path: "/skills/agent-only/SKILL.md",
@@ -131,9 +133,9 @@ describe("rewriteCopilotSkillMentions", () => {
   ];
 
   it.each([
-    ["$review the diff", "/review the diff"],
-    ["first $review, then\n$review again", "first $review, then\n/review again"],
-    ["$review then $review", "/review then /review"],
+    ["$triage the diff", "/triage the diff"],
+    ["first $triage, then\n$triage again", "first $triage, then\n/triage again"],
+    ["$triage then $triage", "/triage then /triage"],
     ["costs $5, $HOME and $agent-only stay", "costs $5, $HOME and $agent-only stay"],
   ])("rewrites %j", (prompt, expected) => {
     expect(rewriteCopilotSkillMentions(prompt, skills)).toBe(expected);
