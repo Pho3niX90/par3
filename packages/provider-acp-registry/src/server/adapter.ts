@@ -11,8 +11,10 @@ import {
 import { extractDroidElicitationForm } from "./droidAcp.ts";
 import {
   copilotClientCapabilitiesMeta,
+  copilotSessionRuntimeOptions,
   extractCopilotSubagentUpdate,
   isCopilotLostSessionError,
+  makeCopilotNoticeFilter,
   makeCopilotSubagentRouting,
 } from "@t3tools/provider-acp/server/copilotAcp";
 import { defaultInstanceIdForDriver, ProviderDriverKind } from "@t3tools/contracts";
@@ -133,6 +135,7 @@ export function acpRegistryPromptFailure(agentId: string, cause: unknown) {
 function makeAcpRegistryRuntime(
   options: AcpRegistryAdapterV2Options,
   catalog: AcpRegistrySupport.AcpRegistryCatalog["Service"],
+  agentOptions?: typeof copilotSessionRuntimeOptions,
 ) {
   return (
     input: AcpAdapterV2RuntimeInput,
@@ -157,6 +160,7 @@ function makeAcpRegistryRuntime(
       const context = yield* Layer.build(
         AcpSessionRuntime.layer({
           ...runtimeInput,
+          ...agentOptions,
           spawn:
             processEnvironment === undefined
               ? resolved.spawn
@@ -256,10 +260,17 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
           deferMcpTools: true,
           registerExtensions: copilotRouting.registerExtensions,
           normalizeSessionUpdate: copilotRouting.normalizeSessionUpdate,
+          ...makeCopilotNoticeFilter(),
           extractSubagentUpdate: extractCopilotSubagentUpdate,
           restartRuntimeAfterPromptError: isCopilotLostSessionError,
         }),
-    makeRuntime: options.makeRuntime ?? makeAcpRegistryRuntime(runtimeOptions, catalog),
+    makeRuntime:
+      options.makeRuntime ??
+      makeAcpRegistryRuntime(
+        runtimeOptions,
+        catalog,
+        isCopilot ? copilotSessionRuntimeOptions : undefined,
+      ),
     ...(runtimeCoordinator === undefined
       ? {}
       : {

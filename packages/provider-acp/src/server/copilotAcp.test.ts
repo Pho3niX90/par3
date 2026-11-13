@@ -1,9 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type * as AcpSchema from "effect-acp/compat";
+import * as AcpErrors from "effect-acp/errors";
 
 import type { AcpAdapterV2ExtensionContext } from "./adapter.ts";
-import { extractCopilotSubagentUpdate, makeCopilotSubagentRouting } from "./copilotAcp.ts";
+import {
+  extractCopilotSubagentUpdate,
+  isCopilotLostSessionError,
+  makeCopilotNoticeFilter,
+  makeCopilotSubagentRouting,
+} from "./copilotAcp.ts";
 import type { AcpToolCallState } from "./runtimeModel.ts";
 
 interface CopilotSessionEvent {
@@ -213,4 +219,75 @@ describe("makeCopilotSubagentRouting", () => {
       expect(afterwards.sessionId).toBe("root");
     }),
   );
+});
+
+describe("makeCopilotNoticeFilter", () => {
+  const retry = "Info: Response was interrupted due to a server error. Retrying...";
+  const runFailed = (lastError: string) =>
+    `Error: Execution failed: Failed to get response from the AI model; retried 5 times (total retry wait time: 23.00 seconds) Last error: ${lastError}`;
+  const proxyRefused =
+    "Failed native model HTTP request: error sending request for url (https://api.individual.githubcopilot.com/responses): client error (Connect): tunnel error: proxy authorization required: proxy CONNECT failed with status 407 Proxy Authentication Required";
+  const endTurn = { stopReason: "end_turn" } as const;
+
+  it.effect("keeps retry notices out of the reply and leaves ordinary text alone", () =>
+    Effect.gen(function* () {
+      const notices = makeCopilotNoticeFilter();
+      const check = yield* notices.watchPromptOutcome("s1");
+      expect(notices.ignoreSessionUpdate(messageChunk("s1", retry))).toBe(true);
+      for (const text of [
+        "Confirmed. Approving #110.",
+        "Info: see the README.",
+        "Error: missing",
+      ]) {
+        expect(notices.ignoreSessionUpdate(messageChunk("s1", text))).toBe(false);
+      }
+      expect(yield* check(endTurn)).toBeUndefined();
+    }),
+  );
+
+  it.effect("fails the prompt a failed-run notice ended, and only that prompt", () =>
+    Effect.gen(function* () {
+      const notices = makeCopilotNoticeFilter();
+      const failed = yield* notices.watchPromptOutcome("s1");
+      const other = yield* notices.watchPromptOutcome("s2");
+      expect(notices.ignoreSessionUpdate(messageChunk("s1", runFailed(proxyRefused)))).toBe(true);
+      expect(yield* other(endTurn)).toBeUndefined();
+      const failure = yield* failed(endTurn);
+      expect(failure?.class).toBe("provider_error");
+      expect(failure?.message).toBe(runFailed(proxyRefused).slice("Error: ".length));
+      expect(yield* (yield* notices.watchPromptOutcome("s1"))(endTurn)).toBeUndefined();
+    }),
+  );
+
+  it.effect("reports a failed run that hit a rate limit as a usage limit", () =>
+    Effect.gen(function* () {
+      const notices = makeCopilotNoticeFilter();
+      const check = yield* notices.watchPromptOutcome("s1");
+      notices.ignoreSessionUpdate(messageChunk("s1", runFailed("429 Too Many Requests")));
+      expect((yield* check(endTurn))?.class).toBe("usage_limit");
+    }),
+  );
+});
+
+describe("isCopilotLostSessionError", () => {
+  const promptError = (code: number, errorMessage: string) =>
+    new AcpErrors.AcpRequestError({ code, errorMessage, method: "session/prompt" });
+
+  it("recognizes a prompt to a session Copilot does not have", () => {
+    expect(
+      isCopilotLostSessionError(
+        promptError(-32602, "Session d7d8a9f3-ed43-4aa4-ab81-9b4bf6625f4d not found"),
+      ),
+    ).toBe(true);
+    expect(isCopilotLostSessionError(promptError(-32602, "Invalid params: prompt"))).toBe(false);
+    expect(
+      isCopilotLostSessionError(
+        new AcpErrors.AcpRequestError({
+          code: -32602,
+          errorMessage: "Session d7d8a9f3 not found",
+          method: "session/set_model",
+        }),
+      ),
+    ).toBe(false);
+  });
 });

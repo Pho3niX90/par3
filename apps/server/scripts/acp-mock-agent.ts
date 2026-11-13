@@ -63,6 +63,8 @@ const emitEmptySuccessfulBashThenHang =
 const failLoadSession = process.env.T3_ACP_FAIL_LOAD_SESSION === "1";
 const failLoadSessionAfterConfigReplay =
   process.env.T3_ACP_FAIL_LOAD_SESSION_AFTER_CONFIG_REPLAY === "1";
+// Delays that failure past the replay, as Copilot does when its model list times out.
+const failLoadSessionDelayMs = Number(process.env.T3_ACP_FAIL_LOAD_SESSION_DELAY_MS ?? "0");
 const emitLoadReplay = process.env.T3_ACP_EMIT_LOAD_REPLAY === "1";
 const failPrompt = process.env.T3_ACP_FAIL_PROMPT === "1";
 // JSON for the `data` of an "Internal error" response to `session/new`, as
@@ -683,6 +685,9 @@ const program = Effect.gen(function* () {
             ],
           },
         });
+        if (Number.isFinite(failLoadSessionDelayMs) && failLoadSessionDelayMs > 0) {
+          yield* Effect.sleep(`${failLoadSessionDelayMs} millis`);
+        }
         return yield* AcpError.AcpRequestError.internalError(
           "Mock load session failure after config replay",
         );

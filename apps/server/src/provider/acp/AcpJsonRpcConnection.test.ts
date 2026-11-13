@@ -20,6 +20,7 @@ import { ChildProcessSpawner } from "effect/process";
 import { describe, expect } from "vite-plus/test";
 
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
+import { copilotSessionRuntimeOptions } from "@t3tools/provider-acp/server/copilotAcp";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as EffectAcpErrors from "effect-acp/errors";
 
@@ -1109,6 +1110,41 @@ describe("AcpSessionRuntime", () => {
           },
           cwd: process.cwd(),
           clientInfo: { name: "t3-test", version: "0.0.0" },
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    ),
+  );
+
+  // Without Copilot's setting, this gap adopts the session before the agent fails the load.
+  const shortReplayIdleGap = { sessionLoadReplayIdleGap: "50 millis" } as const;
+  // Live clock: the replay-idle shortcut it guards against runs on wall-clock polling.
+  it.live("waits for Copilot's own answer to a load that fails after a quiet replay", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+
+      const error = yield* runtime.loadSession("candidate-session").pipe(Effect.flip);
+
+      expect(error._tag).toBe("AcpRequestError");
+      expect(error.message).toBe("Mock load session failure after config replay");
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          authMethodId: "test",
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: {
+              T3_ACP_FAIL_LOAD_SESSION_AFTER_CONFIG_REPLAY: "1",
+              T3_ACP_FAIL_LOAD_SESSION_DELAY_MS: "300",
+            },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "t3-test", version: "0.0.0" },
+          ...shortReplayIdleGap,
+          ...copilotSessionRuntimeOptions,
         }),
       ),
       Effect.scoped,

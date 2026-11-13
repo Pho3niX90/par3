@@ -25,6 +25,8 @@ import {
 import {
   copilotClientCapabilitiesMeta,
   extractCopilotSubagentUpdate,
+  isCopilotLostSessionError,
+  makeCopilotNoticeFilter,
   makeCopilotSubagentRouting,
 } from "@t3tools/provider-acp/server/copilotAcp";
 import { copilotPromptFailure } from "./copilotFailure.ts";
@@ -116,7 +118,9 @@ function makeCopilotAcpAdapterFlavor(options: CopilotAdapterV2Options): AcpAdapt
     clientCapabilitiesMeta: copilotClientCapabilitiesMeta,
     registerExtensions: routing.registerExtensions,
     normalizeSessionUpdate: routing.normalizeSessionUpdate,
+    ...makeCopilotNoticeFilter(),
     extractSubagentUpdate: extractCopilotSubagentUpdate,
+    restartRuntimeAfterPromptError: isCopilotLostSessionError,
     approvalOptions: copilotApprovalOptions,
     resolveModelId: (selection) => resolveCopilotAcpBaseModelId(selection.model),
     applyModelSelection: ({ runtime, startResult, modelSelection }) =>

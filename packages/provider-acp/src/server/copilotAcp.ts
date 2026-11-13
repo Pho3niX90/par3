@@ -1,9 +1,16 @@
+import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as AcpSchema from "effect-acp/compat";
 import * as AcpErrors from "effect-acp/errors";
+import type { AcpSessionRuntimeOptions } from "./AcpSessionRuntime.ts";
 import type { AcpToolCallState } from "./runtimeModel.ts";
-import type { AcpAdapterV2ExtensionContext, AcpAdapterV2SubagentUpdate } from "./adapter.ts";
+import type {
+  AcpAdapterV2ExtensionContext,
+  AcpAdapterV2Flavor,
+  AcpAdapterV2SubagentUpdate,
+} from "./adapter.ts";
 
 // The opt-in raw feed identifies each chunk by the preceding assistant.*_delta task call id.
 
@@ -30,10 +37,13 @@ const COPILOT_LOST_SESSION_MARKERS = [
   "session lock unavailable during is_session_generation_current: acquisition timed out",
 ];
 
+// Copilot CLI 1.0.110 rejects a prompt for a session it does not have with -32602.
+const COPILOT_UNKNOWN_SESSION = /^Session \S+ not found$/;
+
 export function isCopilotLostSessionError(error: unknown): boolean {
-  if (!isAcpRequestError(error) || error.method !== "session/prompt" || error.code !== -32603) {
-    return false;
-  }
+  if (!isAcpRequestError(error) || error.method !== "session/prompt") return false;
+  if (error.code === -32602) return COPILOT_UNKNOWN_SESSION.test(error.errorMessage);
+  if (error.code !== -32603) return false;
   // Older Copilot reports the cause in data.details; its native ACP layer (1.0.105) in the message.
   return [error.errorMessage, record(error.data)?.details].some(
     (text) =>
@@ -156,6 +166,64 @@ export function makeCopilotSubagentRouting() {
   };
 
   return { registerExtensions, normalizeSessionUpdate };
+}
+
+/**
+ * Copilot answers `session/load` right after replaying, but can go quiet for longer first: 3.5 s
+ * on a healthy reload, 30 s before a load that fails. Waiting for its answer keeps Par3 from
+ * adopting a session Copilot never opened.
+ */
+export const copilotSessionRuntimeOptions = {
+  sessionLoadReplayIdleGap: Duration.infinity,
+} satisfies Pick<AcpSessionRuntimeOptions, "sessionLoadReplayIdleGap">;
+
+/**
+ * Copilot states its limits as plain text, so whole phrases are matched. Bare status numbers are
+ * left out on purpose: request ids and ports contain them.
+ */
+export const COPILOT_USAGE_LIMIT_MESSAGE =
+  /\b(?:rate[\s-]?limit(?:ed)?|too many requests|quota (?:exceeded|exhausted)|(?:insufficient|no) quota|usage limit|payment required)\b/i;
+
+// Copilot CLI 1.0.110 streams its model-request retries and a failed run as reply chunks of their
+// own, then ends the prompt with `end_turn`.
+const COPILOT_RETRY_NOTICE = /^Info: [^\n]*Retrying\.\.\.$/;
+const COPILOT_RUN_FAILED_NOTICE = /^Error: (Execution failed: [\s\S]+)$/;
+
+/** Keeps Copilot's retry and failure notices out of the reply, and fails the turn they end. */
+export function makeCopilotNoticeFilter(): Required<
+  Pick<AcpAdapterV2Flavor, "ignoreSessionUpdate" | "watchPromptOutcome">
+> {
+  const failures = new Map<string, string>();
+  return {
+    ignoreSessionUpdate: (notification) => {
+      const update = notification.update;
+      if (update.sessionUpdate !== "agent_message_chunk" || update.content.type !== "text") {
+        return false;
+      }
+      if (COPILOT_RETRY_NOTICE.test(update.content.text)) return true;
+      const failure = COPILOT_RUN_FAILED_NOTICE.exec(update.content.text)?.[1];
+      if (failure === undefined) return false;
+      failures.set(notification.sessionId, failure);
+      return true;
+    },
+    watchPromptOutcome: (sessionId) =>
+      Effect.sync(() => {
+        failures.delete(sessionId);
+        return () =>
+          Effect.sync(() => {
+            const message = failures.get(sessionId);
+            failures.delete(sessionId);
+            return message === undefined
+              ? undefined
+              : makeProviderFailure({
+                  message,
+                  class: COPILOT_USAGE_LIMIT_MESSAGE.test(message)
+                    ? "usage_limit"
+                    : "provider_error",
+                });
+          });
+      }),
+  };
 }
 
 export function extractCopilotSubagentUpdate(

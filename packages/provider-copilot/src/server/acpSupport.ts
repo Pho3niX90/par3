@@ -18,6 +18,7 @@ import type * as Scope from "effect/Scope";
 import type * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
+import { copilotSessionRuntimeOptions } from "@t3tools/provider-acp/server/copilotAcp";
 
 const COPILOT_DRIVER_KIND = ProviderDriverKind.make("copilot");
 
@@ -136,6 +137,7 @@ export const makeCopilotAcpRuntime = Effect.fn("makeCopilotAcpRuntime")(function
   const acpContext = yield* Layer.build(
     AcpSessionRuntime.layer({
       ...input,
+      ...copilotSessionRuntimeOptions,
       spawn: buildCopilotAcpSpawnInput(
         input.copilotSettings,
         input.cwd ?? process.cwd(),
