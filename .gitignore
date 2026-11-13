@@ -52,3 +52,4 @@ node_modules/
 
 # Sidekick benchmark outputs (scripts/evals/sidekick/README.md)
 scripts/evals/sidekick/results/
+/packages/ssh/.ssh-launcher-test-*/

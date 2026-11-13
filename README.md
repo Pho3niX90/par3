@@ -2,7 +2,7 @@
 
 Par3 is an "agent harness control surface" for teams. It lets you control the coding agents on your machines from a desktop app, a web app and a mobile app.
 
-Works with your subscriptions on Claude Code, Codex, Cursor, GitHub Copilot, Grok Build, OpenCode, Google Antigravity, and fx. If they're set up on your computer, Par3 can control them.
+Works with your subscriptions on Claude Code, Codex, Cursor, GitHub Copilot, Grok Build, OpenCode, Google Antigravity, Kiro, Pi, Muse Code, fx, and any [ACP](./docs/user/providers-acp.md) agent. If they're set up on your computer, Par3 can control them.
 
 ## Why Par3 exists
 
@@ -27,6 +27,8 @@ We still merge T3 Code's improvements regularly and are grateful for the work be
 > - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 > - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
 > - fx: install [fx](https://fx.sh) and run `fx login` on the machine running the Par3 server ([setup guide](./docs/user/providers-fx.md))
+>
+> [Provider setup](./docs/user/install.md#providers) has the steps for each agent, including Kiro, Pi, Muse Code, and ACP agents.
 
 ### Command line
 
@@ -56,6 +58,10 @@ Download the `.deb` from [GitHub Releases](https://github.com/Pho3niX90/par3/rel
 sudo apt install ./Par3-*.deb
 ```
 
+### Phone
+
+Get the [Android app](https://play.google.com/store/apps/details?id=com.paritylabs.par3) from Google Play, then follow [remote access](./docs/user/remote-access.md) to connect it to your computer. There is no iPhone or iPad app in the App Store yet.
+
 ## Some notes
 
 We are very very early in this project. Expect bugs.
@@ -64,7 +70,7 @@ We are (mostly) not accepting contributions yet. Small fixes may be considered. 
 
 ## Documentation
 
-Full docs live in [docs/](./docs). There's no docs site yet.
+Full docs live in [docs/](./docs/README.md). There's no docs site yet.
 
 - [FAQ](./docs/user/faq.md)
 - [Install and first run](./docs/user/install.md)
@@ -79,7 +85,7 @@ Full docs live in [docs/](./docs). There's no docs site yet.
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
 - [Run Par3 as a background service](./docs/user/background-service.md)
 
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
+Building from source? Follow the [development runbook](./docs/operations/development.md#first-checkout). The [architecture overview](./docs/internals/overview.md) explains how it works.
 
 ## If you REALLY want to contribute still.... read this first
 
@@ -112,3 +118,7 @@ Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR
 Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
 
 Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+
+## License
+
+[MIT](./LICENSE)
