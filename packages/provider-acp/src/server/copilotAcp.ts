@@ -194,8 +194,30 @@ export const copilotSessionRuntimeOptions = {
  * Copilot states its limits as plain text, so whole phrases are matched. Bare status numbers are
  * left out on purpose: request ids and ports contain them.
  */
-export const COPILOT_USAGE_LIMIT_MESSAGE =
+const COPILOT_USAGE_LIMIT_MESSAGE =
   /\b(?:rate[\s-]?limit(?:ed)?|too many requests|quota (?:exceeded|exhausted)|(?:insufficient|no) quota|usage limit|payment required)\b/i;
+// Copilot's native HTTP client sends proxy credentials only as user:password in HTTPS_PROXY.
+const COPILOT_PROXY_REFUSED =
+  /\b407 Proxy Authentication Required\b|\bproxy authorization required\b/i;
+const COPILOT_UNREACHABLE = /\berror sending request\b|\bnetwork fetch failed\b|\btunnel error\b/i;
+
+/** The failure class for a Copilot error message, with guidance when its proxy refused it. */
+export function classifyCopilotFailure(message: string): {
+  readonly class: "usage_limit" | "transport_error" | "provider_error";
+  readonly message: string;
+} {
+  if (COPILOT_USAGE_LIMIT_MESSAGE.test(message)) return { class: "usage_limit", message };
+  if (COPILOT_PROXY_REFUSED.test(message)) {
+    return {
+      class: "transport_error",
+      message: `Your network proxy refused Copilot (407 Proxy Authentication Required). Copilot can only send the user name and password in HTTPS_PROXY, so a proxy that wants Windows sign-in needs a local signing-in proxy such as px, set as this provider's HTTPS_PROXY. Copilot said: ${message}`,
+    };
+  }
+  return {
+    class: COPILOT_UNREACHABLE.test(message) ? "transport_error" : "provider_error",
+    message,
+  };
+}
 
 // Copilot CLI 1.0.110 streams its model-request retries and a failed run as reply chunks of their
 // own, then ends the prompt with `end_turn`.
@@ -228,12 +250,7 @@ export function makeCopilotNoticeFilter(): Required<
             failures.delete(sessionId);
             return message === undefined
               ? undefined
-              : makeProviderFailure({
-                  message,
-                  class: COPILOT_USAGE_LIMIT_MESSAGE.test(message)
-                    ? "usage_limit"
-                    : "provider_error",
-                });
+              : makeProviderFailure(classifyCopilotFailure(message));
           });
       }),
   };

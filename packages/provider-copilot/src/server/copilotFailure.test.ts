@@ -37,6 +37,15 @@ describe("copilotPromptFailure", () => {
     expect(failure.message).toBe("Failed to connect to agent");
   });
 
+  it("explains a proxy that refused Copilot, keeping Copilot's own text", () => {
+    const refused =
+      "tunnel error: proxy authorization required: proxy CONNECT failed with status 407 Proxy Authentication Required";
+    const failure = copilotPromptFailure(requestError(refused));
+    expect(failure.class).toBe("transport_error");
+    expect(failure.message).toContain("local signing-in proxy such as px");
+    expect(failure.message).toContain(refused);
+  });
+
   it("never treats a non-request failure as a usage limit", () => {
     const failure = copilotPromptFailure(new Error("Rate limit exceeded"));
     expect(failure.class).toBe("provider_error");
