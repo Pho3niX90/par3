@@ -10,7 +10,7 @@ import { CLAUDE_SYNTHETIC_MODEL } from "../provider/Drivers/claudeUsage.ts";
 import { mergeUsageCopies } from "./usageAggregation.ts";
 import { GUARD_LENGTH, type TranscriptParsePosition } from "./usageTranscriptReader.ts";
 
-const USAGE_SCAN_CACHE_VERSION = 13 as const;
+const USAGE_SCAN_CACHE_VERSION = 16 as const;
 const SPEED_COMPATIBLE_SINCE_VERSION = 4;
 
 /**
@@ -18,8 +18,11 @@ const SPEED_COMPATIBLE_SINCE_VERSION = 4;
  * replace it, dropping saved usage for deleted transcripts. Separate files keep
  * the newer one; older files are removed once it is saved.
  */
-export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v13.json";
+export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v16.json";
 export const LEGACY_SCAN_CACHE_FILE_NAMES = [
+  "usage-scan-cache-v15.json",
+  "usage-scan-cache-v14.json",
+  "usage-scan-cache-v13.json",
   "usage-scan-cache-v12.json",
   "usage-scan-cache-v11.json",
   "usage-scan-cache-v10.json",
@@ -62,7 +65,8 @@ type SerializedRecord = readonly [
   rateModelIndex?: number | null,
   unresolvedServiceTierTurnId?: string | null,
   nativeSubagentIndex?: number | null,
-  parentSessionIndex?: number,
+  parentSessionIndex?: number | null,
+  cacheCreation1hTokens?: number,
 ];
 
 interface SerializedFile {
@@ -106,35 +110,46 @@ function intern(table: string[], index: Map<string, number>, value: string): num
 }
 
 function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile {
-  const serializeRecord = (record: UsageRecord): SerializedRecord => [
-    record.timestampMs,
-    intern(tables.models, tables.modelIndex, record.model),
-    intern(tables.sessions, tables.sessionIndex, record.sessionId),
-    record.totals.uncachedInputTokens,
-    record.totals.cachedInputTokens,
-    record.totals.cacheCreationTokens,
-    record.totals.outputTokens,
-    record.totals.reasoningTokens,
-    record.dedupeKey,
-    record.reportedCostUsd,
-    SPEEDS.indexOf(record.speed),
-    record.rateModel === undefined
-      ? null
-      : intern(tables.models, tables.modelIndex, record.rateModel),
-    ...(record.nativeSubagentId !== undefined || record.parentSessionId !== undefined
-      ? ([
-          record.unresolvedServiceTierTurnId ?? null,
-          record.nativeSubagentId === undefined
-            ? null
-            : intern(tables.sessions, tables.sessionIndex, record.nativeSubagentId),
-          ...(record.parentSessionId === undefined
-            ? ([] as const)
-            : ([intern(tables.sessions, tables.sessionIndex, record.parentSessionId)] as const)),
-        ] as const)
-      : record.unresolvedServiceTierTurnId !== undefined
-        ? ([record.unresolvedServiceTierTurnId] as const)
-        : ([] as const)),
-  ];
+  const serializeRecord = (record: UsageRecord): SerializedRecord => {
+    const required = [
+      record.timestampMs,
+      intern(tables.models, tables.modelIndex, record.model),
+      intern(tables.sessions, tables.sessionIndex, record.sessionId),
+      record.totals.uncachedInputTokens,
+      record.totals.cachedInputTokens,
+      record.totals.cacheCreationTokens,
+      record.totals.outputTokens,
+      record.totals.reasoningTokens,
+      record.dedupeKey,
+      record.reportedCostUsd,
+      SPEEDS.indexOf(record.speed),
+      record.rateModel === undefined
+        ? null
+        : intern(tables.models, tables.modelIndex, record.rateModel),
+    ] as const;
+    const turnId = record.unresolvedServiceTierTurnId ?? null;
+    const subagent =
+      record.nativeSubagentId === undefined
+        ? null
+        : intern(tables.sessions, tables.sessionIndex, record.nativeSubagentId);
+    const parent =
+      record.parentSessionId === undefined
+        ? null
+        : intern(tables.sessions, tables.sessionIndex, record.parentSessionId);
+    // Optional fields are written only up to the last one present.
+    return [
+      ...required,
+      ...(record.cacheCreation1hTokens !== undefined
+        ? ([turnId, subagent, parent, record.cacheCreation1hTokens] as const)
+        : parent !== null
+          ? ([turnId, subagent, parent] as const)
+          : subagent !== null
+            ? ([turnId, subagent] as const)
+            : turnId !== null
+              ? ([turnId] as const)
+              : ([] as const)),
+    ];
+  };
   return {
     s: entry.size,
     m: entry.mtimeMs,
@@ -226,6 +241,7 @@ export function decodeScanCache(
         unresolvedServiceTierTurnId,
         nativeSubagentIndex,
         parentSessionIndex,
+        cacheCreation1h = 0,
       ] = row as SerializedRecord;
       const speed = typeof speedIndex === "number" ? SPEEDS[speedIndex] : undefined;
 
@@ -241,7 +257,8 @@ export function decodeScanCache(
         model === undefined ||
         (unresolvedServiceTierTurnId != null && typeof unresolvedServiceTierTurnId !== "string") ||
         (nativeSubagentIndex != null && nativeSubagentId === undefined) ||
-        (parentSessionIndex !== undefined && parentSessionId === undefined) ||
+        (parentSessionIndex != null && parentSessionId === undefined) ||
+        !Number.isFinite(cacheCreation1h) ||
         (rateModelIndex != null && rateModel === undefined) ||
         !Number.isFinite(uncached) ||
         !Number.isFinite(cached) ||
@@ -272,6 +289,7 @@ export function decodeScanCache(
           outputTokens: output,
           reasoningTokens: reasoning,
         },
+        ...(cacheCreation1h > 0 ? { cacheCreation1hTokens: cacheCreation1h } : {}),
         reportedCostUsd: typeof reportedCostUsd === "number" ? reportedCostUsd : null,
         speed,
         ...(version >= 7 && unresolvedServiceTierTurnId != null
@@ -312,17 +330,15 @@ export function decodeScanCache(
       continue;
     }
     // Keep history for deleted rollouts, but re-parse incompatible reducer state.
-    // v12 adds Claude native agent ids and Codex parent sessions; old records need re-parsing.
-    // Before v13 a repeated Claude key kept its first, possibly partial, copy.
+    // v16 joins Par3's v13 (native agent ids, Codex parent sessions, whole repeated Claude copies)
+    // with upstream's v13-v15 (Claude 1-hour cache writes, Codex request ledgers), so both re-parse.
     const legacy =
-      (entry.p === "claude" && version < 13) ||
-      (format.state !== undefined && (version < 6 || (entry.p === "codex" && version < 12)));
+      (entry.p === "claude" && version < 16) ||
+      (format.state !== undefined && (version < 6 || (entry.p === "codex" && version < 16)));
     // A corrupt state disqualifies the entry: resuming with it would attach
     // appended usage to the wrong model or replay fork-copied history.
     if (!legacy && !isValidState.get(entry.p)?.(entry.cs)) continue;
-    // Before v11 a clean scan could end past an interrupted request whose usage its state dropped,
-    // so a grown file re-parses whole instead of resuming.
-    const resumable = !legacy && !(entry.p === "codex" && version < 11);
+    const resumable = !legacy;
 
     const provider = entry.p;
     const records = decodeRecords(entry.r, provider);

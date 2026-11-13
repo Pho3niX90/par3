@@ -174,6 +174,7 @@ import { projectEnvironment } from "../state/projects";
 import { filesystemEnvironment } from "../state/filesystem";
 import {
   claimWorkspaceBasenameLookup,
+  pickProjectLinkMatch,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
   workspaceFileLookup,
 } from "@t3tools/client-runtime/workspace-basename-lookup";
@@ -648,7 +649,7 @@ function useChatMarkdownState({
   const projects = useProjects();
   const [preferredEditor] = usePreferredEditor(availableEditors);
   const preferredEditorMenuLabel = openInEditorMenuLabel(preferredEditor);
-  const openInPreferredEditor = useOpenInPreferredEditor(environmentId, availableEditors);
+  const openInPreferredEditor = useOpenInPreferredEditor(environmentId, availableEditors, cwd);
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
     reportFailure: false,
   });
@@ -790,18 +791,37 @@ function useChatMarkdownState({
     // opens without waiting on the server.
     const cached = await readFileMetadata({ environmentId, input: { path: literalPath } });
     if (cached._tag !== "Success" || cached.value !== null) return null;
-    const result = await searchProjectEntries({
-      environmentId,
-      input: {
-        cwd,
-        query: lookup.query,
-        limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
-        kind: "file",
-      },
-    });
-    if (result._tag !== "Success") return null;
-    const match = lookup.pick(result.value.entries);
-    if (match === null) return null;
+    const searchRoot = async (root: string) => {
+      const rootQuery = workspaceFileLookup(workspaceRelativePath, root)?.query;
+      if (rootQuery === undefined) return { root, entries: [] };
+      const result = await searchProjectEntries({
+        environmentId,
+        input: {
+          cwd: root,
+          query: rootQuery,
+          limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
+          kind: "file",
+        },
+      });
+      return { root, entries: result._tag === "Success" ? result.value.entries : [] };
+    };
+    let match = lookup.pick((await searchRoot(cwd)).entries);
+    if (match === null) {
+      const threadProjectId = threadRef ? readThreadShell(threadRef)?.projectId : undefined;
+      const otherRoots = projects.flatMap((project) =>
+        project.environmentId === environmentId &&
+        project.id !== threadProjectId &&
+        project.workspaceRoot !== cwd
+          ? [project.workspaceRoot]
+          : [],
+      );
+      if (otherRoots.length === 0) return null;
+      match = pickProjectLinkMatch(
+        workspaceRelativePath,
+        await Promise.all(otherRoots.map(searchRoot)),
+      );
+      if (match === null) return null;
+    }
     // The cached miss can predate the file. Check the host before redirecting.
     const metadata = await getFilesystemMetadata({
       environmentId,
@@ -1047,19 +1067,21 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
-    const alert =
-      GITHUB_ALERT_PRESENTATIONS[String((props as Record<string, unknown>)["data-alert"] ?? "")];
+    const alertKind = String((props as Record<string, unknown>)["data-alert"] ?? "");
+    const alert = GITHUB_ALERT_PRESENTATIONS[alertKind];
     if (!alert) {
       return <blockquote {...props}>{children}</blockquote>;
     }
     return (
       <div
         role="note"
+        data-markdown-alert={alertKind}
         dir={props.dir}
         className={cn("my-1 border-s-2 ps-3", alert.borderClassName)}
       >
         <p
           data-thread-find-ignore="true"
+          data-markdown-alert-label=""
           className={cn("flex items-center gap-1.5 font-medium", alert.titleClassName)}
         >
           <alert.Icon aria-hidden className="size-3.5 shrink-0" />
@@ -1616,6 +1638,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
             _tag: "media-file",
             threadId: threadRef.threadId,
             path: imageSource.path,
+            ...(imageSource.relative ? { hostOnly: true as const } : {}),
           }}
           alt={altText}
           kind={kind}
