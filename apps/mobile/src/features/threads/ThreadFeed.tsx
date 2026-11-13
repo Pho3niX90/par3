@@ -235,8 +235,9 @@ import { ThreadMcpApp } from "./McpAppWebView";
 import { assetEnvironment, useAssetUrl, useRefreshAssetUrl } from "../../state/assets";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { readEnvironmentScope, usePreparedConnection } from "../../state/session";
-import { projectEnvironment } from "../../state/projects";
+import { environmentProjects, projectEnvironment } from "../../state/projects";
 import {
+  pickProjectLinkMatch,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
   workspaceFileLookup,
 } from "@t3tools/client-runtime/workspace-basename-lookup";
@@ -261,6 +262,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { useV2ItemSupport } from "../../state/v2-item-support";
 import {
   fileRoutePathSegments,
+  isAbsolutePath,
   resolveFileLinkPath,
   resolveWorkspaceFilePath,
   resolveWorkspaceRelativeFilePath,
@@ -276,6 +278,7 @@ import {
   ThreadMarkdownImageUnavailable,
   ThreadMarkdownImageView,
 } from "./ThreadMarkdownImage";
+import { ZoomableImagePressable } from "./ZoomableImagePressable";
 import { openSettings } from "../settings/settings-navigation";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { formatMessageTimestamp } from "./messageTimestamp";
@@ -470,6 +473,8 @@ function MessageImage(props: {
   readonly className: string;
   readonly maxWidth?: number;
   readonly height?: number;
+  readonly accessibilityLabel: string;
+  readonly onPress: () => void;
   readonly onLoad?: () => void;
   readonly onError?: () => void;
 }) {
@@ -484,11 +489,13 @@ function MessageImage(props: {
         })
       : null;
   return (
-    <ExpoImage
-      source={props.source}
-      cachePolicy="memory-disk"
+    <ZoomableImagePressable
+      accessibilityRole="imagebutton"
+      accessibilityLabel={props.accessibilityLabel}
+      onPress={props.onPress}
       style={[
         imageStyle,
+        { overflow: "hidden" },
         props.maxWidth !== undefined
           ? (displaySize ?? {
               width: Math.min(props.maxWidth, MARKDOWN_IMAGE_MAX_WIDTH),
@@ -498,13 +505,19 @@ function MessageImage(props: {
             ? { height: props.height }
             : undefined,
       ]}
-      contentFit={props.maxWidth === undefined ? "cover" : "contain"}
-      onLoad={(event) => {
-        if (props.maxWidth !== undefined) setSize(event.source);
-        props.onLoad?.();
-      }}
-      onError={props.onError}
-    />
+    >
+      <ExpoImage
+        source={props.source}
+        cachePolicy="memory-disk"
+        style={{ width: "100%", height: "100%" }}
+        contentFit={props.maxWidth === undefined ? "cover" : "contain"}
+        onLoad={(event) => {
+          if (props.maxWidth !== undefined) setSize(event.source);
+          props.onLoad?.();
+        }}
+        onError={props.onError}
+      />
+    </ZoomableImagePressable>
   );
 }
 
@@ -549,8 +562,12 @@ function MessageAttachmentImage(props: {
 
   return (
     <PresentationSource identifier={sourceIdentifier}>
-      <Pressable
-        accessibilityRole="imagebutton"
+      <MessageImage
+        key={props.attachmentId}
+        source={assetImageSource(props.environmentId, resource, uri)}
+        className={props.className}
+        maxWidth={props.maxWidth}
+        height={props.height}
         accessibilityLabel={`Open ${props.name}`}
         onPress={() =>
           props.onPressPreview(
@@ -569,22 +586,15 @@ function MessageAttachmentImage(props: {
             }),
           )
         }
-      >
-        <MessageImage
-          source={assetImageSource(props.environmentId, resource, uri)}
-          className={props.className}
-          maxWidth={props.maxWidth}
-          height={props.height}
-          onLoad={() => {
-            retriedImage.current = false;
-          }}
-          onError={() => {
-            if (retriedImage.current) return;
-            retriedImage.current = true;
-            void refreshAssetUrl();
-          }}
-        />
-      </Pressable>
+        onLoad={() => {
+          retriedImage.current = false;
+        }}
+        onError={() => {
+          if (retriedImage.current) return;
+          retriedImage.current = true;
+          void refreshAssetUrl();
+        }}
+      />
     </PresentationSource>
   );
 }
@@ -959,21 +969,18 @@ function PendingMessageMedia(props: {
   if (isImageAttachment(attachment)) {
     const uri = fileBacked ? preview.uri : (attachment.dataUrl ?? attachment.previewUri);
     return (
-      <Pressable
-        accessibilityRole="imagebutton"
+      <MessageImage
+        key={attachment.id}
+        source={uri === null ? undefined : { uri }}
+        className={props.className}
+        maxWidth={props.maxWidth}
+        height={props.height}
         accessibilityLabel={`Open ${attachment.name}`}
         onPress={() => {
           const source = composerImageGallery([attachment])[0];
           if (source) props.onPressPreview(withGallery(source));
         }}
-      >
-        <MessageImage
-          source={uri === null ? undefined : { uri }}
-          className={props.className}
-          maxWidth={props.maxWidth}
-          height={props.height}
-        />
-      </Pressable>
+      />
     );
   }
   if (preview.uri === null) {
@@ -1717,6 +1724,7 @@ function renderFeedEntry(
         rowSizing={props.workRowSizing}
         iconSubtleColor={iconSubtleColor}
         label={entry.label}
+        providerStartingLabel={entry.providerStartingLabel}
       />
     );
   }
@@ -2849,6 +2857,82 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     // A v1 link names no environment, so it falls back to this message's.
     return scopeThreadRef(props.environmentId, link.threadId);
   };
+  // The file a chat link names: in this workspace, else in the one other project that has it.
+  const findFileLinkTarget = async (
+    linkPath: string,
+    path: string,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const relativePath = resolveWorkspaceRelativeFilePath(props.workspaceRoot, path);
+    const lookup =
+      props.workspaceRoot && relativePath && !/[\\/]$/.test(linkPath)
+        ? workspaceFileLookup(relativePath, props.workspaceRoot)
+        : null;
+    if (
+      !props.workspaceRoot ||
+      !relativePath ||
+      lookup === null ||
+      !readEnvironmentScope(props.environmentId, AuthFilesystemReadScope)
+    ) {
+      return relativePath ?? path;
+    }
+    const workspaceRoot = props.workspaceRoot;
+    const queryOptions = { signal, reportFailure: false, reportDefect: false };
+    const searchRoot = (root: string) =>
+      executeAtomQuery(
+        appAtomRegistry,
+        projectEnvironment.searchEntries({
+          environmentId: props.environmentId,
+          input: {
+            cwd: root,
+            query: workspaceFileLookup(relativePath, root)?.query ?? relativePath,
+            kind: "file",
+            limit: WORKSPACE_BASENAME_LOOKUP_LIMIT,
+          },
+        }),
+        queryOptions,
+      ).then((result) => ({
+        root,
+        entries: result._tag === "Success" ? result.value.entries : [],
+      }));
+    const find = async () => {
+      // Most links are right as written, so only a missing path pays for a search.
+      const metadata = await executeAtomQuery(
+        appAtomRegistry,
+        projectEnvironment.fileMetadata({
+          environmentId: props.environmentId,
+          input: { path: resolveWorkspaceFilePath(workspaceRoot, relativePath) },
+        }),
+        queryOptions,
+      );
+      if (metadata._tag !== "Success" || metadata.value !== null || signal.aborted) {
+        return relativePath;
+      }
+      const own = await searchRoot(workspaceRoot);
+      const match = lookup.pick(own.entries);
+      if (match !== null || signal.aborted) return match ?? relativePath;
+      const threadProjectId = appAtomRegistry.get(
+        environmentThreadShells.threadShellAtom(
+          scopeThreadRef(props.environmentId, props.threadId),
+        ),
+      )?.projectId;
+      const otherRoots = appAtomRegistry
+        .get(environmentProjects.projectsAtom)
+        .flatMap((project) =>
+          project.environmentId === props.environmentId &&
+          project.id !== threadProjectId &&
+          project.workspaceRoot !== workspaceRoot
+            ? [project.workspaceRoot]
+            : [],
+        );
+      if (otherRoots.length === 0) return relativePath;
+      return (
+        pickProjectLinkMatch(relativePath, await Promise.all(otherRoots.map(searchRoot))) ??
+        relativePath
+      );
+    };
+    return find().catch(() => relativePath);
+  };
   const onMarkdownLinkPress = (href: string, imageEmbed = false) => {
     markdownLinkRequest.current?.abort();
     const request = new AbortController();
@@ -2962,8 +3046,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     if (presentation.kind === "file") {
       const path = resolveFileLinkPath(props.workspaceRoot, presentation.path);
       if (path === null) return;
-      const relativePath = resolveWorkspaceRelativeFilePath(props.workspaceRoot, path);
-      const openAt = (target: string) => {
+      void findFileLinkTarget(presentation.path, path, request.signal).then((target) => {
         if (request.signal.aborted) return;
         void Haptics.selectionAsync();
         navigation.navigate("ThreadFile", {
@@ -2972,39 +3055,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           path: fileRoutePathSegments(target),
           ...(presentation.line ? { line: String(presentation.line) } : {}),
         });
-      };
-      const lookup =
-        props.workspaceRoot && relativePath && !/[\\/]$/.test(presentation.path)
-          ? workspaceFileLookup(relativePath, props.workspaceRoot)
-          : null;
-      if (
-        props.workspaceRoot &&
-        relativePath &&
-        lookup &&
-        readEnvironmentScope(props.environmentId, AuthFilesystemReadScope)
-      ) {
-        const workspaceRoot = props.workspaceRoot;
-        // Most links are right as written, so only a missing path pays for a search.
-        void executeAtomQuery(
-          appAtomRegistry,
-          projectEnvironment.fileMetadata({
-            environmentId: props.environmentId,
-            input: { path: resolveWorkspaceFilePath(workspaceRoot, relativePath) },
-          }),
-          queryOptions,
-        ).then(
-          (metadata) => {
-            if (metadata._tag !== "Success" || metadata.value !== null) {
-              openAt(relativePath);
-              return;
-            }
-            void findWorkspaceFile(workspaceRoot, relativePath).then((match) =>
-              openAt(match ?? relativePath),
-            );
-          },
-          () => openAt(relativePath),
-        );
-      } else openAt(relativePath ?? path);
+      });
       return;
     }
 
@@ -3086,8 +3137,37 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       switch (actionId) {
         case "copy-full-path":
         case "copy-relative-path": {
-          const clipboardPath = fileChipClipboardPath(target, actionId);
-          if (clipboardPath !== undefined) copyTextWithHaptic(clipboardPath);
+          const presentation = resolveMarkdownLinkPresentation(href);
+          const path =
+            presentation.kind === "file"
+              ? resolveFileLinkPath(props.workspaceRoot, presentation.path)
+              : null;
+          if (presentation.kind !== "file" || path === null) return;
+          markdownLinkRequest.current?.abort();
+          const request = new AbortController();
+          markdownLinkRequest.current = request;
+          void findFileLinkTarget(presentation.path, path, request.signal).then((found) => {
+            if (request.signal.aborted) return;
+            const fullPath =
+              props.workspaceRoot && !isAbsolutePath(found)
+                ? resolveWorkspaceFilePath(props.workspaceRoot, found)
+                : found;
+            const clipboardPath = fileChipClipboardPath(
+              {
+                ...target,
+                ...(target.fullPath ? { fullPath } : {}),
+                ...(target.relativePath
+                  ? {
+                      relativePath:
+                        resolveWorkspaceRelativeFilePath(props.workspaceRoot, fullPath) ??
+                        target.relativePath,
+                    }
+                  : {}),
+              },
+              actionId,
+            );
+            if (clipboardPath !== undefined) copyTextWithHaptic(clipboardPath);
+          });
           return;
         }
         case "open-file":
@@ -3306,7 +3386,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const jumpRunId =
     jumpReady &&
     !presentedFeed.some((entry) => entry.type === "message" && entry.id === jumpToMessageId)
-      ? messageFoldRunId(props.feed, jumpToMessageId)
+      ? messageFoldRunId(props.feed, jumpToMessageId, presentedFeed)
       : null;
   if (jumpRunId && !expandedTurnIds.has(jumpRunId)) {
     setInteractionState((current) => ({

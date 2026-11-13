@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from "react";
-import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
+
+import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { EnvironmentId, ProjectId, SpecSummary, SpecStatus } from "@t3tools/contracts";
