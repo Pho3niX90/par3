@@ -261,7 +261,7 @@ it.live(
         const continuation = projection.runs.find(
           (run) => run.userMessageId === MessageId.make("message:workspace-handoff:continuation"),
         );
-        assert.equal(projection.runs[0]?.status, "interrupted");
+        assert.equal(projection.runs[0]?.status, "completed");
         assert.equal(continuation?.status, "completed");
         assert.deepEqual(yield* Ref.get(startedCwds), [cwd, worktreeCwd]);
       }),

@@ -2007,10 +2007,9 @@ describe("orchestration v2 provider switching", () => {
         yield* Deferred.await(started);
         yield* Fiber.join(toolCallRunning);
 
-        // Par3 ends a turn whose thread was detached on purpose as interrupted, not failed, so a
-        // queued continuation can run (WorkspaceHandoff.integration.test.ts).
-        const runEnded = yield* awaitEvent(
-          (event) => event.type === "run.updated" && event.payload.status === "interrupted",
+        // The handoff itself is not a failure: the run completes once the session closes.
+        const runSettled = yield* awaitEvent(
+          (event) => event.type === "run.updated" && event.payload.status === "waiting",
         );
         yield* orchestrator.dispatch({
           type: "thread.metadata.update",
@@ -2021,9 +2020,11 @@ describe("orchestration v2 provider switching", () => {
           expectedWorktreePath: null,
         });
         yield* worker.drain();
-        yield* Fiber.join(runEnded);
+        yield* Fiber.join(runSettled);
+        yield* worker.drain();
 
         const projection = yield* orchestrator.getThreadProjection(scenarioThreadId);
+        assert.equal(projection.runs.at(-1)?.status, "completed");
         const toolCall = projection.turnItems.find((item) => item.id === toolCallId);
         assert.equal(toolCall?.status, "interrupted");
         assert.isNotNull(toolCall?.completedAt);

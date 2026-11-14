@@ -19,6 +19,7 @@ import {
   CHAT_MARKDOWN_REMARK_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
   CHAT_MARKDOWN_REHYPE_PLUGINS,
+  decodeMarkdownLinkEscapes,
   remarkAssistantInsights,
 } from "@t3tools/shared/markdownPipeline";
 import { useAtomValue } from "@effect/atom-react";
@@ -127,6 +128,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { recordVisitForThread } from "../browserHistoryStore";
+import { contextMenuSourceOf } from "../contextMenuSource";
 import {
   PreferredEditorEnvironmentRequiredError,
   useOpenInPreferredEditor,
@@ -174,6 +176,8 @@ import { projectEnvironment } from "../state/projects";
 import { filesystemEnvironment } from "../state/filesystem";
 import {
   claimWorkspaceBasenameLookup,
+  findAgentDirectoryMatch,
+  needsWorkspaceBasenameLookup,
   pickProjectLinkMatch,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
   workspaceFileLookup,
@@ -233,6 +237,8 @@ interface ChatMarkdownProps {
   inline?: boolean;
   text: string;
   cwd: string | undefined;
+  /** Folders the agent worked in before writing `text`, the latest first; read when a link opens. */
+  agentDirectories?: (() => ReadonlyArray<string>) | undefined;
   threadRef?: ScopedThreadRef | undefined;
   pullRequestPanelRef?: ScopedThreadRef | undefined;
   environmentId?: EnvironmentId | undefined;
@@ -466,6 +472,7 @@ function fileLinkSourcesKey(
 ): string {
   const hrefs = extractMarkdownLinkHrefs(renderCodexInlineDirectivesAsMarkdown(text))
     .filter((href) => !parseComposerContextHref(href))
+    .map(decodeMarkdownLinkEscapes)
     .map(normalizeMarkdownLinkHrefKey)
     .filter((href) => resolveMarkdownFileLinkMeta(href, cwd, imageBaseDir ?? cwd));
   const spans = extractInlineCodeSpans(text).filter((span) =>
@@ -501,6 +508,7 @@ function useChatMarkdownState({
   text,
   inline = false,
   cwd,
+  agentDirectories,
   threadRef,
   pullRequestPanelRef,
   environmentId: explicitEnvironmentId,
@@ -815,11 +823,28 @@ function useChatMarkdownState({
           ? [project.workspaceRoot]
           : [],
       );
-      if (otherRoots.length === 0) return null;
+      const agentRoots = (agentDirectories?.() ?? []).filter((root) => root !== cwd);
+      if (otherRoots.length === 0 && agentRoots.length === 0) return null;
       match = pickProjectLinkMatch(
         workspaceRelativePath,
         await Promise.all(otherRoots.map(searchRoot)),
       );
+      if (match === null && agentRoots.length > 0) {
+        // No project has the file, so it opens where the agent last worked, as written.
+        const agentPaths = agentRoots.map((root) =>
+          resolveWorkspaceFilePath(workspaceRelativePath, root),
+        );
+        const agentMetadata = await getFilesystemMetadata({
+          environmentId,
+          input: { paths: agentPaths },
+        });
+        if (agentMetadata._tag !== "Success") return null;
+        match =
+          agentPaths.find((_, index) => agentMetadata.value.entries[index]?.kind === "file") ??
+          (needsWorkspaceBasenameLookup(workspaceRelativePath)
+            ? await findAgentDirectoryMatch(workspaceRelativePath, agentRoots, searchRoot)
+            : null);
+      }
       if (match === null) return null;
     }
     // The cached miss can predate the file. Check the host before redirecting.
@@ -1314,6 +1339,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
             event.stopPropagation();
             const api = readLocalApi();
             if (!api) return;
+            const source = contextMenuSourceOf(event);
             const threadLinkAction = !canOperateHost
               ? undefined
               : linkedThreadPullRequestFor(href) !== null
@@ -1326,7 +1352,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
               canOpenInPreview,
               threadLinkAction,
               position: { x: event.clientX, y: event.clientY },
-              showContextMenu: (items, position) => api.contextMenu.show(items, position),
+              showContextMenu: (items, position) => api.contextMenu.show(items, position, source),
               openInPreview: async (target) => {
                 const result = await openExternalLinkInPreview(target);
                 if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {

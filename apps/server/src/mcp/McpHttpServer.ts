@@ -54,6 +54,8 @@ import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
 import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
 import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
+import { ThemeToolkit } from "./toolkits/theme/tools.ts";
+import * as ThemeHandlers from "./toolkits/theme/handlers.ts";
 import { ProjectToolkit } from "./toolkits/project/tools.ts";
 import * as ProjectHandlers from "./toolkits/project/handlers.ts";
 import { AttachmentToolkit } from "./toolkits/attachment/tools.ts";
@@ -94,6 +96,8 @@ import * as SpecsHandlers from "./toolkits/specs/handlers.ts";
 import { SpecsToolkit } from "./toolkits/specs/tools.ts";
 import { McpCallTool, McpCallToolkit, McpServersToolkit } from "./toolkits/gateway/tools.ts";
 import * as McpGateway from "../mcpGateway/McpGateway.ts";
+import { MessageToolkit } from "./toolkits/message/tools.ts";
+import * as MessageHandlers from "./toolkits/message/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 import { requestUrl } from "../requestUrl.ts";
 
@@ -294,7 +298,8 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
       limited.thread && specBinding
         ? { ...limited, thread: { ...limited.thread, specRole: specBinding.role } }
         : limited;
-    return { ...scoped, linkedEnvironments };
+    const origin = Option.getOrUndefined(Option.map(requestUrl(request), (url) => url.origin));
+    return { ...scoped, linkedEnvironments, origin };
   });
   // Untraced: a span here would wrap the tool call; the HTTP server span already covers it.
   return Effect.fnUntraced(function* (httpEffect) {
@@ -1331,6 +1336,8 @@ export const layerOrchestratorToolkit = toolkitRegistration(
 
 export const layerThreadToolkit = toolkitRegistration(ThreadToolkit, ThreadHandlers.layer);
 
+const layerMessageToolkit = toolkitRegistration(MessageToolkit, MessageHandlers.layer);
+
 const layerWorktreeToolkitRegistration = toolkitRegistration(
   WorktreeToolkit,
   WorktreeHandlers.layer,
@@ -1347,6 +1354,10 @@ const layerEnvironmentToolkit = toolkitRegistration(
   EnvironmentToolkit,
   EnvironmentHandlers.layer,
 ).pipe(Layer.provide(ThreadCommandExecutor.layer));
+
+const layerThemeToolkit = toolkitRegistration(ThemeToolkit, ThemeHandlers.layer).pipe(
+  Layer.provide(ThreadCommandExecutor.layer),
+);
 
 export const layerProjectRegistration = toolkitRegistration(ProjectToolkit, ProjectHandlers.layer);
 
@@ -1419,6 +1430,7 @@ export const layerTools = Layer.mergeAll(
   layerAttachmentToolkit,
   layerProjectRegistration,
   layerEnvironmentToolkit,
+  layerThemeToolkit,
   layerPreviewControlsRegistration,
   layerWorktreeToolkitRegistration,
   layerConflictsRegistration,
@@ -1427,6 +1439,7 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
   layerGatewayToolkit,
   toolkitRegistration(VaultToolkit, VaultHandlers.layer),
+  layerMessageToolkit,
 );
 
 const layerToolExposure = Layer.effect(

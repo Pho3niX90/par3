@@ -122,6 +122,10 @@ an active link between your account and the host.
 - **This device is still loading its Parity Connect sign-in.** Wait a moment;
   Par3 retries on its own. If it keeps waiting, reload or restart Par3 on
   this device.
+- **The host is waiting for you to approve this device.** The host requires
+  approval for new devices. Approve the code this device shows from a device
+  that is already connected, or run `par3 auth connect-device approve <code>` on
+  the host. See [Approve new devices](./remote-access.md#approve-new-devices).
 - **Your account reached its tunnel limit.** Remove an environment you do not
   use from your account's Parity Connect page, or connect it another way (see
   [Machine limit](./remote-access.md#machine-limit)). Then restart Par3 on the host.
@@ -139,13 +143,13 @@ This app needs a newer Par3 on the host. Update Par3 on the host. See
 
 ## Parity Connect returned an error
 
-| Error                                                     | Fix                                                                                                                                               |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment, then restart Par3 on the host.                                                                                      |
-| `auth_invalid` or `invalid_bearer`                        | Run `par3 connect login`. If credentials were revoked, run `par3 connect logout`, then `par3 connect` again. Restart the server after signing in. |
-| Expired or invalid link proof                             | Check the host's date and time, update Par3, then restart it.                                                                                     |
-| HTTP 403 without a recognized error                       | Check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report.                                                     |
-| HTTP 408, 429, or 5xx                                     | Wait a few minutes. Par3 retries temporary failures on its own.                                                                                   |
+| Error                                                     | Fix                                                                                                                                                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment, then restart Par3 on the host.                                                                                                                                      |
+| `auth_invalid` or `invalid_bearer`                        | Run `par3 connect login`. If credentials were revoked, run `par3 connect logout`, then `par3 connect` again. Restart the server after signing in.                                                 |
+| Expired or invalid link proof                             | Check the host's date and time, update Par3, then restart it.                                                                                                                                     |
+| HTTP 403 without a recognized error                       | If the host requires approval for new devices, update Par3 on this device and approve it. Otherwise check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report. |
+| HTTP 408, 429, or 5xx                                     | Wait a few minutes. Par3 retries temporary failures on its own.                                                                                                                                   |
 
 After you fix a permanent rejection, restart the host's server with
 `par3 service restart`. For a foreground server, stop it and run `par3 serve` again.

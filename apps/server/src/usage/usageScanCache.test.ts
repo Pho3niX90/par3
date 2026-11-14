@@ -168,7 +168,7 @@ describe("scan cache round trip", () => {
     expect(restored).toEqual(original);
   });
 
-  it.each([5, 6, 7, 8, 10, 11, 12, 13, 14, 15])(
+  it.each([5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16])(
     "retains v%s history and compatible positions but invalidates obsolete state",
     (version) => {
       const original = cacheWith([["/gone.jsonl", 100, [record({ speed: "fast" })]]]);
@@ -225,11 +225,15 @@ describe("scan cache round trip", () => {
       };
 
       const restored = decodeScanCache(JSON.parse(JSON.stringify(legacy)), TEST_FORMAT_MAP);
-      expect(restored.get("/gone.jsonl")).toEqual({
-        ...original.get("/gone.jsonl"),
-        size: -1,
-        position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
-      });
+      expect(restored.get("/gone.jsonl")).toEqual(
+        version >= 16
+          ? original.get("/gone.jsonl")
+          : {
+              ...original.get("/gone.jsonl"),
+              size: -1,
+              position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
+            },
+      );
       expect(restored.get("/gone-codex.jsonl")).toEqual({
         ...original.get("/gone-codex.jsonl"),
         size: -1,

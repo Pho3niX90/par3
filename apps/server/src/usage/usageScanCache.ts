@@ -10,7 +10,7 @@ import { CLAUDE_SYNTHETIC_MODEL } from "../provider/Drivers/claudeUsage.ts";
 import { mergeUsageCopies } from "./usageAggregation.ts";
 import { GUARD_LENGTH, type TranscriptParsePosition } from "./usageTranscriptReader.ts";
 
-const USAGE_SCAN_CACHE_VERSION = 16 as const;
+const USAGE_SCAN_CACHE_VERSION = 17 as const;
 const SPEED_COMPATIBLE_SINCE_VERSION = 4;
 
 /**
@@ -18,8 +18,9 @@ const SPEED_COMPATIBLE_SINCE_VERSION = 4;
  * replace it, dropping saved usage for deleted transcripts. Separate files keep
  * the newer one; older files are removed once it is saved.
  */
-export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v16.json";
+export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v17.json";
 export const LEGACY_SCAN_CACHE_FILE_NAMES = [
+  "usage-scan-cache-v16.json",
   "usage-scan-cache-v15.json",
   "usage-scan-cache-v14.json",
   "usage-scan-cache-v13.json",
@@ -331,10 +332,11 @@ export function decodeScanCache(
     }
     // Keep history for deleted rollouts, but re-parse incompatible reducer state.
     // v16 joins Par3's v13 (native agent ids, Codex parent sessions, whole repeated Claude copies)
-    // with upstream's v13-v15 (Claude 1-hour cache writes, Codex request ledgers), so both re-parse.
+    // with upstream's v13-v15 (Claude 1-hour cache writes, Codex request ledgers). v17 adds
+    // upstream's v16 Codex snapshot time to those, so every earlier Codex state re-parses.
     const legacy =
       (entry.p === "claude" && version < 16) ||
-      (format.state !== undefined && (version < 6 || (entry.p === "codex" && version < 16)));
+      (format.state !== undefined && (version < 6 || (entry.p === "codex" && version < 17)));
     // A corrupt state disqualifies the entry: resuming with it would attach
     // appended usage to the wrong model or replay fork-copied history.
     if (!legacy && !isValidState.get(entry.p)?.(entry.cs)) continue;

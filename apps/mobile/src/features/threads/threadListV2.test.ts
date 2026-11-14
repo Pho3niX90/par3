@@ -40,6 +40,7 @@ import {
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SwipeActions,
   resolveThreadListV2SnoozePresets,
+  resolveThreadListV2RowStatus,
   resolveThreadListV2Status,
   resolveThreadListV2WokeAt,
   threadListV2ListItemsAreEqual,
@@ -201,6 +202,22 @@ describe("resolveThreadListV2Status", () => {
         makeThread({ id: ThreadId.make("t"), title: "t", environmentUnavailable: true }),
       ),
     ).toBe("ready");
+  });
+
+  it("settles a failure the user opened to ready in the row, keeping the raw status", () => {
+    const failed = presentThreadShell(
+      environmentId,
+      makeRawThreadShell({
+        status: "failed",
+        latestRunId: RunId.make("run-failed"),
+        latestRunCompletedAt: DateTime.makeUnsafe("2026-06-01T23:59:00.000Z"),
+        lastVisitedAt: DateTime.makeUnsafe(NOW),
+      }),
+    );
+
+    expect(resolveThreadListV2Status(failed)).toBe("failed");
+    expect(resolveThreadListV2RowStatus(failed)).toBe("ready");
+    expect(resolveThreadListV2RowStatus({ ...failed, lastVisitedAt: null })).toBe("failed");
   });
 
   it("shows a waiting guest message as Request, after the agent's own requests", () => {

@@ -5,6 +5,7 @@ const SOURCE_LABELS: Readonly<Record<string, string>> = {
   project: "Project",
   "add-dir": "Added directory",
   plugin: "Plugin",
+  managed: "Managed",
 };
 
 /**

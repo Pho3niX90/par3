@@ -30,6 +30,7 @@ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
 import {
   type AddProjectFileCopy,
+  COPIED_FILES_MAX_COUNT,
   COPYABLE_FILE_MAX_BYTES,
   addProjectToMachine,
   isDefaultCopiedFile,
@@ -40,6 +41,7 @@ import { readProject, subscribeProject, useProject } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { projectEnvironment } from "../state/projects";
 import { formatEnvironmentQueryError } from "../state/query";
+import { useDebouncedValue } from "../state/queries";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -133,50 +135,72 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
   const [pathOverride, setPathOverride] = useState<string | null>(null);
   const destinationPath = pathOverride ?? defaultPath;
 
-  const canListFiles = source?.serverConfig?.environment.capabilities.ignoredFileListing === true;
+  const capabilities = source?.serverConfig?.environment.capabilities;
+  const canListFiles = capabilities?.ignoredFileListing === true;
+  const canSearchFiles = canListFiles && capabilities?.ignoredFileSearch === true;
   const sourceEnvironmentId = project?.environmentId ?? null;
   const workspaceRoot = project?.workspaceRoot ?? "";
   const subdirectory = projectSubdirectory(project?.repositoryIdentity?.rootPath, workspaceRoot);
-  const ignoredFilesAtom =
-    sourceEnvironmentId && canListFiles
+  const fileSources: IgnoredFileSourcesKey["sources"] = members
+    ? members.map((member) => ({
+        cwd: `${workspaceRoot}/${member.path}`,
+        label: member.path,
+        targetPrefix: `${member.path}/`,
+      }))
+    : [
+        {
+          cwd: workspaceRoot,
+          label: null,
+          targetPrefix: subdirectory ? `${subdirectory}/` : "",
+        },
+      ];
+  const ignoredFileSourcesFor = (query: string | null) =>
+    sourceEnvironmentId && canListFiles && (query === null || query.length > 0)
       ? ignoredFileSourcesAtom(
           JSON.stringify({
             environmentId: sourceEnvironmentId,
-            sources: members
-              ? members.map((member) => ({
-                  cwd: `${workspaceRoot}/${member.path}`,
-                  label: member.path,
-                  targetPrefix: `${member.path}/`,
-                }))
-              : [
-                  {
-                    cwd: workspaceRoot,
-                    label: null,
-                    targetPrefix: subdirectory ? `${subdirectory}/` : "",
-                  },
-                ],
+            sources: fileSources,
+            query,
           } satisfies IgnoredFileSourcesKey),
         )
       : NO_IGNORED_FILES_ATOM;
-  const ignoredFiles = useAtomValue(ignoredFilesAtom);
+  const allIgnoredFiles = useAtomValue(ignoredFileSourcesFor(null));
+  const [fileQuery, setFileQuery] = useState("");
+  const sentFileQuery = useDebouncedValue(fileQuery.trim(), 120);
+  const searching = canSearchFiles && sentFileQuery.length > 0;
+  const searchedFiles = useAtomValue(ignoredFileSourcesFor(searching ? sentFileQuery : ""));
+  const ignoredFiles = searching ? searchedFiles : allIgnoredFiles;
   const files = ignoredFiles.files;
-  const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
-  const selectedFiles = selected ?? defaultSelection(files);
+  // Keyed by path with the file kept, so picks made under one search survive the next.
+  const [selected, setSelected] = useState<ReadonlyMap<string, IgnoredFileEntry> | null>(null);
+  const selectedFiles = selected ?? defaultSelection(allIgnoredFiles.files);
   const copyable = files.filter((file) => file.byteLength <= COPYABLE_FILE_MAX_BYTES);
-  const selectedBytes = files
-    .filter((file) => selectedFiles.has(file.path))
-    .reduce((total, file) => total + file.byteLength, 0);
+  const allCopyableSelected = copyable.every((file) => selectedFiles.has(file.path));
+  const atSelectionLimit = selectedFiles.size >= COPIED_FILES_MAX_COUNT;
+  const selectedBytes = [...selectedFiles.values()].reduce(
+    (total, file) => total + file.byteLength,
+    0,
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // The project or every target can vanish while the dialog is open. Submitting
   // before the file list loads would silently skip the default .env copies.
-  const unavailable = project === null || target === null || (canListFiles && ignoredFiles.loading);
-  const toggleFile = (path: string, checked: boolean) => {
-    const next = new Set(selectedFiles);
-    if (checked) next.add(path);
-    else next.delete(path);
+  const unavailable =
+    project === null || target === null || (canListFiles && allIgnoredFiles.loading);
+  const toggleFile = (file: IgnoredFileEntry, checked: boolean) => {
+    const next = new Map(selectedFiles);
+    if (!checked) next.delete(file.path);
+    else if (!atSelectionLimit) next.set(file.path, file);
+    setSelected(next);
+  };
+  const toggleShownFiles = () => {
+    const next = new Map(selectedFiles);
+    for (const file of copyable) {
+      if (allCopyableSelected) next.delete(file.path);
+      else if (next.size < COPIED_FILES_MAX_COUNT) next.set(file.path, file);
+    }
     setSelected(next);
   };
 
@@ -227,7 +251,7 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
             }
           : { remoteUrl: cloneUrl(sourceUrls[0] ?? "") },
         destinationPath: destinationPath.trim(),
-        files: files.filter((file) => selectedFiles.has(file.path)),
+        files: [...selectedFiles.values()],
       });
       close();
       openClonedProject(scopeProjectRef(target.environmentId, projectId));
@@ -379,48 +403,59 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
                   {copyable.length > 0 ? (
                     <>
                       <span className="text-muted-foreground text-xs">
-                        {selectedFiles.size} of {files.length}
+                        {selectedFiles.size} of {allIgnoredFiles.files.length}
                         {selectedBytes > 0 ? ` · ${formatBytes(selectedBytes)}` : ""}
                       </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        onClick={() =>
-                          setSelected(
-                            selectedFiles.size === copyable.length
-                              ? new Set()
-                              : new Set(copyable.map((file) => file.path)),
-                          )
-                        }
-                      >
-                        {selectedFiles.size === copyable.length ? "None" : "All"}
+                      <Button type="button" variant="ghost" size="xs" onClick={toggleShownFiles}>
+                        {allCopyableSelected ? "None" : "All"}
                       </Button>
                     </>
                   ) : null}
                 </div>
+                {canSearchFiles && (allIgnoredFiles.truncated || fileQuery.length > 0) ? (
+                  <Input
+                    size="sm"
+                    type="search"
+                    aria-label="Search ignored files"
+                    placeholder="Search ignored files"
+                    value={fileQuery}
+                    maxLength={256}
+                    onChange={(event) => setFileQuery(event.target.value)}
+                    // Enter would otherwise submit the clone.
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.preventDefault();
+                    }}
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                ) : null}
                 {ignoredFiles.error ? (
                   <p className="text-destructive-foreground text-xs">{ignoredFiles.error}</p>
-                ) : null}
-                {files.length > 0 ? (
+                ) : files.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">
+                    {ignoredFiles.loading
+                      ? "Finding ignored files…"
+                      : searching
+                        ? "No ignored files match."
+                        : "No ignored files to copy."}
+                  </p>
+                ) : (
                   <div className="max-h-52 overflow-y-auto rounded-md border">
                     {files.map((file) => (
                       <IgnoredFileRow
                         key={file.path}
                         file={file}
                         checked={selectedFiles.has(file.path)}
-                        onCheckedChange={(checked) => toggleFile(file.path, checked)}
+                        disabled={atSelectionLimit && !selectedFiles.has(file.path)}
+                        onCheckedChange={(checked) => toggleFile(file, checked)}
                       />
                     ))}
                   </div>
-                ) : ignoredFiles.error ? null : (
-                  <p className="text-muted-foreground text-xs">
-                    {ignoredFiles.loading ? "Finding ignored files…" : "No ignored files to copy."}
-                  </p>
                 )}
                 {ignoredFiles.truncated ? (
                   <p className="text-muted-foreground text-xs">
                     Showing the first {files.length} files.
+                    {canSearchFiles ? " Search to find the rest." : ""}
                   </p>
                 ) : null}
                 <p className="text-muted-foreground text-xs">
@@ -494,16 +529,21 @@ interface IgnoredFileSourcesKey {
     readonly label: string | null;
     readonly targetPrefix: string;
   }>;
+  /** Server-side search; null lists everything. */
+  readonly query: string | null;
 }
 
 /** A member that is listed but not cloned on the source errors alone; the others stay copyable. */
 const ignoredFileSourcesAtom = Atom.family((key: string) => {
-  const { environmentId, sources } = JSON.parse(key) as IgnoredFileSourcesKey;
+  const { environmentId, sources, query } = JSON.parse(key) as IgnoredFileSourcesKey;
   return Atom.make((get): IgnoredFileSources => {
     const results = sources.map((source) => ({
       source,
       result: get(
-        projectEnvironment.listIgnoredFiles({ environmentId, input: { cwd: source.cwd } }),
+        projectEnvironment.listIgnoredFiles({
+          environmentId,
+          input: query ? { cwd: source.cwd, query } : { cwd: source.cwd },
+        }),
       ),
     }));
     const lists = results.map(({ source, result }) => ({
@@ -536,29 +576,37 @@ const ignoredFileSourcesAtom = Atom.family((key: string) => {
   }).pipe(Atom.withLabel(`add-project-ignored-files:${key}`));
 });
 
-function defaultSelection(files: readonly ProjectIgnoredFile[]): ReadonlySet<string> {
-  return new Set(
+function defaultSelection(
+  files: readonly IgnoredFileEntry[],
+): ReadonlyMap<string, IgnoredFileEntry> {
+  return new Map(
     files
       .filter(
         (file) => file.byteLength <= COPYABLE_FILE_MAX_BYTES && isDefaultCopiedFile(file.path),
       )
-      .map((file) => file.path),
+      .map((file) => [file.path, file]),
   );
 }
 
 function IgnoredFileRow({
   file,
   checked,
+  disabled,
   onCheckedChange,
 }: {
   file: ProjectIgnoredFile;
   checked: boolean;
+  disabled: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) {
   const tooLarge = file.byteLength > COPYABLE_FILE_MAX_BYTES;
   return (
     <label className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm not-last:border-b has-disabled:cursor-not-allowed has-disabled:opacity-64">
-      <Checkbox checked={checked} disabled={tooLarge} onCheckedChange={onCheckedChange} />
+      <Checkbox
+        checked={checked}
+        disabled={tooLarge || disabled}
+        onCheckedChange={onCheckedChange}
+      />
       <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
       <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
         {tooLarge ? "Over 1 MB" : formatBytes(file.byteLength)}

@@ -55,6 +55,8 @@ export type T3McpToolSummaryAction =
   | "environment-link"
   | "environment-unlink"
   | "environment-update"
+  | "theme-read"
+  | "theme-set"
   | "attachment-prepare"
   | "attachment-discard"
   | "attachment-send"
@@ -72,7 +74,8 @@ export type T3McpToolSummaryAction =
   | "mcp-servers"
   | "mcp-call"
   | "vault-list"
-  | "vault-read";
+  | "vault-read"
+  | "send-to-user";
 
 export interface T3McpToolDefinition {
   readonly displayName: string;
@@ -365,6 +368,8 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Update", "Updating", "Updated", "environment preferences"],
     "environment-update",
   ),
+  t3_theme_read: tool(["Read", "Reading", "Read", "themes"], "theme-read"),
+  t3_theme_set: tool(["Set", "Setting", "Set", "the theme"], "theme-set"),
   t3_thread_launch: tool(["Launch", "Launching", "Launched", "a project thread"], "thread-create"),
   t3_project_list: tool(["List", "Listing", "Listed", "projects"], "project-list"),
   t3_project_read: tool(["Read", "Reading", "Read", "a project"], "project-read"),
@@ -388,6 +393,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   mcp_call: tool(["Call", "Calling", "Called", "a shared MCP tool"], "mcp-call"),
   vault_list: tool(["List", "Listing", "Listed", "vault secrets"], "vault-list"),
   secret_get: tool(["Read", "Reading", "Read", "a vault secret"], "vault-read"),
+  send_to_user: tool(["Send", "Sending", "Sent", "a message"], "send-to-user"),
 };
 
 export const T3_MCP_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(T3_MCP_TOOLS));

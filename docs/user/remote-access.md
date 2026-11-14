@@ -38,6 +38,31 @@ connection. Pull request diffs and provider settings keep working after the
 previous credential expires. A failed renewal affects that request; it does not
 disconnect an otherwise healthy conversation.
 
+### Approve new devices
+
+By default, any device signed in to your Parity Connect account can open a linked
+machine. To require approval instead, turn on **Require approval for new
+devices** with the Parity Connect settings in **Settings → Sharing & access** on the
+host, or when you first set up Parity Connect. Then someone who takes over your Parity
+Connect account cannot reach the machine from a new device without your
+approval. Review the devices that are already approved, described below.
+
+A new device waits and shows a code such as `K7QM-2XFD`. Approve it from a
+device that is already connected, using the prompt or **Settings → Sharing &
+access**. Check that the code matches the one on the waiting device. On a
+headless host, run `par3 auth connect-device list` and then
+`par3 auth connect-device approve K7QM-2XFD`. A request expires after 10 minutes,
+and the device asks again when it retries. Deny keeps that device out until its
+request expires.
+
+Each device is approved once. Revoke it from **Parity Connect devices** in the same
+settings page, or with `par3 auth connect-device revoke <code>`. With approval on,
+it has to ask again. With approval off, it can connect again on its own, so
+revoking in the app offers to turn approval on first. Devices that connected through Parity Connect while approval was off stay
+approved and appear in that list for you to review. A device that has not
+connected since you updated Par3 asks for approval like a new one. Older apps
+cannot show the code, so update them before you turn approval on.
+
 ### Scripts and agents
 
 `par3 up` asks nothing when you name a choice: `--connect`, `--lan`, or their
@@ -284,8 +309,10 @@ The server shows the exact line for how you started it, and keeps your `PATH`
 when you started it with `npx` and Node is installed only for your user. Where `par3` is not on your `PATH`, such as with only the
 desktop app installed, it names the full path of the app's own `par3` instead. It allows Chrome's sandbox with an AppArmor profile and installs
 any missing libraries and system fonts with apt; pages that load without text
-can mean the host has no fonts. It is safe to run again. Without `sudo`, it only
-reports what it would change.
+can mean the host has no fonts. It is safe to run again, and each run reloads
+the AppArmor profile: run it again if the browser reports a blocked sandbox on a
+host restored from an image or snapshot, where the profile can be on disk
+without being loaded. Without `sudo`, it only reports what it would change.
 
 The browser runs in Chrome's sandbox by default. Chrome cannot start that sandbox
 as root. If your Par3 server runs as root, run it as a nonroot user to keep

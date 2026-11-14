@@ -726,7 +726,10 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
 
 function toAuthAccessStreamEvent(
-  change: PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange,
+  change: Exclude<
+    PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange,
+    { readonly type: "connectDevicesChanged" }
+  >,
   revision: number,
   currentSessionId: AuthSessionId,
 ): AuthAccessStreamEvent {
@@ -1919,6 +1922,7 @@ const makeWsRpcHandlers = (
         Effect.all({
           pairingLinks: serverAuth.listPairingLinks(),
           clientSessions: serverAuth.listClientSessions(currentSessionId),
+          connectDevices: serverAuth.listConnectDevices(),
         }).pipe(
           Effect.mapError(
             (error) =>
@@ -2024,6 +2028,7 @@ const makeWsRpcHandlers = (
           }),
           newProjectsRoot: managedFolders.namedProjectsRoot,
           ...(lastEventLoopStall === undefined ? {} : { lastEventLoopStall }),
+          serverTime: DateTime.formatIso(yield* DateTime.now),
         };
       });
 
@@ -3156,7 +3161,7 @@ const makeWsRpcHandlers = (
                 new ProjectMutationError({
                   commandId: mutation.commandId,
                   message:
-                    cause._tag === "ProjectNotEmptyError"
+                    cause._tag === "ProjectNotEmptyError" || cause._tag === "ProjectInvalidError"
                       ? cause.message
                       : "Failed to mutate project.",
                   cause,
@@ -3335,11 +3340,29 @@ const makeWsRpcHandlers = (
         [WS_METHODS.vcsCreateWorktree]: (input) =>
           gitWorkflow.createWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsRemoveWorktree]: (input) =>
-          gitWorkflow.removeWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+          gitWorkflow.removeWorktree(input).pipe(
+            Effect.tap(() => refreshGitStatus(input.cwd)),
+            // Subscribers of the removed checkout learn it is no longer a repository.
+            Effect.tap(() =>
+              vcsStatusBroadcaster
+                .refreshLocalStatus(input.path)
+                .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid),
+            ),
+          ),
         [WS_METHODS.vcsCreateRef]: (input) =>
-          gitWorkflow.createRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+          gitWorkflow
+            .createRef(input)
+            .pipe(
+              Effect.tap(() =>
+                input.switchRef
+                  ? vcsStatusBroadcaster.refreshAfterCheckout(input.cwd)
+                  : refreshGitStatus(input.cwd),
+              ),
+            ),
         [WS_METHODS.vcsSwitchRef]: (input) =>
-          gitWorkflow.switchRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+          gitWorkflow
+            .switchRef(input)
+            .pipe(Effect.tap(() => vcsStatusBroadcaster.refreshAfterCheckout(input.cwd))),
         [WS_METHODS.vcsInit]: (input) =>
           vcsProvisioning.initRepository(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsConflictsList]: (input) => mergeConflicts.list(input),
@@ -3649,17 +3672,28 @@ const makeWsRpcHandlers = (
               const initialSnapshot = yield* loadAuthAccessSnapshot();
               const revisionRef = yield* Ref.make(1);
 
-              const liveEvents: Stream.Stream<AuthAccessStreamEvent> = Stream.fromQueue(
-                liveBuffer,
-              ).pipe(
-                Stream.mapEffect((change) =>
-                  Ref.updateAndGet(revisionRef, (revision) => revision + 1).pipe(
-                    Effect.map((revision) =>
-                      toAuthAccessStreamEvent(change, revision, currentSessionId),
+              const liveEvents: Stream.Stream<AuthAccessStreamEvent, AuthAccessStreamError> =
+                Stream.fromQueue(liveBuffer).pipe(
+                  Stream.mapEffect((change) =>
+                    Ref.updateAndGet(revisionRef, (revision) => revision + 1).pipe(
+                      Effect.flatMap((revision) =>
+                        // Device trust has no incremental event older clients could decode.
+                        change.type === "connectDevicesChanged"
+                          ? loadAuthAccessSnapshot().pipe(
+                              Effect.map((payload): AuthAccessStreamEvent => ({
+                                version: 1,
+                                revision,
+                                type: "snapshot",
+                                payload,
+                              })),
+                            )
+                          : Effect.succeed(
+                              toAuthAccessStreamEvent(change, revision, currentSessionId),
+                            ),
+                      ),
                     ),
                   ),
-                ),
-              );
+                );
 
               return Stream.concat(
                 rpcInitialItems([
