@@ -548,7 +548,7 @@ describe("ChatMarkdown workspace file opens", () => {
   });
 
   // An agent that `cd`ed into a subfolder names files relative to its shell, not the project.
-  it("previews a PDF written from a subfolder at the file it names", async () => {
+  it("opens a PDF written from a subfolder at the file it names", async () => {
     setup();
     workspaceSearch.mockResolvedValue(
       AsyncResult.success({
@@ -556,6 +556,9 @@ describe("ChatMarkdown workspace file opens", () => {
         truncated: false,
       }),
     );
+    using openFile = vi
+      .spyOn(useRightPanelStore.getState(), "openFile")
+      .mockImplementation(() => {});
     await using screen = await renderText("Open `pdf/BC-04_review.pdf`.", {
       cwd: "/srv/jvn",
       threadRef,
@@ -563,10 +566,13 @@ describe("ChatMarkdown workspace file opens", () => {
     await act(async () => screen.container.querySelector("a")!.click());
 
     await vi.waitFor(() =>
-      expect(openFileInPreview).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ filePath: "/srv/jvn/bikeconnectors/legal/pdf/BC-04_review.pdf" }),
+      expect(openFile).toHaveBeenCalledExactlyOnceWith(
+        threadRef,
+        "bikeconnectors/legal/pdf/BC-04_review.pdf",
+        undefined,
       ),
     );
+    expect(openFileInPreview).not.toHaveBeenCalled();
   });
 });
 
