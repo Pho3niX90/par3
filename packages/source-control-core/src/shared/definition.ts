@@ -9,7 +9,11 @@ import {
   TrimmedNonEmptyString,
   TrimmedString,
 } from "@t3tools/contracts";
-import { normalizeGitRemoteUrl, parseGitRemoteRepository } from "@t3tools/shared/git";
+import {
+  canonicalRepositoryPath,
+  normalizeGitRemoteUrl,
+  parseGitRemoteRepository,
+} from "@t3tools/shared/git";
 import { userlessScpRemoteHost } from "@t3tools/shared/sourceControl";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -70,6 +74,7 @@ export type ChangeRequestHostIdentity =
       readonly canonicalKey?: string | undefined;
       readonly locator?: { readonly remoteUrl: string } | undefined;
       readonly members?: unknown;
+      readonly webUrl?: string | undefined;
     }
   | null
   | undefined;
@@ -380,7 +385,7 @@ export function parseCommitPath(url: URL, route: RegExp): CommitLink | null {
   return repository && sha && FULL_COMMIT_SHA.test(sha)
     ? {
         host: url.hostname.toLowerCase(),
-        repository: repository.toLowerCase(),
+        repository: canonicalRepositoryPath(repository),
         sha: sha.toLowerCase(),
         ...(url.port ? { authority: url.host.toLowerCase() } : {}),
       }
@@ -418,7 +423,7 @@ export function parseChangeRequestPath(url: URL, route: RegExp): ParsedChangeReq
   return repository && Number.isSafeInteger(number) && number > 0
     ? {
         host: url.hostname.toLowerCase(),
-        repository: repository.toLowerCase(),
+        repository: canonicalRepositoryPath(repository),
         number,
         repositoryUrl: `${url.origin}/${repository}`,
       }
@@ -516,7 +521,7 @@ export function isChangeRequestInProjectRepository(
   const repository = projectRepositoryPath(identity);
   return (
     repository !== null &&
-    repository.toLowerCase() === link.repository.toLowerCase() &&
+    canonicalRepositoryPath(repository) === canonicalRepositoryPath(link.repository) &&
     isChangeRequestOnProjectHost(projectHost, identity, link)
   );
 }
@@ -708,7 +713,15 @@ export function makeSourceControlDefinitionRegistry(
   }
   const claimOrder = inOrder(definitions, options?.claimChangeRequestUrlsFirst);
   const recognitionOrder = inOrder(definitions, options?.recognizeRemotesIn);
-  const repositoryKeyOwner = (key: string) => {
+  // Keys persisted before paths had one spelling still compare equal.
+  const canonicalKeyPath = (key: string) => {
+    const slash = key.indexOf("/");
+    return slash < 0
+      ? key
+      : `${key.slice(0, slash)}/${canonicalRepositoryPath(key.slice(slash + 1))}`;
+  };
+  const repositoryKeyOwner = (written: string) => {
+    const key = canonicalKeyPath(written);
     for (const definition of definitions) {
       const canonical = definition.canonicalRepositoryKey?.(key);
       if (canonical != null) return { definition, canonical };
@@ -815,7 +828,7 @@ export function makeSourceControlDefinitionRegistry(
       }
       return key;
     },
-    canonicalRepositoryKey: (key) => repositoryKeyOwner(key)?.canonical ?? key,
+    canonicalRepositoryKey: (key) => repositoryKeyOwner(key)?.canonical ?? canonicalKeyPath(key),
     findByRepositoryKey: (key) => repositoryKeyOwner(key)?.definition,
     repositorySelector: (identity) =>
       identity?.provider === undefined

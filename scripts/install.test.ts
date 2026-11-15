@@ -8,6 +8,10 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
+/** The launcher install.sh, `par3 install`, and `par3 update` write; exec by absolute path. */
+const launcherScript = (executable: string) =>
+  `#!/bin/sh\nexec '${executable.replaceAll("'", "'\\''")}' "$@"\n`;
+
 const nightlies = Array.from({ length: 100 }, (_, index) => ({
   tag_name: `v1.2.4-nightly.20261020.${200 - index}`,
 }));
@@ -29,10 +33,8 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer home
       await NodeFSP.writeFile(NodePath.join(target, "t3"), "#!/bin/sh\necho 't3 v1.2.3'\n", {
         mode: 0o755,
       });
-      const { status, stdout, stderr } = NodeChildProcess.spawnSync(
-        "sh",
-        [NodePath.resolve(import.meta.dirname, "install.sh")],
-        {
+      const install = () =>
+        NodeChildProcess.spawnSync("sh", [NodePath.resolve(import.meta.dirname, "install.sh")], {
           cwd: root,
           env: {
             ...process.env,
@@ -43,11 +45,16 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer home
             T3CODE_RELEASE_BASE_URL: "http://127.0.0.1:1",
           },
           encoding: "utf8",
-        },
-      );
+        });
+      // The second run replaces the launcher the first wrote, newlines in its path and all.
+      const first = install();
+      expect(first.status, first.stdout + first.stderr).toBe(0);
+      const { status, stdout, stderr } = install();
       expect(status, stdout + stderr).toBe(0);
       expect(stderr).toContain(`Installed Par3 ${version}`);
-      expect(await NodeFSP.readlink(launcher)).toBe(NodePath.join(target, "t3"));
+      expect(await NodeFSP.readFile(launcher, "utf8")).toBe(
+        launcherScript(NodePath.join(target, "t3")),
+      );
       expect(
         NodeChildProcess.execFileSync(launcher, ["--version"], {
           cwd: NodeOS.tmpdir(),
@@ -282,7 +289,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")(
           },
         );
         expect(code, output).not.toBe(0);
-        expect(output).toMatch(new RegExp(`t3 install: .*${archive.replaceAll(".", "\\.")}`));
+        expect(output).toMatch(new RegExp(`par3 install: .*${archive.replaceAll(".", "\\.")}`));
       } finally {
         server.closeAllConnections();
         await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -325,7 +332,7 @@ async function installOver(input: {
 }
 
 describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("install.sh par3 command", () => {
-  it("replaces only this home's own links and prints a PATH command", async () => {
+  it("replaces only this home's own launchers and prints a PATH command", async () => {
     const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-install-link-"));
     try {
       const home = NodePath.join(root, "home");
@@ -377,8 +384,8 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("install.sh par
         env: { HOME: root, SHELL: "/bin/zsh", PATH: "/usr/bin:/bin" },
       });
       expect(upgrade.code, upgrade.output).toBe(0);
-      expect(await NodeFSP.readlink(link)).toBe(
-        NodePath.join(root, "alias/runtime/versions/1.2.3/t3"),
+      expect(await NodeFSP.readFile(link, "utf8")).toBe(
+        launcherScript(NodePath.join(root, "alias/runtime/versions/1.2.3/t3")),
       );
       expect(upgrade.output).toContain(
         `printf '\\n%s\\n' 'export PATH="$PATH:$HOME/bin"' >> ~/.zshrc`,
@@ -415,6 +422,13 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("install.sh par
       expect(relative.code, relative.output).toBe(0);
       expect(relative.output).toContain(`'export PATH="$PATH:$HOME/bin"'`);
 
+      // A launcher script someone edited is theirs now.
+      const edited = `${launcherScript(NodePath.join(home, "runtime/versions/1.2.3/t3"))}# mine\n`;
+      await NodeFSP.writeFile(link, edited);
+      const overEdited = await installOver({ script: "install.sh", home, binDir });
+      expect(overEdited.code).not.toBe(0);
+      expect(await NodeFSP.readFile(link, "utf8")).toBe(edited);
+
       await NodeFSP.rm(link);
       await NodeFSP.symlink(NodePath.join(home, "bin/par3"), link);
       const overDesktop = await installOver({
@@ -423,7 +437,9 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("install.sh par
         binDir: `${binDir}/`,
       });
       expect(overDesktop.code, overDesktop.output).toBe(0);
-      expect(await NodeFSP.readlink(link)).toBe(NodePath.join(home, "runtime/versions/1.2.3/t3"));
+      expect(await NodeFSP.readFile(link, "utf8")).toBe(
+        launcherScript(NodePath.join(home, "runtime/versions/1.2.3/t3")),
+      );
     } finally {
       await NodeFSP.rm(root, { recursive: true, force: true });
     }
@@ -549,6 +565,8 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer chec
             "rm",
             "mv",
             "ln",
+            "chmod",
+            "sed",
             checksumTool,
           ]) {
             const executable = NodeChildProcess.execFileSync(
