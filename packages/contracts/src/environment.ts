@@ -72,7 +72,7 @@ export const ServerInstallation = Schema.Union([
     // Goes into a shell command, so only known names; absent from servers before `par3-cli` existed.
     packageName: Schema.optionalKey(Schema.Literals(["@paritylabs/par3", "par3-cli"])),
   }),
-  // A launcher symlink into a downloaded runtime, as the install script and `t3 update` leave.
+  // A launcher (script, or a legacy symlink) into a downloaded runtime, as the install script and `t3 update` leave.
   Schema.Struct({
     kind: Schema.Literal("t3-launcher"),
     launcher: InstalledPath,

@@ -112,6 +112,10 @@ import Migration0090 from "./Migrations/088_TurnItemTypeStatusIndex.ts";
 import Migration0091 from "./Migrations/089_ShellThreadReadIndexes.ts";
 import Migration0092 from "./Migrations/090_AuthConnectDevices.ts";
 import Migration0093 from "./Migrations/091_AuthConnectDeniedRequests.ts";
+// Upstream numbers these 92 to 94; Par3 runs them as 94 to 96.
+import Migration0094 from "./Migrations/092_QueuedTurnInputIndexJsonValid.ts";
+import Migration0095 from "./Migrations/093_ProviderTurnAttemptIndex.ts";
+import Migration0096 from "./Migrations/094_TurnItemMessageOrdinalIndex.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -208,6 +212,9 @@ const migrationEntries = [
   [91, "ShellThreadReadIndexes", Migration0091],
   [92, "AuthConnectDevices", Migration0092],
   [93, "AuthConnectDeniedRequests", Migration0093],
+  [94, "QueuedTurnInputIndexJsonValid", Migration0094],
+  [95, "ProviderTurnAttemptIndex", Migration0095],
+  [96, "TurnItemMessageOrdinalIndex", Migration0096],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -13,9 +13,11 @@ import { Command, Flag, GlobalFlag, Prompt } from "effect/cli";
 
 import * as BootService from "../cloud/bootService.ts";
 import {
+  findPosixLauncher,
   generatedWindowsShimTarget,
   isVersionExecutable,
   pinnedRuntimeVersionsDir,
+  readPosixLauncherTarget,
   resolveLauncherPath,
 } from "../cloud/pinnedRuntime.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
@@ -35,7 +37,7 @@ export interface UninstallPlan {
   readonly service: boolean;
   readonly otherHomeService: string | undefined;
   readonly versionsDir: string;
-  /** The `par3` launchers (symlinks or `.cmd` shims) that point into this home's runtime tree. */
+  /** The `par3` launchers (scripts, legacy symlinks, or `.cmd` shims) that point into this home's runtime tree. */
   readonly launchers: ReadonlyArray<string>;
   /** The `p3` aliases beside those launchers, when they run them. */
   readonly launcherAliases: ReadonlyArray<string>;
@@ -62,13 +64,10 @@ export const findOwnedLauncher = Effect.fn("cli.uninstall.find_launcher")(functi
       ? shimPath
       : undefined;
   }
-  const linkTarget = yield* fs.readLink(input.launchedAs).pipe(Effect.option);
-  if (Option.isNone(linkTarget)) return undefined;
-  const resolved = path.resolve(path.dirname(input.launchedAs), linkTarget.value);
-  return isVersionExecutable(path, input.versionsDir, resolved) ? input.launchedAs : undefined;
+  return yield* findPosixLauncher({ launchedAs: input.launchedAs, versionsDir: input.versionsDir });
 });
 
-/** Whether `launcher` is a link or unedited `par3.cmd` into this home's runtime/versions. */
+/** Whether `launcher` is a link, unedited `par3` script, or unedited `par3.cmd` into this home's runtime/versions. */
 const ownsLauncher = Effect.fn("cli.uninstall.owns_launcher")(function* (
   launcher: string,
   versionsDir: string,
@@ -95,6 +94,7 @@ const ownsLauncher = Effect.fn("cli.uninstall.owns_launcher")(function* (
             Effect.orElseSucceed(() => undefined),
           ),
           yield* fs.realPath(launcher).pipe(Effect.orElseSucceed(() => undefined)),
+          yield* readPosixLauncherTarget(launcher),
         ];
   return targets.some(
     (target) =>

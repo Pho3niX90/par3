@@ -84,6 +84,7 @@ import {
 } from "@t3tools/shared/mcpApp";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as ProviderProcesses from "../../process/providerProcesses.ts";
+import * as SpawnWorker from "../../process/SpawnWorker.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
 import { compareSemverVersions } from "@t3tools/shared/semver";
@@ -357,6 +358,9 @@ function mergeClaudeStreamUsage(
   };
 }
 export const CLAUDE_DEFAULT_INSTANCE_ID = defaultInstanceIdForDriver(CLAUDE_PROVIDER);
+// The Claude CLI takes the next token as this flag's value even when it starts with `--`.
+const claudeLaunchArgParseOptions = { valueFlags: ["append-system-prompt"] };
+
 const CLAUDE_SCRIPT_EXTENSIONS = [".js", ".mjs", ".tsx", ".ts", ".jsx"];
 // The SDK has no control-request deadline; the CLI waits up to 30 s per MCP server.
 const CLAUDE_MCP_REGISTRATION_TIMEOUT = "90 seconds";
@@ -1354,6 +1358,26 @@ const forkClaudeSessionInWorker = Effect.fn("forkClaudeSessionInWorker")(functio
   );
 });
 
+const CLAUDE_CAN_USE_TOOL_SHADOWED_WARNING = "CLAUDE_SDK_CAN_USE_TOOL_SHADOWED";
+
+// query() warns when canUseTool meets bypassPermissions or bare allowedTools. T3 installs
+// canUseTool in every mode on purpose (AskUserQuestion, ask rules), so it is per-session noise.
+export function withoutClaudeCanUseToolShadowedWarning<A>(run: () => A): A {
+  const emitWarning = process.emitWarning;
+  process.emitWarning = function (this: NodeJS.Process, ...args: Parameters<typeof emitWarning>) {
+    const [, options] = args;
+    if (typeof options === "object" && options.code === CLAUDE_CAN_USE_TOOL_SHADOWED_WARNING) {
+      return;
+    }
+    return Reflect.apply(emitWarning, this, args);
+  } as typeof emitWarning;
+  try {
+    return run();
+  } finally {
+    process.emitWarning = emitWarning;
+  }
+}
+
 export const layerQueryRunner: Layer.Layer<
   ClaudeAgentSdkQueryRunner,
   never,
@@ -1527,12 +1551,11 @@ export const layerQueryRunner: Layer.Layer<
                 }
                 return child;
               }
-              const child = NodeChildProcess.spawn(spawnOptions.command, spawnOptions.args, {
+              const child = SpawnWorker.spawnPiped(spawnOptions.command, spawnOptions.args, {
                 cwd: spawnOptions.cwd,
                 env: spawnOptions.env,
                 signal: spawnOptions.signal,
                 windowsHide: true,
-                stdio: ["pipe", "pipe", "pipe"],
               });
               child.stderr
                 .setEncoding("utf8")
@@ -1563,10 +1586,12 @@ export const layerQueryRunner: Layer.Layer<
           const queryRuntime = yield* Effect.uninterruptibleMask((restore) =>
             Effect.try({
               try: () =>
-                query({
-                  prompt,
-                  options: { ...options, spawnClaudeCodeProcess },
-                }),
+                withoutClaudeCanUseToolShadowedWarning(() =>
+                  query({
+                    prompt,
+                    options: { ...options, spawnClaudeCodeProcess },
+                  }),
+                ),
               catch: (cause) => queryRunnerError(cause, "query"),
             }).pipe(
               Effect.tap((queryRuntime) =>
@@ -2135,6 +2160,7 @@ export function makeClaudeQueryOptions(input: {
   readonly canUseTool?: CanUseTool;
   readonly onUserDialog?: ClaudeQueryOptions["onUserDialog"];
   readonly onElicitation?: ClaudeQueryOptions["onElicitation"];
+  readonly onStop?: HookCallback;
   readonly supportedDialogKinds?: ClaudeQueryOptions["supportedDialogKinds"];
   readonly allowDangerouslySkipPermissions?: boolean;
   readonly appendSystemPromptFileText?: string;
@@ -2152,7 +2178,9 @@ export function makeClaudeQueryOptions(input: {
     // The SDK replaces this flag with options.settings, so it arrives read as sdkSettings.
     settings: _launchArgSettings,
     ...extraArgs
-  } = input.settings === undefined ? {} : parseCliArgs(input.settings.launchArgs).flags;
+  } = input.settings === undefined
+    ? {}
+    : parseCliArgs(input.settings.launchArgs, claudeLaunchArgParseOptions).flags;
   // Claude Code overwrites its CLI append text with the SDK's initialize
   // appendSystemPrompt, so launch-argument text has to travel in that value.
   // The CLI puts file text before inline text and trims one trailing newline.
@@ -2287,8 +2315,15 @@ export function makeClaudeQueryOptions(input: {
         ...launchAppendSystemPrompt,
       ].join("\n\n"),
     },
-    ...(deviceInstructions
-      ? { hooks: { SubagentStart: [{ hooks: [subagentDeviceInstructions] }] } }
+    ...(deviceInstructions || input.onStop !== undefined
+      ? {
+          hooks: {
+            ...(deviceInstructions
+              ? { SubagentStart: [{ hooks: [subagentDeviceInstructions] }] }
+              : {}),
+            ...(input.onStop === undefined ? {} : { Stop: [{ hooks: [input.onStop] }] }),
+          },
+        }
       : {}),
     ...(Object.keys(extraArgs).length === 0 ? {} : { extraArgs }),
   };
@@ -2315,7 +2350,7 @@ const readClaudeAppendSystemPromptFile = Effect.fnUntraced(function* (input: {
   readonly path: Path.Path;
 }) {
   if (input.settings === undefined) return undefined;
-  const flags = parseCliArgs(input.settings.launchArgs).flags;
+  const flags = parseCliArgs(input.settings.launchArgs, claudeLaunchArgParseOptions).flags;
   // parseCliArgs gives null for a flag with no following value. An explicit
   // `--append-system-prompt ""` is a value the CLI accepts, so it stays.
   if (flags["append-system-prompt"] === null) {
@@ -2352,7 +2387,7 @@ const decodeClaudeLaunchArgSettings = Schema.decodeUnknownEffect(
  * relative to the thread's cwd (the project or its worktree).
  * makeClaudeQueryOptions merges the result beneath T3's own settings.
  */
-const readClaudeLaunchArgSettings = Effect.fn("ClaudeAdapterV2.readLaunchArgSettings")(
+export const readClaudeLaunchArgSettings = Effect.fn("ClaudeAdapterV2.readLaunchArgSettings")(
   function* (input: {
     readonly settings: ClaudeSettings | undefined;
     readonly cwd: string | null;
@@ -2360,7 +2395,8 @@ const readClaudeLaunchArgSettings = Effect.fn("ClaudeAdapterV2.readLaunchArgSett
     readonly path: Path.Path;
   }) {
     if (input.settings === undefined) return undefined;
-    const value = parseCliArgs(input.settings.launchArgs).flags.settings;
+    const value = parseCliArgs(input.settings.launchArgs, claudeLaunchArgParseOptions).flags
+      .settings;
     if (value === undefined) return undefined;
     const trimmed = value?.trim() ?? "";
     if (trimmed.length === 0) return yield* new ClaudeSettingsLaunchArgError({});
@@ -2408,7 +2444,7 @@ export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
   "mcp__t3-code__send_to_user",
 ];
 
-// T3 waits can block for an hour; exceed Claude's default 60 s timeout.
+// request_secret can wait an hour; exceed Claude's default 60 s timeout.
 export const CLAUDE_T3_MCP_TOOL_TIMEOUT_MS = 65 * 60 * 1_000;
 
 // allowedTools pre-approves calls; tools controls availability. Pre-approve T3 tools for headless modes,
@@ -3703,6 +3739,14 @@ const CLAUDE_SCHEDULED_WAKEUP_TASK: OrchestrationV2PendingBackgroundTask = {
 // most 60 s before the minute-rounded scheduledFor it reports; the rest is slack.
 const CLAUDE_SCHEDULED_WAKEUP_EARLY_FIRE_MARGIN_MS = 120_000;
 
+// The CLI answers a control request such as setModel with a replayed local-command user frame.
+// It belongs to no turn, so on an idle session it is not the start of a wake.
+function isClaudeLocalCommandEcho(message: SDKMessage): boolean {
+  if (message.type !== "user" || !("isReplay" in message) || !message.isReplay) return false;
+  const content = message.message.content;
+  return typeof content === "string" && content.startsWith("<local-command-stdout>");
+}
+
 function claudePendingBackgroundTasksFromRoster(
   roster: ReadonlyMap<string, OrchestrationV2PendingBackgroundTask>,
   awaitedTaskIds: ReadonlySet<string>,
@@ -4287,13 +4331,14 @@ export function permissionResultFromDecision(input: {
     };
   }
 
+  const feedback = input.feedback?.trim();
   return {
     behavior: "deny",
-    message:
-      input.feedback?.trim() ||
-      (input.decision === "cancel"
+    message: feedback
+      ? `The user declined this tool call and said:\n${feedback}`
+      : input.decision === "cancel"
         ? "User cancelled tool execution."
-        : "User declined tool execution."),
+        : "User declined tool execution.",
     toolUseID: input.toolUseID,
     decisionClassification: "user_reject",
     ...(input.decision === "cancel" ? { interrupt: true } : {}),
@@ -4972,6 +5017,8 @@ interface ActiveClaudeTurnContext {
   // Set while this turn's latest compaction status reports a failure, with
   // Claude's error text when it sent one.
   compactionFailure: { readonly message: string | undefined } | null;
+  // The title a `session_title_changed` frame reported; a `/rename` result applies it to the thread.
+  nativeSessionTitle: string | null;
   // Steers end segments whose usage is excluded from the final result; bill them too, oldest first.
   readonly steeredSegmentUsage: Array<SDKResultMessage["usage"]>;
   // Set as finalization starts: a steer admitted later would stay pending
@@ -6664,11 +6711,23 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             nativeThreadId: string,
             task: OrchestrationV2PendingBackgroundTask,
           ) {
-            yield* Ref.update(pendingBackgroundTasksByNativeThread, (current) => {
-              const roster = new Map(rosterForNativeThread(current, nativeThreadId));
-              roster.set(task.taskId, task);
-              return new Map(current).set(nativeThreadId, roster);
-            });
+            const startedMonitor = yield* Ref.modify(
+              pendingBackgroundTasksByNativeThread,
+              (current) => {
+                const roster = new Map(rosterForNativeThread(current, nativeThreadId));
+                const startedMonitor =
+                  task.kind === "monitor" && roster.get(task.taskId)?.kind !== "monitor";
+                roster.set(task.taskId, task);
+                return [startedMonitor, new Map(current).set(nativeThreadId, roster)] as const;
+              },
+            );
+            if (startedMonitor) {
+              yield* addTaskIdsToNativeThreadSet(
+                awaitedBackgroundTasksByNativeThread,
+                nativeThreadId,
+                [task.taskId],
+              );
+            }
             yield* rememberOpaqueTasks([task]);
             yield* markWakeEligibleOpaqueBackgroundTasks(nativeThreadId, [task.taskId]);
           });
@@ -10151,7 +10210,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ? undefined
                 : findToolCall(input.activeContext, message.tool_use_id);
             const command =
-              launch?.classification.itemType === "command_execution"
+              launch?.classification.itemType === "command_execution" ||
+              launch?.toolName === "Monitor"
                 ? firstStringInputField(launch.input, ["command"])
                 : undefined;
             yield* upsertPendingBackgroundTask(input.nativeThreadId, {
@@ -10412,6 +10472,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             (yield* Ref.get(activeTurn)) ??
             (yield* settledTurnForSubagentFrame(liveQuery.nativeThreadId, message));
           if (context === null) {
+            if (isClaudeLocalCommandEcho(message)) {
+              return;
+            }
             yield* applyWorkflowProgressWithoutTurn(message);
             // Buffer wake evidence before clearing the task from the roster.
             if (message.type === "system" && message.subtype === "task_notification") {
@@ -11157,6 +11220,35 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 return messages.length === entry.messages.length
                   ? current
                   : new Map(current).set(liveQuery.nativeThreadId, { ...entry, messages });
+              });
+            }
+          }
+
+          if (
+            message.type === "system" &&
+            (message.subtype as string) === "session_title_changed" &&
+            "title" in message &&
+            typeof message.title === "string"
+          ) {
+            context.nativeSessionTitle = normalizeClaudeSessionTitle(message.title);
+          }
+
+          if (
+            message.type === "result" &&
+            message.subtype === "success" &&
+            !message.is_error &&
+            message.local_command === "rename" &&
+            context.nativeSessionTitle !== null
+          ) {
+            const title = context.nativeSessionTitle;
+            context.nativeSessionTitle = null;
+            // The native session already has this title; the next turn must not send it back.
+            appliedSessionTitles.set(liveQuery.nativeThreadId, title);
+            if (title !== context.input.appThread.title) {
+              yield* emitProviderEvent({
+                type: "app_thread.created",
+                driver: CLAUDE_PROVIDER,
+                appThread: { ...context.input.appThread, title },
               });
             }
           }
@@ -12207,14 +12299,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           const context = yield* Ref.get(activeTurn);
           if (acceptance === undefined || context === null) {
             yield* Effect.logWarning(
-              "Declined an MCP elicitation the approval card cannot answer.",
+              "Cancelled an MCP elicitation the approval card cannot answer.",
               {
                 serverName: request.serverName,
                 mode: request.mode,
                 activeTurn: context !== null,
               },
             );
-            return { action: "decline" } satisfies ElicitationResult;
+            // No card was shown, so the user made no choice. MCP reserves
+            // "decline" for an explicit no; "cancel" tells the server the
+            // request was dismissed and may be asked another way.
+            return { action: "cancel" } satisfies ElicitationResult;
           }
           const grantKey = `${request.serverName}\u0000${request.message}`;
           if ((yield* Ref.get(mcpElicitationSessionGrants)).has(grantKey)) {
@@ -12480,6 +12575,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           queryPolicy: Effect.Success<ReturnType<typeof queryPolicyForTurn>>,
         ) {
           const mcpSession = yield* mcpSessions.read(turnInput.threadId);
+          // Claude Code defers its goal Stop hook only for its own background tasks, so a goal
+          // re-prompts in a loop while T3 work that will wake this thread is still running.
+          const onStop: HookCallback = () =>
+            runPromise(
+              Effect.gen(function* () {
+                if (goalsByNativeThread.get(nativeThreadId)?.status !== "active") return {};
+                const pendingWake = (yield* mcpSessions.read(turnInput.threadId))?.hasPendingWake;
+                return pendingWake !== undefined && (yield* pendingWake) ? { continue: false } : {};
+              }),
+            );
           const mcpOverrides = claudeMcpQueryOverrides({
             mcpSession,
             readOnlySandbox:
@@ -12655,6 +12760,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             canUseTool,
             onUserDialog,
             onElicitation,
+            onStop,
             supportedDialogKinds: ["resume_return"],
             ...(appendSystemPromptFileText === undefined ? {} : { appendSystemPromptFileText }),
             ...(toolSearchOverride === undefined ? {} : { toolSearchOverride }),
@@ -13036,6 +13142,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               rateLimitResetTimes: new Map(),
               latestAssistantRateLimit: null,
               compactionFailure: null,
+              nativeSessionTitle: null,
               steeredSegmentUsage: [],
               steersClosed: false,
               steeredLedgerUsage: { inputTokens: 0, outputTokens: 0 },

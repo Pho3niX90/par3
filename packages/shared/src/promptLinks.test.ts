@@ -161,4 +161,18 @@ describe("link round trips", () => {
     expect(promptLinkAppPath("ghapp://automations/new?prompt=hi")).toBeNull();
     expect(promptLinkAppPath("ghapp://evil.test/acme/api/pull/1")).toBeNull();
   });
+
+  it("maps links in browsers without URL.canParse, such as Safari before 17", () => {
+    const canParse = URL.canParse;
+    Reflect.deleteProperty(URL, "canParse");
+    try {
+      expect(promptLinkAppPath("https://app.paritylabs.co.za/new?prompt=hi")).toBe(
+        "/new?prompt=hi",
+      );
+      expect(promptLinkAppPath("https://app.paritylabs.co.za/")).toBeNull();
+      expect(promptLinkAppPath("not a url")).toBeNull();
+    } finally {
+      URL.canParse = canParse;
+    }
+  });
 });

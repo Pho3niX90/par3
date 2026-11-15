@@ -42,9 +42,10 @@ Run `par3 help` or `par3 --help` for the full reference. To start in a new worki
 directory, use an explicit path such as `par3 ./my-project`. A bare directory name
 is accepted only if it already exists.
 
-If `par3` or `par3 start` reports an already running server, connect to that server
-instead. Stop it before starting a replacement, or use a different `--base-dir`
-for an independent server.
+If `par3` or `par3 start` reports an already running server, run the `par3 pair`
+command it names and open the pairing URL to connect to that server. Stop it
+before starting a replacement, or use a different `--base-dir` for an
+independent server.
 
 To try Par3 once without installing it, run `npx par3-cli@latest` instead (needs
 Node.js for `npx`). It offers to install the `par3` command first. If you say no,

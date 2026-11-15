@@ -31,7 +31,6 @@ import { queuedRunEditBlockedReason } from "@t3tools/client-runtime/queued-run-e
 import {
   childThreadInputsTitle,
   type CodexFeedbackSubmission,
-  type EnvironmentThreadStatus,
 } from "@t3tools/client-runtime/state/threads";
 import { useKeyboardScrollToEnd } from "@legendapp/list/keyboard";
 import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSkills";
@@ -271,7 +270,6 @@ export interface ThreadDetailScreenProps {
   readonly respondingUserInputId: RuntimeRequestId | null;
   readonly connectionStateLabel: EnvironmentConnectionPhase;
   readonly connectionAwaitingApproval?: boolean;
-  readonly threadSyncStatus?: EnvironmentThreadStatus;
   readonly historyControls?: ThreadFeedHistoryControls;
   readonly activeThreadBusy: boolean;
   readonly canStopThread: boolean;
@@ -575,20 +573,6 @@ function ThreadDetailBody(
   );
   const composerKeyboardOffset = composerBottomInset;
   const contentPresentationKind = props.contentPresentation.kind;
-  const realThreadSyncLabel = (() => {
-    switch (props.threadSyncStatus) {
-      case "empty":
-      case "cached":
-      case "synchronizing":
-        if (contentPresentationKind === "ready") {
-          return "Syncing messages...";
-        }
-        return contentPresentationKind === "loading" ? "Loading messages..." : null;
-      default:
-        return null;
-    }
-  })();
-  const threadSyncLabel = useDelayedStatus(selectedThreadKey, realThreadSyncLabel);
   const connectionRetrying =
     props.connectionStateLabel === "connecting" || props.connectionStateLabel === "reconnecting";
   const retryError = connectionRetrying ? props.connectionError : null;
@@ -811,17 +795,12 @@ function ThreadDetailBody(
       return null;
     }
     if (props.creationState?.kind === "preparing") {
-      if (props.worktreeSetup) return null;
-      return {
-        kind: "preparing",
-        label: props.creationState.preparingWorktree ? "Setting up worktree…" : "Starting…",
-      };
+      // The feed shows worktree setup in place, so only a plain start needs the pill.
+      if (props.worktreeSetup || props.creationState.preparingWorktree) return null;
+      return { kind: "preparing", label: "Starting…" };
     }
     if (props.creationState?.kind === "failed") {
       return null;
-    }
-    if (threadSyncLabel !== null) {
-      return { kind: "syncing", label: threadSyncLabel };
     }
     const childInput = childThreadInputs[0];
     if (childInput && contentPresentationKind === "ready") {
@@ -1501,6 +1480,11 @@ function ThreadDetailBody(
                     pendingHandoff={props.pendingHandoff}
                     worktreeSetup={props.worktreeSetup}
                     setupWorkingStartedAt={props.setupWorkingStartedAt}
+                    preparingWorktree={
+                      props.creationState?.kind === "preparing" &&
+                      props.creationState.preparingWorktree &&
+                      !props.worktreeSetup
+                    }
                     queuedMessages={props.queuedMessages}
                     dispatchingMessageId={props.dispatchingMessageId}
                     // A native subagent has no composer to edit a pending message in;
@@ -1900,6 +1884,10 @@ function ThreadDetailBody(
                         serverConfig={props.serverConfig}
                         queueCount={props.selectedThreadQueueCount}
                         activeThreadBusy={props.activeThreadBusy}
+                        redirectsApproval={
+                          props.activePendingApprovals.length > 0 &&
+                          props.activePendingUserInput === null
+                        }
                         canStopThread={props.canStopThread}
                         environmentId={props.environmentId}
                         projectCwd={props.threadCwd ?? props.projectWorkspaceRoot}

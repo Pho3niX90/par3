@@ -122,6 +122,7 @@ import {
 import { environmentPresentations } from "../../state/presentation";
 import {
   approvalRedirectNotice,
+  composerDraftContentChanged,
   loadBalancingSendWarning,
   multipleModelSendBlock,
   referencedThreadContexts,
@@ -130,8 +131,8 @@ import { type useImplementPlanInNewThread, usePlanFollowUpSend } from "./useProp
 import { useMultipleModelSend } from "./useMultipleModelSend";
 import { type ComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 import {
-  awaitAttachmentUploads,
   getUploadedAttachments,
+  refreshExpiredAttachmentUploads,
   readAttachmentUpload,
   releaseDraftAttachments,
   retryAttachmentUpload,
@@ -257,7 +258,7 @@ interface ComposerSendInput {
   readonly readPendingEnvironmentChange: DraftEnvironmentRouting["readPendingEnvironmentChange"];
   readonly pendingApprovals: PendingThreadRequests["pendingApprovals"];
   readonly respondingRequestIds: PendingThreadRequests["respondingRequestIds"];
-  readonly activePendingProgress: PendingThreadRequests["activePendingProgress"];
+  readonly activePendingUserInput: PendingThreadRequests["activePendingUserInput"];
   readonly onAdvanceActivePendingUserInput: PendingThreadRequests["onAdvanceActivePendingUserInput"];
   readonly onRespondToApproval: PendingThreadRequests["onRespondToApproval"];
   readonly beginLocalDispatch: LocalDispatchState["beginLocalDispatch"];
@@ -362,7 +363,7 @@ export function useComposerSend(input: ComposerSendInput) {
     readPendingEnvironmentChange,
     pendingApprovals,
     respondingRequestIds,
-    activePendingProgress,
+    activePendingUserInput,
     onAdvanceActivePendingUserInput,
     onRespondToApproval: onRespondToApprovalStable,
     beginLocalDispatch,
@@ -580,7 +581,7 @@ export function useComposerSend(input: ComposerSendInput) {
         ? parseSideChatCommand(promptAtSend)
         : null;
     const answeringQuestion =
-      Boolean(activePendingProgress) && sendCtx?.answeringPendingUserInput !== false;
+      Boolean(activePendingUserInput) && sendCtx?.answeringPendingUserInput !== false;
     const startsSideChat =
       onSideChat !== undefined && sideChatCommand !== null && sideChatDisabledReason === null;
     // An answer responds to the open request rather than starting a turn, so the new-message
@@ -1165,6 +1166,14 @@ export function useComposerSend(input: ComposerSendInput) {
       multipleTargets.push(resolved);
     }
 
+    const draftBeforePreparation = useComposerDraftStore
+      .getState()
+      .getComposerDraft(composerDraftTarget);
+    const draftChangedDuringPreparation = () => {
+      if (composerRef.current?.hasPendingAttachments() === true) return true;
+      const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+      return composerDraftContentChanged(draftBeforePreparation, draft);
+    };
     sendInFlightRef.current = true;
     const sendGeneration = ++composerSendGenerationRef.current;
     const attachmentCapabilitiesBeforeUpload = readLiveAttachmentCapabilities();
@@ -1212,6 +1221,17 @@ export function useComposerSend(input: ComposerSendInput) {
     }
 
     const attachmentCapabilitiesBeforeDispatch = readLiveAttachmentCapabilities();
+    if (draftChangedDuringPreparation()) {
+      sendInFlightRef.current = false;
+      setThreadError(
+        threadIdForSend,
+        "Draft changed while preparing this message. Review it and send again.",
+      );
+      setDockedDraftHeroThreadKey((currentThreadKey) =>
+        currentThreadKey === activeThreadKey ? null : currentThreadKey,
+      );
+      return;
+    }
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
       attachmentCapabilitiesBeforeDispatch.fileBlockReason !== null
@@ -1233,7 +1253,22 @@ export function useComposerSend(input: ComposerSendInput) {
       composerAttachmentsSnapshot.length > 0 &&
       (sendCtx?.shownPendingApprovalIds.length ?? 0) > 0
     ) {
-      await awaitAttachmentUploads(composerAttachmentsSnapshot.map((attachment) => attachment.id));
+      await refreshExpiredAttachmentUploads({
+        environmentId,
+        images: composerAttachmentsSnapshot,
+        draftTarget: composerDraftTarget,
+      });
+      if (draftChangedDuringPreparation()) {
+        sendInFlightRef.current = false;
+        setThreadError(
+          threadIdForSend,
+          "Draft changed while preparing this message. Review it and send again.",
+        );
+        setDockedDraftHeroThreadKey((currentThreadKey) =>
+          currentThreadKey === activeThreadKey ? null : currentThreadKey,
+        );
+        return;
+      }
       const uploadBlockReason =
         readLiveAttachmentCapabilities().fileBlockReason ??
         (getUploadedAttachments({ environmentId, images: composerAttachmentsSnapshot }) === null
@@ -1396,6 +1431,7 @@ export function useComposerSend(input: ComposerSendInput) {
       environmentId,
       attachments: composerAttachmentsSnapshot,
       usesAttachmentUploads: turnUsesAttachmentUploads,
+      draftTarget: composerDraftTarget,
     });
     if (multipleModelSelections !== null) {
       await sendToMultipleModels({
@@ -1411,6 +1447,7 @@ export function useComposerSend(input: ComposerSendInput) {
         readFileBlockReason: () => readLiveAttachmentCapabilities().fileBlockReason,
         buildOutgoingMessageContext,
         isCurrentSend: () => composerSendGenerationRef.current === sendGeneration,
+        draftChangedDuringPreparation,
       });
       return;
     }
@@ -1464,9 +1501,12 @@ export function useComposerSend(input: ComposerSendInput) {
       : null;
     // Keep new-thread flows from reusing this draft while attachments and worktree setup settle.
     if (sentDraftThreadRef) markPromotedDraftThreadByRef(sentDraftThreadRef);
-    promptRef.current = "";
     clearComposerDraftContent(composerDraftTarget);
-    composerRef.current?.resetCursorState();
+    // The prompt ref and cursor belong to the thread on screen, which may no longer be this one.
+    if (currentRouteThreadKeyRef.current === routeThreadKey) {
+      promptRef.current = "";
+      composerRef.current?.resetCursorState();
+    }
 
     const title = deriveThreadTitleSeed({
       text: messageTextForSend,
@@ -1715,26 +1755,34 @@ export function useComposerSend(input: ComposerSendInput) {
       ) {
         // A draft typed meanwhile keeps the composer, so the failed text stays reachable here.
         const failedText = sendSnapshot.draftText;
-        if (failedText.trim().length > 0) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: isAtomCommandInterrupted(failure)
-                ? "Message may not have been sent"
-                : "Message not sent",
-              description: "Your new draft was kept. Copy the failed message to send it again.",
-              // The toast holds the only copy of the failed text, so it stays until dismissed.
-              timeout: 0,
-              data: { hideCopyButton: true },
-              actionProps: {
-                children: "Copy message",
-                onClick: () => {
-                  void writeTextToClipboard(failedText, "failed message").catch(() => undefined);
-                },
-              },
-            }),
-          );
-        }
+        const hasText = failedText.trim().length > 0;
+        // An image-only message has nothing to copy, but its failure still needs a notice.
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: isAtomCommandInterrupted(failure)
+              ? "Message may not have been sent"
+              : "Message not sent",
+            description: hasText
+              ? "Your new draft was kept. Copy the failed message to send it again."
+              : "Your new draft was kept.",
+            // The toast holds the only trace of the failed message, so it stays until dismissed.
+            timeout: 0,
+            data: { hideCopyButton: true },
+            ...(hasText
+              ? {
+                  actionProps: {
+                    children: "Copy message",
+                    onClick: () => {
+                      void writeTextToClipboard(failedText, "failed message").catch(
+                        () => undefined,
+                      );
+                    },
+                  },
+                }
+              : {}),
+          }),
+        );
       } else {
         const retryComposerImages = restoreComposerDraft(composerDraftTarget, sendSnapshot);
         if (currentRouteThreadKeyRef.current === routeThreadKey) {

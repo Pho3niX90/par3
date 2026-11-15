@@ -1242,6 +1242,8 @@ const screenshot = await getImage({
     .container { padding-left: 20px; padding-right: 20px; }
     .hero-preview { display: none; }
     .feature-grid { grid-template-columns: 1fr; }
+    /* A nowrap tag widens its column past the grid, which then clips the other column. */
+    .harness-tag { white-space: normal; }
     .endorsements-head {
       margin-bottom: 40px;
     }
@@ -1268,5 +1270,9 @@ const screenshot = await getImage({
     .endorsement-card p {
       font-size: 13px;
     }
+  }
+
+  @media (max-width: 360px) {
+    .harness { padding-left: 12px; padding-right: 12px; }
   }
 </style>

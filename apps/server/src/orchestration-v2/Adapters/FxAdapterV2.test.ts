@@ -278,7 +278,11 @@ describe("FxAdapterV2", () => {
           runtimeMode: "auto",
           frames: [
             ...initialize,
-            outbound("session/new", { cwd: "<workspace>", mcpServers: "<any>" }),
+            outbound("session/new", {
+              cwd: "<workspace>",
+              mcpServers: "<any>",
+              _meta: { fx: { profileMcpServers: true } },
+            }),
             answer("session/new", fxSession({ model: FX_DEFAULT_MODEL, modes })),
             ...setConfig(
               "mode",
@@ -299,7 +303,12 @@ describe("FxAdapterV2", () => {
       loadSessionId: SESSION_ID,
       frames: [
         ...initialize,
-        outbound("session/load"),
+        outbound("session/load", {
+          sessionId: SESSION_ID,
+          cwd: "<workspace>",
+          mcpServers: "<any>",
+          _meta: { fx: { profileMcpServers: true } },
+        }),
         answer("session/load", fxSession({ model: NAMED_MODEL, modes: FX_0_0_13_MODES })),
         // Config id `model`, never fx's `provider`, and never T3's "default".
         ...setConfig(
