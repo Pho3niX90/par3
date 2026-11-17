@@ -4,7 +4,7 @@ import {
   MergeConflictListResult,
   OrchestratorMcpFailure,
 } from "@t3tools/contracts";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 import * as Schema from "effect/Schema";
 
 import * as ProjectService from "../../../project/ProjectService.ts";
@@ -57,7 +57,8 @@ const ConflictsStatusTool = Tool.make("t3_conflicts_status", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const ConflictsAutoResolveTool = Tool.make("t3_conflicts_auto_resolve", {
   description:
@@ -72,6 +73,7 @@ const ConflictsAutoResolveTool = Tool.make("t3_conflicts_auto_resolve", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const ConflictsToolkit = Toolkit.make(ConflictsStatusTool, ConflictsAutoResolveTool);
