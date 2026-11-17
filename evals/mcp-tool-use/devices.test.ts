@@ -190,11 +190,11 @@ it.effect("tells the shell simulator the launchers T3 returned and agent-device'
     yield* withDevices(sample);
     const call = { tool: "Bash", input: { command: "ls /tmp" } };
     const told = (request: ReturnType<typeof shellRequest>) => JSON.stringify(request.messages);
-    assert.notInclude(told(shellRequest(sample, call, "claude-haiku-5-5")), "launchers T3's");
+    assert.notInclude(told(shellRequest(sample, call, "claude-haiku-5-5")), "launchers Par3's");
     const opened = yield* sample.devices!.call("device_open", { hostId: MAC, deviceId: IPHONE });
     const { command } = json(opened.text).agentDevice;
     const request = shellRequest(sample, call, "claude-haiku-5-5");
-    assert.include(told(request), `agent-device launchers T3's device_open returned: ${command}`);
+    assert.include(told(request), `agent-device launchers Par3's device_open returned: ${command}`);
     // agent-device's own syntax: a positional recording path, and `record stop` with no flag.
     assert.include(request.system, AGENT_DEVICE_SHELL);
     assert.include(
@@ -661,7 +661,7 @@ it.effect("denies every device tool with T3's own error when agent device access
       );
     }
     // T3 drops its device text for a thread without the capability, on refs that have it.
-    assert.notInclude(t3SystemAppend(model, false), "## T3 Code devices");
+    assert.notInclude(t3SystemAppend(model, false), "## Par3 devices");
   }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
@@ -741,7 +741,7 @@ it.effect("refuses an open on a device another thread's agent-device session hol
     const told = JSON.stringify(shellRequest(sample, { tool: "Bash", input: {} }, model).messages);
     assert.include(
       told,
-      `${owner} (Acme iPhone, ${IPHONE}, on build-mac) belongs to another T3 thread (acme-design-review)`,
+      `${owner} (Acme iPhone, ${IPHONE}, on build-mac) belongs to another Par3 thread (acme-design-review)`,
     );
     // Closing the owner's session frees the device.
     history.push({ tool: "Bash", input: { command: line("close", owner) }, output: "Closed" });
@@ -822,7 +822,7 @@ it.effect(
       const free = told(spareOpen);
       assert.include(
         free,
-        `agent-device launchers T3's device_open returned: ${
+        `agent-device launchers Par3's device_open returned: ${
           held.session === undefined
             ? `${held.command} (shared: each command's --udid or --serial and --session name its device and session)`
             : `${held.command} (drives Acme iPhone, ${IPHONE}, on build-mac, in session ${held.session}); ${spare.command} (drives Acme Spare iPhone, ${SPARE_PHONE}, on spare-mac, in session ${spare.session})`
@@ -830,7 +830,7 @@ it.effect(
       );
       assert.include(
         free,
-        `${session(held)} (Acme iPhone, ${IPHONE}, on build-mac) has not started; ${session(spare)} (Acme Spare iPhone, ${SPARE_PHONE}, on spare-mac) has not started; ${owner} (Acme iPhone, ${IPHONE}, on build-mac) belongs to another T3 thread (acme-design-review) and holds its device with an app open.`,
+        `${session(held)} (Acme iPhone, ${IPHONE}, on build-mac) has not started; ${session(spare)} (Acme Spare iPhone, ${SPARE_PHONE}, on spare-mac) has not started; ${owner} (Acme iPhone, ${IPHONE}, on build-mac) belongs to another Par3 thread (acme-design-review) and holds its device with an app open.`,
       );
       assert.include(
         free,

@@ -220,7 +220,7 @@ export const repointLaunchers = Effect.fn("cloud.service_launcher_client.repoint
         Effect.catchCause((cause) =>
           Cause.hasInterrupts(cause)
             ? Effect.interrupt
-            : Effect.logWarning("Could not move the t3 command to the updated version", {
+            : Effect.logWarning("Could not move the par3 command to the updated version", {
                 launchedAs,
                 cause,
               }),

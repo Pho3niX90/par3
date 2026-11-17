@@ -551,7 +551,7 @@ export const t3SystemAppend = (model: Model, device = true, browser = true) => {
   if (isRecord(systemPrompt) && systemPrompt.type === "preset" && systemPrompt.append) {
     return systemPrompt.append;
   }
-  throw new Error("makeClaudeQueryOptions no longer appends T3 text to a preset prompt.");
+  throw new Error("makeClaudeQueryOptions no longer appends Par3 text to a preset prompt.");
 };
 
 /**
@@ -593,7 +593,7 @@ const t3ContextReport = (model: Model) => {
   const descriptions = t3Tools.reduce((sum, tool) => sum + valueText(tool.description).length, 0);
   const schemas = JSON.stringify(t3Tools).length;
   return [
-    `- T3 context: system text ${size((isCodex(model) ? JSON.stringify(buildCodexAdditionalContext({ model }, { browser: true, device: true })) : t3SystemAppend(model)).length)}`,
+    `- Par3 context: system text ${size((isCodex(model) ? JSON.stringify(buildCodexAdditionalContext({ model }, { browser: true, device: true })) : t3SystemAppend(model)).length)}`,
     `tool descriptions ${size(descriptions)}`,
     `full tool schemas ${size(schemas)} across ${t3Tools.length} tools.`,
   ].join(", ");
@@ -739,7 +739,7 @@ const buildCodexBase = (
       : valueText(item.content);
   const joined = template.input.map(contentText).join("\n");
   if (!joined.includes("<t3_code_runtime>"))
-    throw new Error("Codex template needs full T3 context.");
+    throw new Error("Codex template needs full Par3 context.");
   const cwd = /<cwd>(.*?)<\/cwd>/.exec(joined)?.[1] ?? "/home/user/app";
   const home = /^\/(?:home|Users)\/[^/]+/.exec(cwd)?.[0];
   const clean = (s: string) => (home ? s.replaceAll(home, home.replace(/[^/]+$/, "user")) : s);
@@ -1068,7 +1068,7 @@ export const buildMessages = (sample: Sample) => {
           ? "withBackgroundWait"
           : undefined;
       if (call.result === "default" && builder && !sample.priorResults.has(call)) {
-        throw new Error(`${testCase.id}: prior ${call.tool} needs T3's result; run ${builder}.`);
+        throw new Error(`${testCase.id}: prior ${call.tool} needs Par3's result; run ${builder}.`);
       }
       return { ...call, id: `toolu_prior_${nextId++}`, name: tool.name, tool, prior: call };
     });
@@ -1522,12 +1522,12 @@ export const shellRequest = (sample: Sample, call: Omit<ShellEntry, "output">, m
     ...(devices?.describe(shell, typeof command === "string" ? command : undefined) ?? []),
     ...(world?.deviceInvalidCapture
       ? [
-          "T3's device_screenshot gets each capture as a PNG whose header says 0×0, so it reports 0×0. agent-device's own screenshot is unaffected.",
+          "Par3's device_screenshot gets each capture as a PNG whose header says 0×0, so it reports 0×0. agent-device's own screenshot is unaffected.",
         ]
       : []),
     ...(sample.secretFiles.length > 0
       ? [
-          `T3's request_secret saved these files in this sample: ${sample.secretFiles.join(", ")}. Each exists, is readable only by the user, and holds exactly the value the user gave, typed into T3's private card or pasted in chat and saved by the agent, the right one for the task, with no trailing newline. A program that reads it, as in "$(cat <file>)", < <file> or a --*-file flag, gets that value. What appears in the output is whatever that program prints: one that prints or logs its input shows the value. No other file in that directory exists.`,
+          `Par3's request_secret saved these files in this sample: ${sample.secretFiles.join(", ")}. Each exists, is readable only by the user, and holds exactly the value the user gave, typed into Par3's private card or pasted in chat and saved by the agent, the right one for the task, with no trailing newline. A program that reads it, as in "$(cat <file>)", < <file> or a --*-file flag, gets that value. What appears in the output is whatever that program prints: one that prints or logs its input shows the value. No other file in that directory exists.`,
         ]
       : []),
     ...(context ? [`The agent was told: ${context}`] : []),
@@ -2398,7 +2398,7 @@ export const summarize = (
   );
   const errorNote = `- Errored: ${errors.map(([id, failed]) => `${id} ×${failed.length}`).join(", ")}. These samples did not finish, even after retries, so pass rates leave them out; tokens they spent are counted.`;
   const nativeNote =
-    "- native-subagent cases are approximate: the harness gives subagents their own system prompt, which this runner does not rebuild. T3's append is left out and its SubagentStart hook context added after the task.";
+    "- native-subagent cases are approximate: the harness gives subagents their own system prompt, which this runner does not rebuild. Par3's append is left out and its SubagentStart hook context added after the task.";
   const identityNote = `- The captured Claude Code identity line is replaced with "${NEUTRAL_IDENTITY}"`;
   const finished = rows.filter((row) => row.error === undefined).length;
   return [

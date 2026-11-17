@@ -198,7 +198,7 @@ export function RightPanelSurfaceContent(props: {
         return (
           <PullRequestsUnavailableState
             title="Issues unavailable"
-            error="Update this environment's T3 Code server to browse issues."
+            error="Update this environment's Par3 server to browse issues."
           />
         );
       }

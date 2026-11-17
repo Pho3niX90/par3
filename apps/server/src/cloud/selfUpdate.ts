@@ -107,7 +107,7 @@ export const pruneRuntimesOnStart = Effect.fn("cloud.server_self_update.prune_on
       references,
     });
     if (removed.length > 0) {
-      yield* Effect.logInfo("Removed unused t3 runtimes.", { versions: removed });
+      yield* Effect.logInfo("Removed unused par3 runtimes.", { versions: removed });
     }
     return removed;
   },

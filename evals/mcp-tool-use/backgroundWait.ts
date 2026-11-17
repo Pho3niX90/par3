@@ -114,7 +114,7 @@ export const makeBackgroundWait = Effect.fn("evaluateMcpToolUse.makeBackgroundWa
   // The registry keeps each tool's handler; its public type lists only definitions.
   const tools = Context.get(context, McpServer.McpServer).tools as ReadonlyArray<Entry>;
   const entry = tools.find((tool) => tool.tool.name === "t3_background_wait");
-  if (entry === undefined) return yield* Effect.die(new Error("T3 has no t3_background_wait."));
+  if (entry === undefined) return yield* Effect.die(new Error("Par3 has no t3_background_wait."));
   const scope: McpInvocationContext.McpThreadInvocationScope = {
     environmentId: EnvironmentId.make("00000000-0000-4000-8000-0000000000e0"),
     requestNamespace: "mcp-tool-use-eval",
@@ -148,7 +148,7 @@ export const makeBackgroundWait = Effect.fn("evaluateMcpToolUse.makeBackgroundWa
       .flatMap((part) => (part.type === "text" ? [part.text] : []))
       .join("\n");
     if (text === "Tool execution failed due to an internal server error.") {
-      return yield* Effect.die(new Error("t3_background_wait hit a defect in T3 or the eval."));
+      return yield* Effect.die(new Error("t3_background_wait hit a defect in Par3 or the eval."));
     }
     return { text, isError: result.isError === true };
   });

@@ -246,7 +246,7 @@ const command = Command.make(
         "web: server and Vite. mobile: server on every interface and Metro.",
       ),
     ),
-    home: Argument.String("t3-home").pipe(Argument.withDescription("T3 home to recreate.")),
+    home: Argument.String("t3-home").pipe(Argument.withDescription("Par3 home to recreate.")),
     ports: Argument.String("port").pipe(
       Argument.withDescription(
         "web: <host> <web-port>. mobile: <server-port> <metro-port> <host>.",

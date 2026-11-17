@@ -231,7 +231,7 @@ export const deregisterManagedRelayEnvironment = Effect.fn(
 export const createManagedRelayT3ChatLinkRequest = Effect.fn(
   "clientRuntime.managedRelaySession.createT3ChatLinkRequest",
 )(function* (registry: AtomRegistry.AtomRegistry, input: { readonly accountId: string }) {
-  const clerkToken = yield* requireSessionClerkToken(registry, input.accountId, "linking T3 Chat");
+  const clerkToken = yield* requireSessionClerkToken(registry, input.accountId, "linking a plan");
   const relay = yield* ManagedRelay.ManagedRelayClient;
   return (yield* relay.createT3ChatLinkRequest({ clerkToken })).url;
 });
@@ -241,7 +241,7 @@ export const unlinkManagedRelayT3Chat = Effect.fn("clientRuntime.managedRelaySes
     const clerkToken = yield* requireSessionClerkToken(
       registry,
       input.accountId,
-      "unlinking T3 Chat",
+      "unlinking a plan",
     );
     const relay = yield* ManagedRelay.ManagedRelayClient;
     yield* relay.unlinkT3Chat({ clerkToken });

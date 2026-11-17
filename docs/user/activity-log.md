@@ -5,7 +5,7 @@ commands, tool inputs, status, and exit codes. Expand a tool call to see its out
 command's output updates live, and long output shows only its most recent part. Use **Open diff** on
 a file change to review its contents.
 
-T3 Orchestrator summaries describe the actions taken, such as **Ran 2 commands and sent messages
+Orchestrator summaries describe the actions taken, such as **Ran 2 commands and sent messages
 to 3 threads**. Repeated messages to the same destinations show both counts: **Sent 5 messages to
 2 threads**. Thread creation counts the threads returned by the tool, including batches.
 
@@ -42,7 +42,7 @@ are spaced out, so a quick step can be skipped for a newer one.
 The agent's reasoning text is never read. The setting follows the agent's real activity, whatever
 **Tool calls in chat** hides, and applies to this browser or device only.
 
-To hear the open thread and what it's doing when you switch to T3 Code, turn on **Screen reader
+To hear the open thread and what it's doing when you switch to Par3, turn on **Screen reader
 window title** in the same section. The window title then starts with the thread's status
 (**Working**, **Needs approval**, or **Needs your input**) and its name, then the project, so a
 screen reader says them first. When the turn ends, only the status goes away.

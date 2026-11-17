@@ -2,11 +2,11 @@
 
 ## Choose a shell
 
-Set `T3CODE_TERMINAL_SHELL` in the environment that launches the T3 Code server
+Set `T3CODE_TERMINAL_SHELL` in the environment that launches the Par3 server
 to choose the executable used for new terminals. Use an executable name or its
 full path, without surrounding quotes or command-line arguments. An unset or
 blank value keeps the platform default. If the executable cannot be started,
-T3 Code tries its usual fallback shells.
+Par3 tries its usual fallback shells.
 
 On Windows, to use Git Bash from a standard Git for Windows installation, run
 this in PowerShell:
@@ -15,13 +15,13 @@ this in PowerShell:
 [Environment]::SetEnvironmentVariable('T3CODE_TERMINAL_SHELL', 'C:\Program Files\Git\bin\bash.exe', 'User')
 ```
 
-Fully quit T3 Code, then reopen it from the Start menu and create a new terminal.
+Fully quit Par3, then reopen it from the Start menu and create a new terminal.
 If the app still inherits the old environment, sign out of Windows and sign in
 again. Git Bash starts as an interactive login shell. Use `bin\bash.exe`, not
 `git-bash.exe`, which launches a separate terminal window.
 
 To restore the default, remove the variable with the same command using `$null`
-as its second argument, then restart T3 Code.
+as its second argument, then restart Par3.
 
 This setting belongs to the machine hosting the server, including when you
 connect from another device. It does not change provider-run commands or the

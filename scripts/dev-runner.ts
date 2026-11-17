@@ -988,7 +988,7 @@ const devRunnerCli = Command.make("dev-runner", {
   ),
   host: Flag.String("host").pipe(
     Flag.withDescription(
-      "Server host/interface override (forwards to T3CODE_HOST). Ambient T3CODE_HOST is ignored: agent shells inherit it from the T3 server that spawned them.",
+      "Server host/interface override (forwards to T3CODE_HOST). Ambient T3CODE_HOST is ignored: agent shells inherit it from the Par3 server that spawned them.",
     ),
     Flag.optional,
     Flag.map(Option.getOrUndefined),
@@ -996,7 +996,7 @@ const devRunnerCli = Command.make("dev-runner", {
   port: Flag.Int("port").pipe(
     Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))),
     Flag.withDescription(
-      "Server port override (forwards to T3CODE_PORT). Ambient T3CODE_PORT is ignored: agent shells inherit it from the T3 server that spawned them.",
+      "Server port override (forwards to T3CODE_PORT). Ambient T3CODE_PORT is ignored: agent shells inherit it from the Par3 server that spawned them.",
     ),
     Flag.optional,
     Flag.map(Option.getOrUndefined),

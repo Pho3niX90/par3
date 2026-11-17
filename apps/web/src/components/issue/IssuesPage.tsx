@@ -412,7 +412,7 @@ export function IssuesPage() {
   const listBody: ReactNode = !issuesSupported ? (
     <PullRequestsUnavailableState
       title="Issues unavailable"
-      error="Update this environment's T3 Code server to browse issues."
+      error="Update this environment's Par3 server to browse issues."
     />
   ) : noneAnswered && list.isPending ? (
     <PullRequestListGhost />

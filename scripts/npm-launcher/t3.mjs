@@ -152,7 +152,7 @@ function publish(staging, dir) {
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
     throw new Error(
-      `another t3 is installing ${version}. If none is running, delete ${lock} and try again.`,
+      `another par3 is installing ${version}. If none is running, delete ${lock} and try again.`,
       { cause: error },
     );
   }

@@ -514,7 +514,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Guest links",
     to: "/settings/labs",
     scope: "environment",
-    searchTerms: ["beta share guest invite link teammate watch t3 connect tunnel"],
+    searchTerms: ["beta share guest invite link teammate watch parity connect tunnel"],
   },
   {
     id: "linked-environments-beta",
@@ -1342,7 +1342,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Parity Connect",
     to: "/settings/access",
     targetId: "connections-environment",
-    searchTerms: ["managed tunnel cloud other devices remote tunnels limit t3 chat"],
+    searchTerms: ["managed tunnel cloud other devices remote tunnels limit parity connect"],
     desktopOnly: true,
     cloudOnly: true,
   },

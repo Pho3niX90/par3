@@ -85,9 +85,9 @@ Fix:
    If it says the host's network has an old cached answer, wait: it usually
    clears within about 30 minutes.
 4. If it says the address no longer points to this machine's tunnel, the
-   environment was likely removed from T3 Connect. Link it again: on a desktop
-   host, turn **T3 Connect** off and on in **Settings > Sharing & access**. On a
-   command-line host, run `t3 connect link`, then restart T3 Code.
+   environment was likely removed from Parity Connect. Link it again: on a desktop
+   host, turn **Parity Connect** off and on in **Settings > Sharing & access**. On a
+   command-line host, run `par3 connect link`, then restart Par3.
 
 ## This device can't reach Parity Connect
 

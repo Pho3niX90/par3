@@ -113,7 +113,7 @@ export function SettingsDiagnosticsRouteScreen() {
             <EmptyState
               icon="exclamationmark.triangle"
               title="Crash log unavailable"
-              detail="Startup crash records are only kept in store and TestFlight builds."
+              detail="Startup crash records are only kept in store builds."
             />
           ) : records.length === 0 ? (
             <EmptyState
