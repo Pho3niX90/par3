@@ -43,6 +43,7 @@ import { cn } from "../lib/utils";
 import { THREAD_DETAILS_PANEL_ICON_CLASS } from "./chat/threadDetailsPanelStyles";
 import { ThreadDetailsJiraRows } from "./chat/ThreadDetailsJiraRows";
 import { ThreadDetailsThreadPrRows } from "./chat/ThreadDetailsPrRows";
+import { ThreadDetailsIssueRows } from "./chat/ThreadDetailsIssueRows";
 import { parsePullRequestReference } from "@t3tools/client-runtime/pull-request-link-input";
 import { getSourceControlPresentation } from "../sourceControlPresentation";
 import { useComposerMenuProps } from "./chat/composerEventScope";
@@ -701,6 +702,7 @@ export function BranchToolbarBranchSelector({
     branchStatusQuery.data?.sourceControlProvider,
   );
   const openPrLink = useOpenPrLink(threadRef);
+  const linkedIssues = serverThread?.issues ?? [];
 
   function selectPickerItem(itemValue: string) {
     if (itemValue === checkoutPullRequestItemValue && prReference && onCheckoutPullRequestRequest) {
@@ -896,6 +898,22 @@ export function BranchToolbarBranchSelector({
             pullRequestTitle={displayedPr?.title ?? currentLinkedPr?.snapshot?.title ?? null}
             cwd={branchCwd}
             turnCompletedAt={serverThread?.latestRun?.completedAt ?? null}
+          />
+        ) : null}
+        {displayMode === "panel" ? (
+          <ThreadDetailsIssueRows
+            links={linkedIssues}
+            onOpenLink={(event, link) => {
+              event.stopPropagation();
+              useRightPanelStore.getState().openIssue(threadRef, {
+                projectId: link.projectId,
+                tracker: link.tracker,
+                host: link.host,
+                scope: link.scope,
+                key: link.key,
+                url: link.url,
+              });
+            }}
           />
         ) : null}
       </div>

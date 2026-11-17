@@ -1244,7 +1244,7 @@ const main = Command.make(
     ),
     config: Flag.String("config").pipe(
       Flag.withDescription(
-        "With --session, the agent-device config the session was opened with (T3 Code's device_open returns it in targetArgs). Needed for a device pool behind a gateway.",
+        "With --session, the agent-device config the session was opened with (Par3's device_open returns it in targetArgs). Needed for a device pool behind a gateway.",
       ),
       Flag.optional,
     ),

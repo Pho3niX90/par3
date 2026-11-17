@@ -53,8 +53,8 @@ without one. Checked projects are still imported.
 
 ## Phone
 
-Select **Set up** and scan the code with your phone. It opens the App Store on an
-iPhone and Google Play on Android. Then select **Sign in to Parity Connect** and allow
+Select **Set up** and scan the code with your phone. It opens Google Play on
+Android. Then select **Sign in to Parity Connect** and allow
 this computer when Par3 asks, so the app can reach it. Sign in to the app with
 the same account. If you are signed in but this computer is not shared yet, select
 **Set up Parity Connect**. If Parity Connect is on but the app cannot reach this computer,

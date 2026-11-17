@@ -134,7 +134,7 @@ function T3ConnectTunnelUsage() {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                t3.chat
+                the plan page
               </a>
               , then select Refresh.
             </>
@@ -143,7 +143,7 @@ function T3ConnectTunnelUsage() {
               {tunnelUpgradeCopy(usage.upgrade)}{" "}
               {usage.upgrade === "link" ? (
                 <InlineButton disabled={t3Chat.pending !== null} onClick={() => void t3Chat.link()}>
-                  {t3Chat.pending === "link" ? "Opening…" : "Link T3 Chat"}
+                  {t3Chat.pending === "link" ? "Opening…" : "Link plan"}
                 </InlineButton>
               ) : (
                 <a
@@ -152,7 +152,7 @@ function T3ConnectTunnelUsage() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Upgrade on T3 Chat
+                  Upgrade plan
                 </a>
               )}
             </>

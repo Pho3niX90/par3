@@ -67,7 +67,7 @@ export function useT3ChatLink() {
       setLinkUrl(null);
       linkState.refresh();
     } else if (!isAtomCommandInterrupted(result)) {
-      reportFailure("Could not unlink T3 Chat", squashAtomCommandFailure(result));
+      reportFailure("Could not unlink plan", squashAtomCommandFailure(result));
     }
     setPending(null);
   };

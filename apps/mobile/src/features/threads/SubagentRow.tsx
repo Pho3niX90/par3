@@ -128,6 +128,9 @@ function SubagentMetadata(props: {
     (candidate) => candidate.instanceId === subagent.providerInstanceId,
   );
   const showBadge = provider !== undefined && shouldShowInstanceBadge(provider, providers);
+  // A remote task's own driver is only a "remote" label.
+  const driver =
+    provider?.driver ?? (subagent.remoteChild === undefined ? subagent.driver : undefined);
   const parent = useThreadShell(scopeThreadRef(environmentId, subagent.threadId))?.source;
   const child = useThreadShell(
     subagent.childThreadId === null ? null : scopeThreadRef(environmentId, subagent.childThreadId),
@@ -158,10 +161,12 @@ function SubagentMetadata(props: {
           accentColor={provider.accentColor}
           showBadge
         />
+      ) : driver === undefined ? (
+        <SymbolView name="robot" size={11} tintColorClassName="accent-icon-muted" />
       ) : (
         <ProviderIcon
           model={subagent.model}
-          provider={provider?.driver ?? subagent.driver}
+          provider={driver}
           iconUrl={provider?.iconUrl}
           size={12}
         />

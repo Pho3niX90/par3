@@ -733,7 +733,7 @@ export class BootServiceBaseDirUnsupportedError extends Schema.TaggedError<BootS
   { baseDir: Schema.String },
 ) {
   override get message(): string {
-    return `systemd cannot run Par3 from ${JSON.stringify(this.baseDir)}: the path contains a quote, backslash or control character. Choose another T3 home with --base-dir.`;
+    return `systemd cannot run Par3 from ${JSON.stringify(this.baseDir)}: the path contains a quote, backslash or control character. Choose another Par3 home with --base-dir.`;
   }
 
   override get [CliError.userMessage]() {

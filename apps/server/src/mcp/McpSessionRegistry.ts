@@ -141,6 +141,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
           "pull-requests",
           "mcp-gateway",
           "vault",
+          "issues",
           ...(request.capabilities ?? (browserToolsAvailable ? (["preview"] as const) : [])),
         ]),
         issuedAt: issuedAlive.wallMs,

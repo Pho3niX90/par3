@@ -110,7 +110,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/integrations": msg("Integrations"),
   "/settings/sync": msg("Vault & sync"),
   "/settings/scheduled-tasks": msg("Scheduled tasks"),
-  "/settings/source-control": msg("Source control"),
+  "/settings/source-control": msg("Source control & issues"),
   "/settings/worktrees": msg("Worktrees"),
   "/settings/connections": msg("Environments"),
   "/settings/access": msg("Sharing & access"),
@@ -514,7 +514,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Guest links",
     to: "/settings/labs",
     scope: "environment",
-    searchTerms: ["beta share guest invite link teammate watch t3 connect tunnel"],
+    searchTerms: ["beta share guest invite link teammate watch parity connect tunnel"],
   },
   {
     id: "linked-environments-beta",
@@ -630,6 +630,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Transcription hardware and model unloading",
     to: "/settings/voice",
     searchTerms: ["speech voice stt advanced gpu cpu acceleration memory unload idle"],
+  },
+  {
+    id: "speech-streaming",
+    title: "Streaming transcription",
+    to: "/settings/voice",
+    searchTerms: ["speech voice stt advanced native live preview batch after stopping slow lag"],
   },
   {
     id: "microphone-test",
@@ -857,6 +863,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: msg("Delete confirmation"),
     to: "/settings/general",
     searchTerms: ["ask before thread chat history"],
+  },
+  {
+    id: "terminal-close-confirmation",
+    title: msg("Terminal close confirmation"),
+    to: "/settings/general",
+    searchTerms: ["ask before delete stop process shell console history"],
   },
   {
     id: "quit-confirmation",
@@ -1179,6 +1191,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["pull request merge squash rebase last selected"],
   },
   {
+    id: "issue-trackers",
+    title: "Issue trackers",
+    to: "/settings/source-control",
+    scope: "environment-defaults",
+    searchTerms: ["linear jira issues tracker team api key connect bind project"],
+  },
+  {
     id: "source-control",
     title: "Source control",
     to: "/settings/source-control",
@@ -1323,7 +1342,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Parity Connect",
     to: "/settings/access",
     targetId: "connections-environment",
-    searchTerms: ["managed tunnel cloud other devices remote tunnels limit t3 chat"],
+    searchTerms: ["managed tunnel cloud other devices remote tunnels limit parity connect"],
     desktopOnly: true,
     cloudOnly: true,
   },
