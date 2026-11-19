@@ -2139,7 +2139,7 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
   );
 
-  it.effect("reports exhausted usage windows that have not reset yet", () =>
+  it.effect("reports usage windows that have not reset yet", () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(Date.parse("2026-10-21T10:00:00.000Z"));
       const window = { kind: "other" } as const;
@@ -2152,7 +2152,14 @@ describe("OrchestratorMcpService provider resolution", () => {
         usageLimits: {
           checkedAt: "2026-10-21T09:59:00.000Z",
           windows: [
-            { ...window, id: "gemini-5h", label: "Gemini · 5-hour", usedPercent: 0 },
+            {
+              ...window,
+              id: "gemini-5h",
+              label: "Gemini · 5-hour",
+              usedPercent: 42.6,
+              modelIds: ["gemini-pro"],
+            },
+            { ...window, id: "claude-5h", label: "Claude · 5-hour", usedPercent: 99.6 },
             {
               ...window,
               id: "agent-limit",
@@ -2195,8 +2202,15 @@ describe("OrchestratorMcpService provider resolution", () => {
       yield* Effect.gen(function* () {
         const service = yield* OrchestratorMcpService.OrchestratorMcpService;
         const [entry] = (yield* service.capabilities(scope)).providers;
-        assert.deepEqual(entry?.exhaustedUsageLimits, [
-          { label: "Agent · Limit reached", resetsAt: "2026-10-24T08:00:00.000Z" },
+        assert.deepEqual(entry?.usageLimits, [
+          { label: "Gemini · 5-hour", kind: "other", usedPercent: 43, modelIds: ["gemini-pro"] },
+          { label: "Claude · 5-hour", kind: "other", usedPercent: 99 },
+          {
+            label: "Agent · Limit reached",
+            kind: "other",
+            usedPercent: 100,
+            resetsAt: "2026-10-24T08:00:00.000Z",
+          },
         ]);
         assert.isTrue(entry?.canRunChildTask);
       }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));

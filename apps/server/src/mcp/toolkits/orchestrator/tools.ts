@@ -78,7 +78,7 @@ const threadMetadataDependencies = [
 
 const OrchestratorCapabilitiesTool = Tool.make("orchestrator_capabilities", {
   description:
-    "List providers, models, options, and runtime modes for `delegate_task`. Short list. `search` finds others. Any catalog model works. A model under a provider's `exhaustedUsageLimits` will fail until `resetsAt`; pick another.",
+    "List providers, models, options, and runtime modes for `delegate_task`. Short list. `search` finds others. Any catalog model works. `usageLimits` gives each window's `usedPercent`: at 100 its models fail until `resetsAt`, and near 100 a long task may stop partway, so pick another. No `usageLimits` means unknown, not unlimited.",
   parameters: OrchestratorMcpCapabilitiesInput,
   success: OrchestratorMcpCapabilitiesResult,
   failure: OrchestratorMcpFailure,
