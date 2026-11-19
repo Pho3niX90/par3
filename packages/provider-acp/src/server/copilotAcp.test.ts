@@ -253,9 +253,9 @@ describe("makeCopilotNoticeFilter", () => {
       expect(notices.ignoreSessionUpdate(messageChunk("s1", runFailed(proxyRefused)))).toBe(true);
       expect(yield* other(endTurn)).toBeUndefined();
       const failure = yield* failed(endTurn);
-      expect(failure?.class).toBe("transport_error");
-      expect(failure?.message).toMatch(/^Your network proxy refused Copilot .* such as px/);
-      expect(failure?.message).toContain(runFailed(proxyRefused).slice("Error: ".length));
+      expect(failure?.failure.class).toBe("transport_error");
+      expect(failure?.failure.message).toMatch(/^Your network proxy refused Copilot .* such as px/);
+      expect(failure?.failure.message).toContain(runFailed(proxyRefused).slice("Error: ".length));
       expect(yield* (yield* notices.watchPromptOutcome("s1"))(endTurn)).toBeUndefined();
     }),
   );
@@ -274,8 +274,8 @@ describe("makeCopilotNoticeFilter", () => {
       const check = yield* notices.watchPromptOutcome("s1");
       notices.ignoreSessionUpdate(messageChunk("s1", runFailed(row.lastError)));
       const failure = yield* check(endTurn);
-      expect(failure?.class).toBe(row.failureClass);
-      expect(failure?.message).toBe(runFailed(row.lastError).slice("Error: ".length));
+      expect(failure?.failure.class).toBe(row.failureClass);
+      expect(failure?.failure.message).toBe(runFailed(row.lastError).slice("Error: ".length));
     }),
   );
 });

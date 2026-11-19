@@ -1,5 +1,6 @@
 import { useEnvironmentScope } from "../../state/session";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "@t3tools/shared/proposedPlanText";
+import { useGT, useMessages } from "gt-react";
 import { memo, useState } from "react";
 import {
   AuthOrchestrationOperateScope,
@@ -35,6 +36,8 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   busy?: boolean;
   findActive?: boolean;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const canOperate = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const [expanded, setExpanded] = useState(false);
   const revealRef = findRevealRef(() => setExpanded(true));
@@ -42,9 +45,9 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   return (
     <div className="rounded-xl border border-border/80 bg-card/70 p-4">
       <div className="flex items-center gap-2">
-        <Badge variant="secondary">Plan</Badge>
+        <Badge variant="secondary">{gt("Plan", { $context: "badge, noun" })}</Badge>
         <h3 data-thread-find-text="true" className="truncate text-sm font-medium">
-          {proposedPlanTitle(planMarkdown) ?? "Proposed plan"}
+          {proposedPlanTitle(planMarkdown) ?? gt("Proposed plan")}
         </h3>
       </div>
       <div
@@ -56,7 +59,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         <ChatMarkdown
           text={
             isCollapsed && !findActive
-              ? buildCollapsedProposedPlanPreviewMarkdown(planMarkdown, { maxLines: 4 })
+              ? buildCollapsedProposedPlanPreviewMarkdown(planMarkdown, { maxLines: 4 }, messages)
               : stripDisplayedPlanMarkdown(planMarkdown)
           }
           cwd={cwd}
@@ -69,7 +72,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       <div className="mt-3 flex gap-2">
         {canOperate && onImplement ? (
           <Button size="sm" disabled={busy} onClick={onImplement}>
-            Implement
+            {gt("Implement")}
           </Button>
         ) : null}
         <Button
@@ -80,7 +83,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             if (threadRef) useRightPanelStore.getState().openPlan(threadRef, planId, itemId);
           }}
         >
-          Open plan
+          {gt("Open plan")}
         </Button>
       </div>
     </div>

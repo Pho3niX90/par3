@@ -8,6 +8,9 @@ import {
   collectComposerContextReferences,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "./i18n/messages";
 
 export interface PlanComment {
   id: string;
@@ -54,6 +57,7 @@ export function buildCollapsedProposedPlanPreviewMarkdown(
   options?: {
     maxLines?: number;
   },
+  resolve: MessageResolver = m,
 ): string {
   const maxLines = options?.maxLines ?? 8;
   const lines = stripDisplayedPlanMarkdown(planMarkdown)
@@ -81,7 +85,7 @@ export function buildCollapsedProposedPlanPreviewMarkdown(
   }
 
   if (previewLines.length === 0) {
-    return proposedPlanTitle(planMarkdown) ?? "Plan preview unavailable.";
+    return proposedPlanTitle(planMarkdown) ?? resolve(msg("Plan preview unavailable."));
   }
 
   if (hasMoreContent) {

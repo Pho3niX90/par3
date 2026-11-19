@@ -116,7 +116,7 @@ export const zh: Messages = {
     armNote: "ARM 架构？下载 arm64 版 {deb} 或 {appimage}。",
     terminal: "终端",
     tryOnce: "或者无需安装，直接试用一次：",
-    allBuilds: "所有版本都在 {link}上",
+    allBuilds: "所有版本都在 {link}",
     releasesPage: "GitHub 发布页面",
     builtAgo: "{age}构建",
     releasesFallback: "发布页面",

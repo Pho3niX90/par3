@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEnvironmentSupportsSpecMode } from "../../specs/state";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import {
@@ -14,6 +14,7 @@ import {
 } from "./useScopedSettings";
 
 export function SpecModeSettings() {
+  const searchableSetting = useSearchableSetting();
   const { target } = useSettingsScope();
   const supported = useEnvironmentSupportsSpecMode(target?.environmentId ?? null);
   const settings = useScopedSettings();
@@ -34,7 +35,7 @@ export function SpecModeSettings() {
         resetAction={
           settings.specModeEnabled !== DEFAULT_SERVER_SETTINGS.specModeEnabled ? (
             <SettingResetButton
-              label="Spec mode"
+              ariaLabel="Reset Spec mode to default"
               onClick={() =>
                 updateSettings({ specModeEnabled: DEFAULT_SERVER_SETTINGS.specModeEnabled })
               }

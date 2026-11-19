@@ -120,7 +120,7 @@ export const ko: Messages = {
     armNote: "ARM을 쓰시나요? arm64 {deb} 또는 {appimage}를 다운로드하세요.",
     terminal: "터미널",
     tryOnce: "설치 없이 한 번 실행해 보려면:",
-    allBuilds: "모든 빌드는 {link}에 있습니다",
+    allBuilds: "모든 빌드: {link}",
     releasesPage: "GitHub 릴리스 페이지",
     builtAgo: "{age} 빌드됨",
     releasesFallback: "릴리스",

@@ -104,7 +104,7 @@ export const de: Messages = {
     ],
     forkOnGithub: "Auf GitHub forken",
     browseSource: "Quellcode ansehen",
-    ctaTitle: "Deine Agents verdienen Besseres als ein Terminal.",
+    ctaTitle: "Deine Agenten verdienen Besseres als ein Terminal.",
     ctaSub:
       "Par3 ist kostenlos, Open Source und schnell. Installiere es, binde die Agents ein, für die du schon zahlst, und prüfe jeden Plan, bevor er live geht.",
     otherPlatforms: "Windows · Linux · andere",

@@ -4,7 +4,7 @@ import { useRef } from "react";
 import { Input } from "../ui/input";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -20,6 +20,7 @@ function parseProjectKeys(value: string): string[] {
  * and credentials belong to the environment; the project keys can differ per project.
  */
 export function JiraSettings() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const { targets } = useSettingsScope();
   const scopeKey = targets.map((target) => `${target.environmentId}:${target.projectId}`).join(",");
@@ -70,7 +71,7 @@ export function JiraSettings() {
         resetAction={
           jira.baseUrl ? (
             <SettingResetButton
-              label="Jira site"
+              ariaLabel="Reset Jira site to default"
               onClick={() => updateSettings({ jira: { baseUrl: "", email: "", apiToken: "" } })}
             />
           ) : null
@@ -105,7 +106,7 @@ export function JiraSettings() {
             resetAction={
               hasToken ? (
                 <SettingResetButton
-                  label="Jira API token"
+                  ariaLabel="Reset Jira API token to default"
                   tooltip="Remove the saved token"
                   onClick={() => updateSettings({ jira: { apiToken: "" } })}
                 />
@@ -135,7 +136,7 @@ export function JiraSettings() {
             resetAction={
               keysMixed || settings.jiraProjectKeys.length > 0 ? (
                 <SettingResetButton
-                  label="Jira project keys"
+                  ariaLabel="Reset Jira project keys to default"
                   onClick={() => updateSettings({ jiraProjectKeys: [] })}
                 />
               ) : null

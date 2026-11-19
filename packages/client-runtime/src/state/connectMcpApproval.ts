@@ -2,6 +2,8 @@
  * The hosted app's side of an agent sign-in on a T3 Connect environment: it reads the request
  * and sends the decision with the owner's own Connect session there, so no code is needed.
  */
+import { msg } from "gt-i18n";
+import { type MarkedText, markedTextEnglish } from "../errors/translatable.ts";
 import type {
   AuthMcpApprovalDecisionRequest,
   AuthMcpApprovalDetails,
@@ -22,13 +24,17 @@ import { createRuntimeCommand } from "./runtime.ts";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
-/** The environment cannot be reached through T3 Connect with this account. */
+/** The environment cannot be reached through Parity Connect with this account. */
 export class ConnectMcpApprovalUnavailableError extends Schema.TaggedError<ConnectMcpApprovalUnavailableError>()(
   "ConnectMcpApprovalUnavailableError",
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not reach that environment through Parity Connect with this account.";
+    return markedTextEnglish(this.i18nMessage);
+  }
+
+  get i18nMessage(): MarkedText {
+    return [msg("Could not reach that environment through Parity Connect with this account.")];
   }
 }
 

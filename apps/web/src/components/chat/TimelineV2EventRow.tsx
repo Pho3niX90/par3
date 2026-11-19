@@ -6,6 +6,7 @@ import {
   subagentGroupSummary,
   summarizeSubagentStatuses,
 } from "@t3tools/client-runtime/state/subagent-display";
+import { useGT, useMessages } from "gt-react";
 import { memo, use, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
@@ -57,6 +58,8 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
   row: Extract<TimelineRow, { kind: "event" }>;
 }) {
   const ctx = use(TimelineRowCtx);
+  const gt = useGT();
+  const m = useMessages();
   const groupId = `subagent-group:${row.id}`;
   const [expanded, setExpanded] = useState(() =>
     ctx.workGroupViewState.expandedEntries.has(groupId),
@@ -80,14 +83,22 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
       model: item.model ?? live?.model ?? live?.modelSelection?.model,
     };
   });
-  const summary = subagentGroupSummary(agents);
+  const summary = subagentGroupSummary(agents, m);
   // Follow-ups to one child add a task each; count children so a long session reads as who worked.
   const childCount = new Set(members.map((item) => item.childThreadId ?? item.subagentId)).size;
   const label =
     childCount === members.length
-      ? `${members.length} ${members.length === 1 ? "subagent" : "subagents"}`
-      : `${childCount} ${childCount === 1 ? "subagent" : "subagents"} · ${members.length} tasks`;
-  const statusSummary = summarizeSubagentStatuses(agents.map(({ status }) => status));
+      ? gt("{count, plural, one {{count} subagent} other {{count} subagents}}", {
+          count: members.length,
+        })
+      : gt(
+          "{children, plural, one {{children} subagent} other {{children} subagents}} · {tasks, plural, one {{tasks} task} other {{tasks} tasks}}",
+          { children: childCount, tasks: members.length },
+        );
+  const statusSummary = summarizeSubagentStatuses(
+    agents.map(({ status }) => status),
+    m,
+  );
   const toggleExpanded = (open: boolean) => {
     ctx.onToggleWorkEntry(row.id, expanded);
     if (open) ctx.workGroupViewState.expandedEntries.add(groupId);

@@ -174,8 +174,9 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
     description:
       "Self-contained task for one delegated child agent/subagent, or the follow-up message when continueTaskId is set.",
   }),
+  // Some providers send the whole target object as JSON text.
   target: Schema.optional(
-    OrchestratorMcpTarget.annotate({
+    Schema.Union([OrchestratorMcpTarget, Schema.fromJsonString(OrchestratorMcpTarget)]).annotate({
       description:
         "Omit to use this thread's sidekick when one is set (orchestrator_capabilities.defaultDelegationSelection), else this thread's own selection. Pass {} or a partial target to inherit from this thread instead of the sidekick. Not allowed with continueTaskId.",
     }),

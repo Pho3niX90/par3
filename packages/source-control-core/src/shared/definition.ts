@@ -39,6 +39,8 @@ export interface ChangeRequestLink {
 export interface IssueLink {
   readonly host: string;
   readonly scope: string;
+  /** An equivalent binding scope when the provider allows another spelling in URLs. */
+  readonly scopeAlias?: string;
   readonly key: string;
 }
 
@@ -94,6 +96,9 @@ export type RepositorySelectorIdentity = Pick<
   RepositoryIdentity,
   "provider" | "displayName" | "owner" | "name" | "members"
 >;
+
+export type IssueScopeIdentity = RepositorySelectorIdentity &
+  Partial<Pick<RepositoryIdentity, "canonicalKey">>;
 
 /** A git remote's host, as `recognizeRemote` reads it. */
 export interface GitRemoteHost {
@@ -275,8 +280,11 @@ export interface SourceControlDefinition {
   readonly parseCommitUrl?: (url: URL, known: boolean) => CommitLink | null;
   /** Null when the URL is not one of this host's change requests. */
   readonly parseChangeRequestUrl: (url: URL) => ParsedChangeRequestUrl | null;
-  /** Null when the URL is not one of this host's issues. Absent for a host with none. */
-  readonly parseIssueUrl?: (url: URL) => IssueLink | null;
+  /**
+   * Null when the URL is not one of this host's issues. Absent for a host with none. `known` is
+   * set when the caller already knows this host serves the URL's repository.
+   */
+  readonly parseIssueUrl?: (url: URL, known: boolean) => IssueLink | null;
   /**
    * The repository URL when `url` is a page inside one of this host's repositories. `known` is set
    * when the caller already knows this host serves the URL's repository. Off a known host, return
@@ -360,7 +368,7 @@ export interface SourceControlDefinition {
    * The container the project's issues live in, where that is not its repository: Azure DevOps
    * keeps work items per project. Null when the repository cannot be placed.
    */
-  readonly issueScope?: (identity: RepositorySelectorIdentity) => string | null;
+  readonly issueScope?: (identity: IssueScopeIdentity) => string | null;
   /**
    * The key of a remote's lower case `host/path`, `.git` suffix kept, for a host that spells it
    * apart from `normalizeGitRemoteUrl`: over SSH and the web, or with `.git` as part of the name.
@@ -674,9 +682,10 @@ export interface SourceControlDefinitionRegistry {
   readonly findByPublicDomain: (hostname: string) => SourceControlDefinition | undefined;
   /** The first host, in registry order, that reads `url` as one of its change requests. */
   readonly parseChangeRequestUrl: (url: string) => ParsedChangeRequest | null;
-  /** The first host, in registry order, that reads `url` as one of its issues. */
+  /** The first host, in registry order, that reads `url` as one of its issues, or `kind` alone. */
   readonly parseIssueUrl: (
     url: string,
+    kind?: SourceControlProviderKind,
   ) => { readonly definition: SourceControlDefinition; readonly link: IssueLink } | null;
   readonly parseCommitUrl: (url: string, kind?: SourceControlProviderKind) => ParsedCommit | null;
   readonly findByChangeRequestUrl: (url: string) => SourceControlDefinition | undefined;
@@ -699,7 +708,7 @@ export interface SourceControlDefinitionRegistry {
     identity: RepositorySelectorIdentity | null | undefined,
   ) => string | null;
   /** Where the project's issues live: the host's `issueScope`, else its repository. */
-  readonly issueScope: (identity: RepositorySelectorIdentity | null | undefined) => string | null;
+  readonly issueScope: (identity: IssueScopeIdentity | null | undefined) => string | null;
   readonly changeRequestHost: <const Kind extends string | undefined>(
     identity: ChangeRequestHostIdentity,
     kind: Kind,
@@ -796,11 +805,12 @@ export function makeSourceControlDefinitionRegistry(
       );
     },
     parseChangeRequestUrl,
-    parseIssueUrl: (value) => {
+    parseIssueUrl: (value, kind) => {
       const url = httpUrl(value);
       if (url === null) return null;
-      for (const definition of claimOrder) {
-        const link = definition.parseIssueUrl?.(url) ?? null;
+      const preferred = kind === undefined ? undefined : byKind.get(kind);
+      for (const definition of kind === undefined ? claimOrder : preferred ? [preferred] : []) {
+        const link = definition.parseIssueUrl?.(url, preferred !== undefined) ?? null;
         if (link !== null) return { definition, link };
       }
       return null;

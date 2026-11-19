@@ -123,7 +123,7 @@ export const ja: Messages = {
     armNote: "ARM をお使いですか？　arm64 版の {deb} または {appimage} をダウンロード。",
     terminal: "ターミナル",
     tryOnce: "インストールせずに試すなら：",
-    allBuilds: "すべてのビルドは {link} にあります",
+    allBuilds: "すべてのビルド：{link}",
     releasesPage: "GitHub のリリースページ",
     builtAgo: "{age}にビルド",
     releasesFallback: "リリース",
