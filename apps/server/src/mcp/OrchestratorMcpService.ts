@@ -322,15 +322,18 @@ function isModelVisible(
  * reports Gemini and Claude/GPT buckets separately), so the caller decides. Windows whose
  * reset has passed are stale until the next probe and are skipped.
  */
-function exhaustedUsageWindows(provider: ServerProvider, now: number) {
+function currentUsageWindows(provider: ServerProvider, now: number) {
   return (provider.usageLimits?.windows ?? []).flatMap((window) => {
-    if (window.usedPercent < 100) return [];
     const resetsAt = window.resetsAt === undefined ? undefined : Date.parse(window.resetsAt);
     if (resetsAt !== undefined && resetsAt <= now) return [];
     return [
       {
         label: window.label,
+        kind: window.kind,
+        // 100 tells agents the window is exhausted, so a reading just under it stays at 99.
+        usedPercent: window.usedPercent >= 100 ? 100 : Math.min(99, Math.round(window.usedPercent)),
         ...(window.resetsAt === undefined ? {} : { resetsAt: window.resetsAt }),
+        ...(window.modelIds === undefined ? {} : { modelIds: window.modelIds }),
       },
     ];
   });
@@ -2828,7 +2831,7 @@ const make = Effect.gen(function* () {
             enabledForCaller ? provider : { ...provider, enabled: false },
             orchestrationCapableInstanceIds.has(provider.instanceId),
           );
-          const exhaustedUsageLimits = exhaustedUsageWindows(provider, now);
+          const usageLimits = currentUsageWindows(provider, now);
           const { listed, omitted } = listCapabilityModels({
             provider,
             preferences: settings.providerModelPreferences?.[provider.instanceId],
@@ -2865,7 +2868,7 @@ const make = Effect.gen(function* () {
             canRunChildTask: constraints.length === 0,
             canRunCrossProviderChildTask: constraints.length === 0,
             constraints: [...constraints],
-            ...(exhaustedUsageLimits.length === 0 ? {} : { exhaustedUsageLimits }),
+            ...(usageLimits.length === 0 ? {} : { usageLimits }),
           };
         }),
         features: {
