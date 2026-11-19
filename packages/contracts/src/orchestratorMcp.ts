@@ -689,12 +689,15 @@ export const OrchestratorMcpProviderCapability = Schema.Struct({
   canRunChildTask: Schema.Boolean,
   canRunCrossProviderChildTask: Schema.Boolean,
   constraints: Schema.Array(Schema.String),
-  /** Windows the provider reports fully used. They may cover only some models, so they are advisory. */
-  exhaustedUsageLimits: Schema.optional(
+  /** Usage windows that have not reset yet. They may cover only some models, so they are advisory. */
+  usageLimits: Schema.optional(
     Schema.Array(
       Schema.Struct({
         label: Schema.String,
+        kind: Schema.Literals(["session", "weekly", "monthly", "other"]),
+        usedPercent: NonNegativeInt,
         resetsAt: Schema.optional(Schema.String),
+        modelIds: Schema.optional(Schema.Array(Schema.String)),
       }),
     ),
   ),
