@@ -2159,6 +2159,7 @@ describe("OrchestratorMcpService provider resolution", () => {
               usedPercent: 42.6,
               modelIds: ["gemini-pro"],
             },
+            { ...window, id: "claude-5h", label: "Claude · 5-hour", usedPercent: 99.6 },
             {
               ...window,
               id: "agent-limit",
@@ -2203,6 +2204,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         const [entry] = (yield* service.capabilities(scope)).providers;
         assert.deepEqual(entry?.usageLimits, [
           { label: "Gemini · 5-hour", kind: "other", usedPercent: 43, modelIds: ["gemini-pro"] },
+          { label: "Claude · 5-hour", kind: "other", usedPercent: 99 },
           {
             label: "Agent · Limit reached",
             kind: "other",

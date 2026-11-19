@@ -330,7 +330,8 @@ function currentUsageWindows(provider: ServerProvider, now: number) {
       {
         label: window.label,
         kind: window.kind,
-        usedPercent: Math.round(window.usedPercent),
+        // 100 tells agents the window is exhausted, so a reading just under it stays at 99.
+        usedPercent: window.usedPercent >= 100 ? 100 : Math.min(99, Math.round(window.usedPercent)),
         ...(window.resetsAt === undefined ? {} : { resetsAt: window.resetsAt }),
         ...(window.modelIds === undefined ? {} : { modelIds: window.modelIds }),
       },
