@@ -1,7 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { SyncEnvironmentView } from "@t3tools/client-runtime/sync/plan";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 
+import { type MessageResolver } from "../../i18n/messages";
 import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { isSyncParticipating, useSyncRunner, useSyncViews } from "../../state/sync";
@@ -39,6 +41,7 @@ function readDismissed(): string[] {
 
 /** Runs sync in the background and asks about machines nobody has decided on yet. */
 export function SyncCoordinator() {
+  const gt = useGT();
   useSyncRunner();
   const views = useSyncViews();
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
@@ -52,7 +55,7 @@ export function SyncCoordinator() {
         );
   if (!candidate) return null;
   const labelOf = (view: SyncEnvironmentView) =>
-    presentations.get(view.environmentId)?.entry.target.label ?? "this machine";
+    presentations.get(view.environmentId)?.entry.target.label ?? gt("this machine");
   const peers = views.filter(
     (view) => view.environmentId !== candidate.environmentId && isSyncParticipating(view),
   );
@@ -74,14 +77,17 @@ export function SyncCoordinator() {
   );
 }
 
-function describeJoin(summary: JoinCategorySummary | undefined): string | null {
+function describeJoin(
+  summary: JoinCategorySummary | undefined,
+  resolve: MessageResolver,
+): string | null {
   if (!summary) return null;
   const parts = [
-    summary.incoming > 0 ? `${summary.incoming} to copy here` : null,
-    summary.outgoing > 0 ? `${summary.outgoing} to share` : null,
-    summary.conflicts > 0 ? `${summary.conflicts} differ` : null,
+    summary.incoming > 0 ? resolve(msg("{count} to copy here", { count: summary.incoming })) : null,
+    summary.outgoing > 0 ? resolve(msg("{count} to share", { count: summary.outgoing })) : null,
+    summary.conflicts > 0 ? resolve(msg("{count} differ", { count: summary.conflicts })) : null,
   ].filter((part) => part !== null);
-  return parts.length === 0 ? "Already the same" : parts.join(" · ");
+  return parts.length === 0 ? resolve(msg("Already the same")) : parts.join(" · ");
 }
 
 function SyncSetupDialog(props: {
@@ -91,6 +97,8 @@ function SyncSetupDialog(props: {
   readonly peerLabels: ReadonlyArray<string>;
   readonly onDismiss: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { candidate, peers } = props;
   const joining = peers.length > 0;
   const setParticipation = useAtomCommand(serverEnvironment.syncSetParticipation);
@@ -123,13 +131,17 @@ function SyncSetupDialog(props: {
       <DialogPopup showCloseButton={!busy}>
         <DialogHeader>
           <DialogTitle>
-            {joining ? `Join ${props.label} to sync?` : `Set up sync on ${props.label}?`}
+            {joining
+              ? gt("Join {label} to sync?", { label: props.label })
+              : gt("Set up sync on {label}?", { label: props.label })}
           </DialogTitle>
           <DialogDescription>
             {joining
-              ? `Shares the chosen settings with ${props.peerLabels.join(", ")}. `
-              : "Shares the chosen settings with the other machines you sync. "}
-            Syncs while Par3 is connected to both machines.
+              ? gt("Shares the chosen settings with {peers}.", {
+                  peers: props.peerLabels.join(", "),
+                })
+              : gt("Shares the chosen settings with the other machines you sync.")}{" "}
+            <T>Syncs while Par3 is connected to both machines.</T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -137,7 +149,10 @@ function SyncSetupDialog(props: {
             {candidate.snapshot.categories.map((category) => {
               const checked = categories.includes(category.id);
               const summary = checked
-                ? describeJoin(summaries.find((entry) => entry.categoryId === category.id))
+                ? describeJoin(
+                    summaries.find((entry) => entry.categoryId === category.id),
+                    m,
+                  )
                 : null;
               return (
                 <label key={category.id} className="flex items-start gap-2 text-sm">
@@ -169,10 +184,10 @@ function SyncSetupDialog(props: {
         </DialogPanel>
         <DialogFooter>
           <Button variant="ghost" disabled={busy} onClick={() => void decide(false)}>
-            Don't sync this machine
+            <T>Don't sync this machine</T>
           </Button>
           <Button disabled={busy || categories.length === 0} onClick={() => void decide(true)}>
-            {busy ? <Spinner size="xs" /> : null} Start syncing
+            {busy ? <Spinner size="xs" /> : null} <T>Start syncing</T>
           </Button>
         </DialogFooter>
       </DialogPopup>

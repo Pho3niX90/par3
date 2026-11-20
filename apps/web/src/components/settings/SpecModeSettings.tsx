@@ -1,5 +1,6 @@
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT } from "gt-react";
 
 import { useEnvironmentSupportsSpecMode } from "../../specs/state";
 import { Button } from "../ui/button";
@@ -14,6 +15,7 @@ import {
 } from "./useScopedSettings";
 
 export function SpecModeSettings() {
+  const gt = useGT();
   const searchableSetting = useSearchableSetting();
   const { target } = useSettingsScope();
   const supported = useEnvironmentSupportsSpecMode(target?.environmentId ?? null);
@@ -25,17 +27,19 @@ export function SpecModeSettings() {
   const { environmentId, projectId } = target;
 
   return (
-    <SettingsSection title="Spec mode">
+    <SettingsSection title={gt("Spec mode")}>
       <SettingsRow
         serverScoped
         settingKeys={["specModeEnabled"]}
         mixed={mixed}
         {...searchableSetting("spec-mode")}
-        description="Offer Spec in the composer for requirements a person approves before agents implement them. Only threads bound to a spec are affected. Existing specs stay viewable when this is off."
+        description={gt(
+          "Offer Spec in the composer for requirements a person approves before agents implement them. Only threads bound to a spec are affected. Existing specs stay viewable when this is off.",
+        )}
         resetAction={
           settings.specModeEnabled !== DEFAULT_SERVER_SETTINGS.specModeEnabled ? (
             <SettingResetButton
-              ariaLabel="Reset Spec mode to default"
+              ariaLabel={gt("Reset Spec mode to default")}
               onClick={() =>
                 updateSettings({ specModeEnabled: DEFAULT_SERVER_SETTINGS.specModeEnabled })
               }
@@ -44,7 +48,7 @@ export function SpecModeSettings() {
         }
         control={
           <Switch
-            aria-label="Spec mode"
+            aria-label={gt("Spec mode")}
             mixed={mixed}
             checked={mixed ? false : settings.specModeEnabled}
             onCheckedChange={(enabled) => updateSettings({ specModeEnabled: enabled })}
@@ -53,8 +57,8 @@ export function SpecModeSettings() {
       />
       {projectId ? (
         <SettingsRow
-          title="Specs"
-          description="Review and approve this project's specs."
+          title={gt("Specs")}
+          description={gt("Review and approve this project's specs.")}
           control={
             <Button
               variant="outline"
@@ -66,7 +70,7 @@ export function SpecModeSettings() {
                 })
               }
             >
-              Open specs
+              <T>Open specs</T>
             </Button>
           }
         />

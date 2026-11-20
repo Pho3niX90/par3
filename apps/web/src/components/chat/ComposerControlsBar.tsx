@@ -163,6 +163,7 @@ export function ComposerControlsBar(props: {
     selectedProviderStatus,
   } = props;
   const accessMatchesDefault = compatibleRuntimeMode === defaultRuntimeMode;
+  const m = useMessages();
   const sidekickLead = {
     instanceId: selectedModelSelection.instanceId,
     model: selectedModelSelection.model,
@@ -171,6 +172,7 @@ export function ComposerControlsBar(props: {
     selection: sidekickModelSelection,
     lead: sidekickLead,
     entries: providerInstanceEntries,
+    resolve: m,
   });
   // A stored sidekick stays visible after switching to a lead that cannot use it, so it can be cleared.
   const showSidekickControl =
@@ -201,7 +203,6 @@ export function ComposerControlsBar(props: {
   });
   const controlSize = composerControlsCollapsed ? "xs" : "sm";
   const gt = useGT();
-  const m = useMessages();
   const applyThreadModelPick = useApplyThreadModelPick();
   const applyRouteThreadModelPick = useStableCallback(() => applyThreadModelPick(routeThreadRef));
   const traitsInput = resolveComposerTraitsInput({

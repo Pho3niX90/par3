@@ -7,8 +7,10 @@ import type {
   MergeConflictReadResult,
   ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import { T, Var, msg, useGT } from "gt-react";
 import { useEffect, useState } from "react";
 
+import { m } from "../../i18n/messages";
 import { mergeConflictEnvironment } from "~/state/mergeConflicts";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -39,6 +41,7 @@ export function MergeFileSession(props: {
   /** Opens another file, or null to go back to the list. */
   readonly onOpen: (path: string | null) => void;
 }) {
+  const gt = useGT();
   const { environmentId, cwd, path } = props;
   const readCommand = useAtomCommand(mergeConflictEnvironment.read, { reportFailure: false });
   const resolveCommand = useAtomCommand(mergeConflictEnvironment.resolve, {
@@ -61,7 +64,7 @@ export function MergeFileSession(props: {
         const error = squashAtomCommandFailure(result);
         setLoad({
           status: "error",
-          message: error instanceof Error ? error.message : "Could not read this file.",
+          message: error instanceof Error ? error.message : m(msg("Could not read this file.")),
         });
       }
     });
@@ -112,13 +115,14 @@ export function MergeFileSession(props: {
     ) {
       return {
         status: "stale",
-        message:
+        message: gt(
           "This file changed on disk or in the repository since you opened it. Reload to merge the current version; your edits here will be discarded.",
+        ),
       };
     }
     toastManager.add({
       type: "error",
-      title: "Could not apply the merge",
+      title: gt("Could not apply the merge"),
       description: error instanceof Error ? error.message : undefined,
     });
     return { status: "failed" };
@@ -128,7 +132,9 @@ export function MergeFileSession(props: {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
         <Spinner size="sm" />
-        Reading {path}…
+        <T>
+          Reading <Var>{path}</Var>…
+        </T>
       </div>
     );
   }
@@ -136,15 +142,17 @@ export function MergeFileSession(props: {
     return (
       <Empty size="compact">
         <EmptyHeader>
-          <EmptyTitle>Could not open the file</EmptyTitle>
+          <EmptyTitle>
+            <T>Could not open the file</T>
+          </EmptyTitle>
           <EmptyDescription>{load.message}</EmptyDescription>
         </EmptyHeader>
         <div className="flex gap-2">
           <Button size="xs" variant="outline" onClick={() => props.onOpen(null)}>
-            Back to the list
+            <T>Back to the list</T>
           </Button>
           <Button size="xs" onClick={reload}>
-            Try again
+            <T>Try again</T>
           </Button>
         </div>
       </Empty>
@@ -155,15 +163,17 @@ export function MergeFileSession(props: {
     return (
       <Empty size="compact">
         <EmptyHeader>
-          <EmptyTitle>This file can only be resolved by choosing a side</EmptyTitle>
+          <EmptyTitle>
+            <T>This file can only be resolved by choosing a side</T>
+          </EmptyTitle>
           <EmptyDescription>
             {file.fileLevelReason
               ? fileLevelReasonLabel(file.fileLevelReason)
-              : "One side deleted it."}
+              : gt("One side deleted it.")}
           </EmptyDescription>
         </EmptyHeader>
         <Button size="xs" variant="outline" onClick={() => props.onOpen(null)}>
-          Back to the list
+          <T>Back to the list</T>
         </Button>
       </Empty>
     );

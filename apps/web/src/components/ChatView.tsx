@@ -3093,8 +3093,9 @@ export default function ChatView(props: ChatViewProps) {
         const error = squashAtomCommandFailure(result);
         toastManager.add({
           type: "error",
-          title: "Could not change the sidekick",
-          description: error instanceof Error ? error.message : "The environment request failed.",
+          title: gt("Could not change the sidekick"),
+          description:
+            error instanceof Error ? error.message : gt("The environment request failed."),
         });
       });
     } else if (isLocalDraftThread) {

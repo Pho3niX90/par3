@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { type EnvironmentId, vaultReference } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT } from "gt-react";
 import { KeyRoundIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -30,6 +31,7 @@ function VaultSecretMenu(props: {
   readonly disabled?: boolean;
   readonly onPick: (reference: string) => void;
 }) {
+  const gt = useGT();
   // The list loads when the menu opens, so a form with many rows costs no requests.
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -47,7 +49,7 @@ function VaultSecretMenu(props: {
             size="icon-sm"
             variant="ghost-muted"
             disabled={props.disabled}
-            aria-label="Use vault secret"
+            aria-label={gt("Use vault secret")}
           />
         }
       >
@@ -55,19 +57,25 @@ function VaultSecretMenu(props: {
       </MenuTrigger>
       <MenuPopup align="end">
         <MenuGroup>
-          <MenuGroupLabel>Use vault secret</MenuGroupLabel>
+          <MenuGroupLabel>
+            <T>Use vault secret</T>
+          </MenuGroupLabel>
           {list.data === null ? (
             list.error ? (
               <MenuItem disabled>{list.error}</MenuItem>
             ) : (
               <MenuItem disabled>
-                <Spinner size="xs" /> Loading…
+                <Spinner size="xs" /> <T>Loading…</T>
               </MenuItem>
             )
           ) : !list.data.status.member ? (
-            <MenuItem onClick={openVaultSettings}>Set up the vault…</MenuItem>
+            <MenuItem onClick={openVaultSettings}>
+              <T>Set up the vault…</T>
+            </MenuItem>
           ) : entries.length === 0 ? (
-            <MenuItem onClick={openVaultSettings}>Add a secret to the vault…</MenuItem>
+            <MenuItem onClick={openVaultSettings}>
+              <T>Add a secret to the vault…</T>
+            </MenuItem>
           ) : (
             entries.map((entry) => (
               <MenuItem key={entry.name} onClick={() => props.onPick(vaultReference(entry.name))}>

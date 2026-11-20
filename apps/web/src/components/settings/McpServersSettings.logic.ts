@@ -6,6 +6,9 @@ import {
   type McpServerToolPolicy,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 const isServerName = Schema.is(McpServerName);
 
@@ -13,14 +16,15 @@ export function mcpServerNameError(
   name: string,
   servers: ReadonlyArray<McpServerConfig>,
   id: string,
+  resolve: MessageResolver = m,
 ): string | null {
   const trimmed = name.trim();
-  if (trimmed === "") return "Enter a name.";
+  if (trimmed === "") return resolve(msg("Enter a name."));
   if (!isServerName(trimmed)) {
-    return "Use lowercase letters, digits, - and _, starting with a letter or digit.";
+    return resolve(msg("Use lowercase letters, digits, - and _, starting with a letter or digit."));
   }
   return servers.some((server) => server.id !== id && server.name === trimmed)
-    ? "Another server already uses this name."
+    ? resolve(msg("Another server already uses this name."))
     : null;
 }
 

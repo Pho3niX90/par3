@@ -568,10 +568,14 @@ export function ThreadDetailsPrRow({
                     />
                   }
                 >
-                  {updateFromBase.pending ? "Updating..." : "Update"}
+                  {updateFromBase.pending
+                    ? gt("Updating...")
+                    : gt("Update", { $context: "verb, merges the base branch in" })}
                 </TooltipTrigger>
                 <TooltipPopup side="top">
-                  Merge the base branch into this one here, then resolve any conflicts yourself
+                  <T>
+                    Merge the base branch into this one here, then resolve any conflicts yourself
+                  </T>
                 </TooltipPopup>
               </Tooltip>
             ) : null}

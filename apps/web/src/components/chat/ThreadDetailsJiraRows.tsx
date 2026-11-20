@@ -19,6 +19,7 @@ import {
 } from "@t3tools/shared/jira";
 import { useAtomValue } from "@effect/atom-react";
 import { FileTextIcon } from "lucide-react";
+import { useGT } from "gt-react";
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 import { useOpenLink } from "~/browser/useOpenLink";
@@ -73,6 +74,7 @@ export function ThreadDetailsJiraRows({
   /** Changes when a turn finishes, so files the turn wrote show up. */
   turnCompletedAt: string | null;
 }) {
+  const gt = useGT();
   const baseUrl = normalizeJiraBaseUrl(
     useEnvironmentSettings(environmentId, (settings) => settings.jira.baseUrl),
   );
@@ -112,8 +114,8 @@ export function ThreadDetailsJiraRows({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to open the Jira issue",
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: gt("Unable to open the Jira issue"),
+          description: error instanceof Error ? error.message : gt("An error occurred."),
         }),
       );
     });
@@ -155,6 +157,7 @@ function ThreadDetailsJiraRow({
   onOpen: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
   files: ReactNode;
 }) {
+  const gt = useGT();
   const query = useEnvironmentQuery(
     jiraEnvironment.issue({ environmentId, input: { key: issueKey } }),
   );
@@ -168,7 +171,7 @@ function ThreadDetailsJiraRow({
             type="button"
             variant="ghost"
             size="sm"
-            aria-label={`Open ${issueKey} in Jira`}
+            aria-label={gt("Open {issueKey} in Jira", { issueKey })}
             onClick={(event) => onOpen(event, url)}
           />
         }
@@ -186,15 +189,19 @@ function ThreadDetailsJiraRow({
               {issue.summary ? `: ${issue.summary}` : ""}
             </span>
             <span className="text-muted-foreground">
-              {[issue.issueType, issue.status?.name, issue.assignee ?? "Unassigned"]
+              {[issue.issueType, issue.status?.name, issue.assignee ?? gt("Unassigned")]
                 .filter(Boolean)
                 .join(" · ")}
             </span>
           </div>
         ) : (
           <span>
-            Open {issueKey} in Jira
-            {query.error ? `. Status unavailable: ${query.error}` : ""}
+            {query.error
+              ? gt("Open {issueKey} in Jira. Status unavailable: {error}", {
+                  issueKey,
+                  error: query.error,
+                })
+              : gt("Open {issueKey} in Jira", { issueKey })}
           </span>
         )}
       </TooltipPopup>
@@ -246,6 +253,7 @@ function ThreadDetailsJiraFiles({
   projectKeys: ReadonlyArray<string>;
   turnCompletedAt: string | null;
 }) {
+  const gt = useGT();
   const query = useEnvironmentQuery(
     projectEnvironment.searchEntries({
       environmentId,
@@ -281,7 +289,7 @@ function ThreadDetailsJiraFiles({
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label={`Open ${path}`}
+                aria-label={gt("Open {path}", { path })}
                 onClick={() => openFile(path)}
               />
             }
@@ -301,7 +309,10 @@ function ThreadDetailsJiraFiles({
           type="button"
           variant="ghost"
           size="sm"
-          aria-label={`${hidden} more ${issueKey} files. Open the Files panel`}
+          aria-label={gt(
+            "{hidden, plural, one {{hidden} more {issueKey} files. Open the Files panel} other {{hidden} more {issueKey} files. Open the Files panel}}",
+            { hidden, issueKey },
+          )}
           onClick={() => openFile(".")}
         >
           <span
@@ -310,7 +321,7 @@ function ThreadDetailsJiraFiles({
               THREAD_DETAILS_PANEL_LABEL_CLASS,
             )}
           >
-            +{hidden} more
+            {gt("+{hidden} more", { hidden })}
           </span>
         </ThreadDetailsControl>
       ) : null}

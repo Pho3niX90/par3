@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Alert, Modal, Pressable, ScrollView, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { T, useGT, Var } from "gt-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ProviderInstanceId,
@@ -36,6 +37,7 @@ export interface SpecDetailScreenProps {
 export function SpecDetailScreen(props: SpecDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const gt = useGT();
   const selectDetail = useSelectWorkspaceDetail();
   const styles = useMarkdownPreviewStyles();
 
@@ -75,7 +77,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
     try {
       await runMutation(spec.slug, spec.revision, { action });
     } catch (err: any) {
-      Alert.alert("Action failed", err?.message ?? "Unable to complete review action");
+      Alert.alert(gt("Action failed"), err?.message ?? gt("Unable to complete review action"));
     }
     setIsActing(false);
   };
@@ -89,7 +91,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       });
       setRequestChangesVisible(false);
     } catch (err: any) {
-      Alert.alert("Failed to request changes", err?.message ?? "Unable to request changes");
+      Alert.alert(gt("Failed to request changes"), err?.message ?? gt("Unable to request changes"));
     }
     setIsActing(false);
   };
@@ -102,7 +104,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
     const driver = "claudeAgent";
     const explanation = explainSpecRoleSupport(driver, "implementation");
     if (explanation) {
-      Alert.alert("Provider Limit", explanation);
+      Alert.alert(gt("Provider Limit"), explanation);
       return;
     }
 
@@ -120,7 +122,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
         input: {
           projectId: props.projectId,
           threadId: newThreadId,
-          title: `Implement ${spec.title}`,
+          title: gt("Implement {title}", { title: spec.title }),
           modelSelection,
           runtimeMode: "approval-required",
           interactionMode: "default",
@@ -130,7 +132,10 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       });
 
       if (createResult._tag === "Failure") {
-        Alert.alert("Failed to start implementation", "Failed to create thread for implementation");
+        Alert.alert(
+          gt("Failed to start implementation"),
+          gt("Failed to create thread for implementation"),
+        );
         setIsActing(false);
         return;
       }
@@ -149,8 +154,8 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       });
     } catch (err: any) {
       Alert.alert(
-        "Failed to start implementation",
-        err?.message ?? "Could not create bound thread",
+        gt("Failed to start implementation"),
+        err?.message ?? gt("Could not create bound thread"),
       );
     }
     setIsActing(false);
@@ -165,7 +170,10 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
         evidenceId,
       });
     } catch (err: any) {
-      Alert.alert("Failed to confirm evidence", err?.message ?? "Could not confirm evidence");
+      Alert.alert(
+        gt("Failed to confirm evidence"),
+        err?.message ?? gt("Could not confirm evidence"),
+      );
     }
     setIsActing(false);
   };
@@ -183,7 +191,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
         threadId,
       );
     } catch (err: any) {
-      Alert.alert("Failed to unbind thread", err?.message ?? "Could not unbind thread");
+      Alert.alert(gt("Failed to unbind thread"), err?.message ?? gt("Could not unbind thread"));
     }
     setIsActing(false);
   };
@@ -200,9 +208,11 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
     return (
       <View className="flex-1 items-center justify-center bg-sheet p-6">
         <SymbolView name="exclamationmark.triangle" size={32} tintColorClassName="text-danger" />
-        <Text className="text-base font-t3-bold text-foreground mt-2">Spec Not Found</Text>
+        <Text className="text-base font-t3-bold text-foreground mt-2">
+          <T>Spec Not Found</T>
+        </Text>
         <Text className="text-sm text-foreground-muted text-center mt-1">
-          {error ? String(error) : "The requested spec could not be loaded."}
+          {error ? String(error) : gt("The requested spec could not be loaded.")}
         </Text>
       </View>
     );
@@ -223,7 +233,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
               </Text>
               <Text className="text-xs text-foreground-subtle">·</Text>
               <Text className="text-xs font-t3-medium text-foreground-muted">
-                Rev {spec.revision}
+                <T>
+                  Rev <Var>{spec.revision}</Var>
+                </T>
               </Text>
               <Text className="text-xs text-foreground-subtle">·</Text>
               <Text className="text-xs text-foreground-muted">{formattedDate}</Text>
@@ -251,10 +263,14 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
               tintColorClassName="text-danger"
             />
             <View className="flex-1">
-              <Text className="text-xs font-t3-bold text-danger">Approval Out of Date</Text>
+              <Text className="text-xs font-t3-bold text-danger">
+                <T>Approval Out of Date</T>
+              </Text>
               <Text className="text-xs text-danger font-t3-medium mt-0.5">
-                Requirements or project constitution have changed since approval was granted. Review
-                and re-approval required.
+                <T>
+                  Requirements or project constitution have changed since approval was granted.
+                  Review and re-approval required.
+                </T>
               </Text>
             </View>
           </View>
@@ -265,14 +281,14 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
           {canMutate && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Start Implementation"
+              accessibilityLabel={gt("Start Implementation")}
               disabled={isActing}
               onPress={handleStartImplementation}
               className="flex-row items-center gap-1.5 rounded-full bg-accent px-4 py-2 active:opacity-80"
             >
               <SymbolView name="play" size={14} tintColorClassName="text-accent-foreground" />
               <Text className="text-sm font-t3-semibold text-accent-foreground">
-                Start implementation
+                <T>Start implementation</T>
               </Text>
             </Pressable>
           )}
@@ -280,7 +296,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
           {canMutate && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Edit Requirements"
+              accessibilityLabel={gt("Edit Requirements")}
               onPress={() =>
                 navigation.navigate("SpecEditor", {
                   environmentId: props.environmentId,
@@ -292,55 +308,65 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
               className="flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-2 active:opacity-80"
             >
               <SymbolView name="pencil" size={14} tintColorClassName="text-foreground" />
-              <Text className="text-sm font-t3-medium text-foreground">Edit</Text>
+              <Text className="text-sm font-t3-medium text-foreground">
+                <T>Edit</T>
+              </Text>
             </Pressable>
           )}
 
           {canMutate && spec.status !== "approved" && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Approve"
+              accessibilityLabel={gt("Approve")}
               disabled={isActing}
               onPress={() => handleReviewAction("approve")}
               className="rounded-full bg-success-subtle px-3 py-2 active:opacity-80"
             >
-              <Text className="text-sm font-t3-semibold text-success">Approve</Text>
+              <Text className="text-sm font-t3-semibold text-success">
+                <T>Approve</T>
+              </Text>
             </Pressable>
           )}
 
           {canMutate && spec.status === "review" && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Request Changes"
+              accessibilityLabel={gt("Request Changes")}
               disabled={isActing}
               onPress={() => setRequestChangesVisible(true)}
               className="rounded-full bg-warning-subtle px-3 py-2 active:opacity-80"
             >
-              <Text className="text-sm font-t3-medium text-warning">Request Changes</Text>
+              <Text className="text-sm font-t3-medium text-warning">
+                <T>Request Changes</T>
+              </Text>
             </Pressable>
           )}
 
           {canMutate && spec.status !== "rejected" && spec.status !== "done" && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Reject"
+              accessibilityLabel={gt("Reject")}
               disabled={isActing}
               onPress={() => handleReviewAction("reject")}
               className="rounded-full bg-danger-subtle px-3 py-2 active:opacity-80"
             >
-              <Text className="text-sm font-t3-medium text-danger">Reject</Text>
+              <Text className="text-sm font-t3-medium text-danger">
+                <T>Reject</T>
+              </Text>
             </Pressable>
           )}
 
           {canMutate && (spec.status === "rejected" || spec.status === "done") && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Reopen"
+              accessibilityLabel={gt("Reopen")}
               disabled={isActing}
               onPress={() => handleReviewAction("reopen")}
               className="rounded-full bg-subtle px-3 py-2 active:opacity-80"
             >
-              <Text className="text-sm font-t3-medium text-foreground">Reopen</Text>
+              <Text className="text-sm font-t3-medium text-foreground">
+                <T>Reopen</T>
+              </Text>
             </Pressable>
           )}
         </View>
@@ -353,11 +379,17 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
         >
           {(
             [
-              { id: "requirements", label: "Requirements" },
-              { id: "tasks", label: `Tasks (${spec.tasks?.length ?? 0})` },
-              { id: "evidence", label: `Evidence (${spec.evidence?.length ?? 0})` },
-              { id: "approval", label: "Approval" },
-              { id: "threads", label: `Threads (${spec.bindings?.length ?? 0})` },
+              { id: "requirements", label: gt("Requirements") },
+              { id: "tasks", label: gt("Tasks ({count})", { count: spec.tasks?.length ?? 0 }) },
+              {
+                id: "evidence",
+                label: gt("Evidence ({count})", { count: spec.evidence?.length ?? 0 }),
+              },
+              { id: "approval", label: gt("Approval") },
+              {
+                id: "threads",
+                label: gt("Threads ({count})", { count: spec.bindings?.length ?? 0 }),
+              },
             ] as const
           ).map((tab) => {
             const active = activeTab === tab.id;
@@ -397,7 +429,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
         {activeTab === "requirements" && (
           <View className="rounded-2xl border border-border-subtle bg-surface p-4">
             <SelectableMarkdownText
-              markdown={spec.content || "_No content provided._"}
+              markdown={spec.content || gt("_No content provided._")}
               textStyle={styles.nativeTextStyle}
             />
           </View>
@@ -407,7 +439,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
           <View className="gap-3">
             {!spec.tasks || spec.tasks.length === 0 ? (
               <Text className="text-sm text-foreground-muted italic px-2">
-                No tasks defined for this spec.
+                <T>No tasks defined for this spec.</T>
               </Text>
             ) : (
               spec.tasks.map((task) => (
@@ -429,12 +461,16 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
                     </View>
                   </View>
 
-                  <Text className="text-xs font-mono text-foreground-muted">ID: {task.id}</Text>
+                  <Text className="text-xs font-mono text-foreground-muted">
+                    <T>
+                      ID: <Var>{task.id}</Var>
+                    </T>
+                  </Text>
 
                   {task.acs && task.acs.length > 0 && (
                     <View className="gap-1 mt-1">
                       <Text className="text-xs font-t3-semibold text-foreground-muted">
-                        Acceptance Criteria:
+                        <T>Acceptance Criteria:</T>
                       </Text>
                       {task.acs.map((ac) => (
                         <Text key={ac} className="text-xs text-foreground pl-2">
@@ -446,7 +482,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
 
                   {task.dependsOn && task.dependsOn.length > 0 && (
                     <Text className="text-xs text-foreground-muted mt-1">
-                      Depends on: {task.dependsOn.join(", ")}
+                      <T>
+                        Depends on: <Var>{task.dependsOn.join(", ")}</Var>
+                      </T>
                     </Text>
                   )}
 
@@ -465,7 +503,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
           <View className="gap-3">
             {!spec.evidence || spec.evidence.length === 0 ? (
               <Text className="text-sm text-foreground-muted italic px-2">
-                No evidence recorded yet.
+                <T>No evidence recorded yet.</T>
               </Text>
             ) : (
               spec.evidence.map((ev) => (
@@ -498,7 +536,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
 
                   {ev.checkpoint ? (
                     <Text className="text-xs font-mono text-foreground-muted">
-                      Checkpoint: {ev.checkpoint}
+                      <T>
+                        Checkpoint: <Var>{ev.checkpoint}</Var>
+                      </T>
                     </Text>
                   ) : null}
 
@@ -510,19 +550,21 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
                         tintColorClassName="text-success"
                       />
                       <Text className="text-xs text-success font-t3-medium">
-                        Confirmed by {ev.confirmedBy}
+                        <T>
+                          Confirmed by <Var>{ev.confirmedBy}</Var>
+                        </T>
                       </Text>
                     </View>
                   ) : ev.kind === "manual" && canMutate ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Confirm Evidence"
+                      accessibilityLabel={gt("Confirm Evidence")}
                       disabled={isActing}
                       onPress={() => handleConfirmEvidence(ev.id)}
                       className="self-start rounded-full bg-accent px-3 py-1 mt-1 active:opacity-80"
                     >
                       <Text className="text-xs font-t3-semibold text-accent-foreground">
-                        Confirm Evidence
+                        <T>Confirm Evidence</T>
                       </Text>
                     </Pressable>
                   ) : null}
@@ -534,35 +576,47 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
 
         {activeTab === "approval" && (
           <View className="rounded-2xl border border-border-subtle bg-surface p-4 gap-3">
-            <Text className="text-base font-t3-bold text-foreground">Approval Verification</Text>
+            <Text className="text-base font-t3-bold text-foreground">
+              <T>Approval Verification</T>
+            </Text>
             {spec.approval ? (
               <View className="gap-2">
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-xs font-t3-medium text-foreground-muted">Subject</Text>
+                  <Text className="text-xs font-t3-medium text-foreground-muted">
+                    <T>Subject</T>
+                  </Text>
                   <Text className="text-xs font-t3-semibold text-foreground">
                     {spec.approval.subject}
                   </Text>
                 </View>
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-xs font-t3-medium text-foreground-muted">Label</Text>
+                  <Text className="text-xs font-t3-medium text-foreground-muted">
+                    <T>Label</T>
+                  </Text>
                   <Text className="text-xs font-t3-semibold text-foreground">
                     {spec.approval.label}
                   </Text>
                 </View>
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-xs font-t3-medium text-foreground-muted">Approved At</Text>
+                  <Text className="text-xs font-t3-medium text-foreground-muted">
+                    <T>Approved At</T>
+                  </Text>
                   <Text className="text-xs font-t3-semibold text-foreground">
                     {spec.approval.approvedAt}
                   </Text>
                 </View>
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-xs font-t3-medium text-foreground-muted">Revision</Text>
+                  <Text className="text-xs font-t3-medium text-foreground-muted">
+                    <T>Revision</T>
+                  </Text>
                   <Text className="text-xs font-mono text-foreground">
                     {spec.approval.revision}
                   </Text>
                 </View>
                 <View className="gap-1 mt-2">
-                  <Text className="text-xs font-t3-medium text-foreground-muted">Spec Hash</Text>
+                  <Text className="text-xs font-t3-medium text-foreground-muted">
+                    <T>Spec Hash</T>
+                  </Text>
                   <Text
                     className="text-xs font-mono text-foreground-subtle bg-card p-2 rounded-lg"
                     selectable
@@ -573,7 +627,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
                 {spec.approval.constitutionHash ? (
                   <View className="gap-1">
                     <Text className="text-xs font-t3-medium text-foreground-muted">
-                      Constitution Hash
+                      <T>Constitution Hash</T>
                     </Text>
                     <Text
                       className="text-xs font-mono text-foreground-subtle bg-card p-2 rounded-lg"
@@ -586,14 +640,16 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
               </View>
             ) : (
               <Text className="text-sm text-foreground-muted italic">
-                No formal approval recorded for this spec yet.
+                <T>No formal approval recorded for this spec yet.</T>
               </Text>
             )}
 
             {/* Findings */}
             {spec.findings && spec.findings.length > 0 && (
               <View className="border-t border-border-subtle pt-3 gap-2">
-                <Text className="text-sm font-t3-bold text-foreground">Review Findings</Text>
+                <Text className="text-sm font-t3-bold text-foreground">
+                  <T>Review Findings</T>
+                </Text>
                 {spec.findings.map((f) => (
                   <View
                     key={`${f.code}:${f.criterion ?? ""}:${f.message}`}
@@ -617,7 +673,7 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
           <View className="gap-3">
             {!spec.bindings || spec.bindings.length === 0 ? (
               <Text className="text-sm text-foreground-muted italic px-2">
-                No threads currently bound to this spec.
+                <T>No threads currently bound to this spec.</T>
               </Text>
             ) : (
               spec.bindings.map((binding) => (
@@ -642,23 +698,29 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
                         tintColorClassName="text-accent-icon"
                       />
                       <Text className="text-sm font-t3-bold text-foreground" numberOfLines={1}>
-                        Thread {binding.threadId.slice(0, 8)}...
+                        <T>
+                          Thread <Var>{binding.threadId.slice(0, 8)}</Var>...
+                        </T>
                       </Text>
                     </View>
                     <Text className="text-xs font-t3-medium text-foreground-muted capitalize mt-1">
-                      Role: {binding.role}
+                      <T>
+                        Role: <Var>{binding.role}</Var>
+                      </T>
                     </Text>
                   </Pressable>
 
                   {canMutate && (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Unbind Thread"
+                      accessibilityLabel={gt("Unbind Thread")}
                       disabled={isActing}
                       onPress={() => handleUnbindThread(binding.threadId)}
                       className="rounded-full bg-danger-subtle px-3 py-1.5 active:opacity-80"
                     >
-                      <Text className="text-xs font-t3-medium text-danger">Unbind</Text>
+                      <Text className="text-xs font-t3-medium text-danger">
+                        <T>Unbind</T>
+                      </Text>
                     </Pressable>
                   )}
                 </View>
@@ -677,9 +739,11 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
       >
         <View className="flex-1 items-center justify-center bg-black/50 p-4">
           <View className="w-full max-w-sm rounded-2xl bg-surface p-5 gap-3 border border-border-subtle shadow-lg">
-            <Text className="text-lg font-t3-bold text-foreground">Request Changes</Text>
+            <Text className="text-lg font-t3-bold text-foreground">
+              <T>Request Changes</T>
+            </Text>
             <Text className="text-xs text-foreground-muted">
-              Submit feedback requesting revisions to requirements or implementation plan.
+              <T>Submit feedback requesting revisions to requirements or implementation plan.</T>
             </Text>
             <View className="flex-row items-center justify-end gap-2 mt-2">
               <Pressable
@@ -687,7 +751,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
                 onPress={() => setRequestChangesVisible(false)}
                 className="rounded-full px-4 py-2 bg-subtle active:opacity-80"
               >
-                <Text className="text-sm font-t3-medium text-foreground">Cancel</Text>
+                <Text className="text-sm font-t3-medium text-foreground">
+                  <T>Cancel</T>
+                </Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -695,7 +761,9 @@ export function SpecDetailScreen(props: SpecDetailScreenProps) {
                 onPress={submitRequestChanges}
                 className="rounded-full px-4 py-2 bg-warning-subtle active:opacity-80"
               >
-                <Text className="text-sm font-t3-semibold text-warning">Confirm Request</Text>
+                <Text className="text-sm font-t3-semibold text-warning">
+                  <T>Confirm Request</T>
+                </Text>
               </Pressable>
             </View>
           </View>

@@ -2,6 +2,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { EnvironmentId, OrchestrationV2ProjectedTurnItem } from "@t3tools/contracts";
 import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "@t3tools/shared/proposedPlanText";
+import { useGT } from "gt-react-native";
 import { View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -12,6 +13,7 @@ export function ThreadPlanCard(props: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
 }) {
   const navigation = useNavigation();
+  const gt = useGT();
   const { item } = props.projectedItem;
   if (item.type !== "proposed_plan") return null;
   const preview = stripDisplayedPlanMarkdown(item.markdown)
@@ -25,7 +27,7 @@ export function ThreadPlanCard(props: {
   return (
     <View className="mb-3 gap-3 rounded-2xl border border-border bg-card p-4">
       <Text className="font-t3-bold text-base text-foreground" numberOfLines={2}>
-        {proposedPlanTitle(item.markdown) ?? "Proposed plan"}
+        {proposedPlanTitle(item.markdown) ?? gt("Proposed plan")}
       </Text>
       {preview ? (
         <Text className="text-sm text-foreground-muted" numberOfLines={3}>
@@ -33,7 +35,7 @@ export function ThreadPlanCard(props: {
         </Text>
       ) : null}
       <Button
-        label="View plan"
+        label={gt("View plan")}
         onPress={() =>
           navigation.navigate("ThreadPlan", {
             environmentId: props.environmentId,

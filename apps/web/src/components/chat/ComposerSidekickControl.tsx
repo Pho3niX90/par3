@@ -1,7 +1,9 @@
 import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import { CircleAlertIcon, UsersIcon } from "lucide-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { memo } from "react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import {
   SIDEKICK_PER_REQUEST_HINT,
@@ -40,17 +42,34 @@ export interface SidekickMenuInput {
   readonly onChange: (selection: ModelSelection | null) => void;
 }
 
-function sidekickTriggerTooltip(pairing: SidekickPairing | null): string {
-  if (pairing === null) return "Sidekick off. Delegated tasks use the lead's model.";
-  if (pairing.problem !== null) return `Sidekick inactive: ${pairing.problem}`;
+function sidekickTriggerTooltip(
+  pairing: SidekickPairing | null,
+  resolve: MessageResolver = m,
+): string {
+  if (pairing === null) {
+    return resolve(msg("Sidekick off. Delegated tasks use the lead's model."));
+  }
+  if (pairing.problem !== null) {
+    return resolve(msg("Sidekick inactive: {problem}", { problem: pairing.problem }));
+  }
   return pairing.perRequest
-    ? `Sidekick on: ${pairing.label}. ${SIDEKICK_PER_REQUEST_HINT}`
-    : `Sidekick on: ${pairing.label}`;
+    ? resolve(
+        msg("Sidekick on: {label}. {hint}", {
+          label: pairing.label,
+          hint: resolve(SIDEKICK_PER_REQUEST_HINT),
+        }),
+      )
+    : resolve(msg("Sidekick on: {label}", { label: pairing.label }));
 }
 
-function sidekickStatusLabel(pairing: SidekickPairing | null): string {
-  if (pairing === null) return "Off";
-  return pairing.problem === null ? "On" : "Inactive";
+function sidekickStatusLabel(
+  pairing: SidekickPairing | null,
+  resolve: MessageResolver = m,
+): string {
+  if (pairing === null) return resolve(msg("Off", { $context: "sidekick status" }));
+  return pairing.problem === null
+    ? resolve(msg("On", { $context: "sidekick status" }))
+    : resolve(msg("Inactive", { $context: "sidekick status" }));
 }
 
 /**
@@ -59,6 +78,7 @@ function sidekickStatusLabel(pairing: SidekickPairing | null): string {
  * than on every composer render.
  */
 export function SidekickMenuContent(props: SidekickMenuInput) {
+  const resolve = useMessages();
   const groups = sidekickOptionGroups({
     entries: props.entries,
     modelOptionsByInstance: props.modelOptionsByInstance,
@@ -72,16 +92,20 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
   return (
     <>
       <div className="flex items-center justify-between gap-3 px-2 py-1.5 text-xs">
-        <span className="font-medium text-muted-foreground">Sidekick</span>
+        <span className="font-medium text-muted-foreground">
+          <T>Sidekick</T>
+        </span>
         <span className={props.pairing?.problem ? "text-warning" : "text-muted-foreground"}>
-          {sidekickStatusLabel(props.pairing)}
+          {sidekickStatusLabel(props.pairing, resolve)}
         </span>
       </div>
       {props.pairing?.problem ? (
         <div className="flex max-w-72 items-start gap-1.5 px-2 pb-1.5 text-warning text-xs">
           <CircleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
           <span>
-            {props.pairing.label} is inactive. {props.pairing.problem}
+            <T>
+              <Var>{props.pairing.label}</Var> is inactive. <Var>{props.pairing.problem}</Var>
+            </T>
           </span>
         </div>
       ) : null}
@@ -91,7 +115,9 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
           if (value === NONE_VALUE && selectedKey !== NONE_VALUE) props.onChange(null);
         }}
       >
-        <MenuRadioItem value={NONE_VALUE}>Off</MenuRadioItem>
+        <MenuRadioItem value={NONE_VALUE}>
+          <T>Off</T>
+        </MenuRadioItem>
       </MenuRadioGroup>
       {groups.length > 0 ? <MenuSeparator /> : null}
       {groups.map((group) => {
@@ -119,7 +145,7 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
             <MenuSubPopup>
               {group.perRequest ? (
                 <div className="max-w-64 px-2 py-1.5 text-muted-foreground text-xs">
-                  {SIDEKICK_PER_REQUEST_HINT}
+                  {resolve(SIDEKICK_PER_REQUEST_HINT)}
                 </div>
               ) : null}
               <MenuRadioGroup
@@ -156,7 +182,9 @@ export function SidekickMenuContent(props: SidekickMenuInput) {
         <>
           <MenuSeparator />
           <MenuSub>
-            <MenuSubTrigger>Sidekick options</MenuSubTrigger>
+            <MenuSubTrigger>
+              <T>Sidekick options</T>
+            </MenuSubTrigger>
             <MenuSubPopup>
               <TraitsMenuContent
                 provider={selectedProvider.driverKind}
@@ -184,12 +212,14 @@ export const ComposerSidekickControl = memo(function ComposerSidekickControl(
     hidden?: boolean;
   },
 ) {
+  const gt = useGT();
+  const resolve = useMessages();
   const size = props.size ?? "sm";
   const composerFloatingLayerProps = useComposerMenuProps();
   const [open, setOpen] = useComposerMenuState(props.hidden);
   const inactive = props.pairing?.problem != null;
   const active = props.pairing !== null && !inactive;
-  const tooltip = sidekickTriggerTooltip(props.pairing);
+  const tooltip = sidekickTriggerTooltip(props.pairing, resolve);
   return (
     <Menu open={open} onOpenChange={setOpen}>
       <Tooltip>
@@ -201,7 +231,7 @@ export const ComposerSidekickControl = memo(function ComposerSidekickControl(
                   size={size}
                   className="shrink-0 whitespace-nowrap"
                   aria-pressed={active}
-                  aria-label="Sidekick"
+                  aria-label={gt("Sidekick")}
                   aria-description={tooltip}
                   data-composer-shortcut="composer.sidekick"
                 />
@@ -215,7 +245,7 @@ export const ComposerSidekickControl = memo(function ComposerSidekickControl(
             {...(inactive ? { className: "text-warning" } : {})}
           />
           <span data-composer-control-label className="max-w-40 truncate">
-            {props.pairing ? props.pairing.label : "Sidekick"}
+            {props.pairing ? props.pairing.label : gt("Sidekick")}
           </span>
         </TooltipTrigger>
         <TooltipPopup side="top">{tooltip}</TooltipPopup>

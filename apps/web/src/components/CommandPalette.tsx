@@ -613,32 +613,44 @@ function OpenCommandPaletteDialog(props: {
     }
     // A draft whose lead the palette cannot see compares against nothing; launch drops a clash.
     const leadRef = lead ?? { instanceId: "" as ProviderInstanceId, model: "" };
-    const pairing = resolveSidekickPairing({ selection: current, lead: leadRef, entries });
+    const pairing = resolveSidekickPairing({
+      selection: current,
+      lead: leadRef,
+      entries,
+      resolve: messages,
+    });
     const selectedKey = pairing ? sidekickOptionKey(pairing.selection) : null;
-    const currentLabel = <span className="shrink-0 text-xs text-muted-foreground/70">Current</span>;
+    const currentLabel = (
+      <span className="shrink-0 text-xs text-muted-foreground/70">
+        <T>Current</T>
+      </span>
+    );
     return {
       kind: "submenu",
       value: "action:set-sidekick",
       searchTerms: ["sidekick", "delegate", "subagent", "cheaper model", "pair"],
-      title: "Set sidekick…",
+      title: gt("Set sidekick…"),
       description: pairing
         ? pairing.problem
-          ? `${pairing.label} (inactive: ${pairing.problem})`
-          : `On: ${pairing.label}`
-        : "Off",
+          ? gt("{label} (inactive: {problem})", {
+              label: pairing.label,
+              problem: pairing.problem,
+            })
+          : gt("On: {label}", { label: pairing.label })
+        : gt("Off", { $context: "sidekick status" }),
       icon: <UsersIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <UsersIcon className={ADDON_ICON_CLASS} />,
       shortcutCommand: "composer.sidekick",
       groups: [
         {
           value: "sidekick-none",
-          label: "Sidekick",
+          label: gt("Sidekick"),
           items: [
             {
               kind: "action",
               value: "sidekick:none",
-              title: "Off",
-              description: "Delegated tasks use the lead's model",
+              title: gt("Off", { $context: "sidekick status" }),
+              description: gt("Delegated tasks use the lead's model"),
               searchTerms: ["none", "off", "clear", "sidekick"],
               icon: <UsersIcon className={ITEM_ICON_CLASS} />,
               ...(selectedKey === null ? { titleTrailingContent: currentLabel } : {}),
@@ -655,7 +667,7 @@ function OpenCommandPaletteDialog(props: {
             kind: "action" as const,
             value: `sidekick:${sidekickOptionKey(option)}`,
             title: option.name,
-            ...(group.perRequest ? { description: SIDEKICK_PER_REQUEST_HINT } : {}),
+            ...(group.perRequest ? { description: messages(SIDEKICK_PER_REQUEST_HINT) } : {}),
             searchTerms: [option.name, option.model, group.entry.displayName, "sidekick"],
             icon: <UsersIcon className={ITEM_ICON_CLASS} />,
             ...(selectedKey === sidekickOptionKey(option)
@@ -1571,7 +1583,7 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:toggle-plan-mode",
-      title: "Toggle Build/Plan mode",
+      title: gt("Toggle Build/Plan mode"),
       searchTerms: ["plan", "build", "mode", "default", "composer"],
       icon: <PencilRulerIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "composer.togglePlanMode",
@@ -1602,7 +1614,7 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:project-specs",
-      title: "Project specs",
+      title: gt("Project specs"),
       searchTerms: ["spec", "specs", "specification", "requirements", "approve", "review"],
       icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
@@ -1622,7 +1634,7 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:toggle-spec-mode",
-      title: "Toggle Spec mode",
+      title: gt("Toggle Spec mode"),
       shortcutCommand: "composer.toggleSpecMode",
       searchTerms: ["spec", "specification", "requirements", "bind", "composer"],
       icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
@@ -1753,8 +1765,8 @@ function OpenCommandPaletteDialog(props: {
         kind: "action",
         value: "action:open-merge-conflicts",
         searchTerms: ["merge", "conflicts", "resolve", "rebase", "cherry-pick", "revert", "git"],
-        title: "Resolve merge conflicts",
-        description: "Merge, rebase, cherry-pick or revert in progress",
+        title: gt("Resolve merge conflicts"),
+        description: gt("Merge, rebase, cherry-pick or revert in progress"),
         icon: <PullRequestGlyph.merged className={ITEM_ICON_CLASS} />,
         shortcutCommand: "merge.open",
         run: async () => {
@@ -2022,7 +2034,7 @@ function OpenCommandPaletteDialog(props: {
     kind: "action",
     value: "action:vault-sync",
     searchTerms: ["vault", "secrets", "sync", "api keys", "machines", "share"],
-    title: "Open vault & sync",
+    title: gt("Open vault & sync"),
     icon: <KeyRoundIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/settings/sync" });

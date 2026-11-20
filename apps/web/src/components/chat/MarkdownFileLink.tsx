@@ -539,7 +539,8 @@ function MarkdownFileLinkTooltip(props: {
   unresolved: boolean;
 }) {
   const { environmentId, iconPath, targetPath, matchPath, unresolved } = props;
-  if (unresolved) return <>{`${targetPath} · Not found`}</>;
+  const gt = useGT();
+  if (unresolved) return <>{gt("{targetPath} · Not found", { targetPath })}</>;
   if (matchPath === null) {
     return (
       <WorkspaceEntryTooltip path={iconPath} label={targetPath} environmentId={environmentId} />

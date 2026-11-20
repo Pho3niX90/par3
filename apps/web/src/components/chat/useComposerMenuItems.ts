@@ -270,7 +270,7 @@ export function useComposerMenuItems({
                 type: "slash-command",
                 command: "spec",
                 label: "/spec",
-                description: "Bind this thread to a spec",
+                description: gt("Bind this thread to a spec"),
               },
             ] as const)
           : []),
@@ -281,14 +281,14 @@ export function useComposerMenuItems({
                 type: "slash-command",
                 command: "plan",
                 label: "/plan",
-                description: "Switch this thread into plan mode",
+                description: gt("Switch this thread into plan mode"),
               },
               {
                 id: "slash:default",
                 type: "slash-command",
                 command: "default",
                 label: "/default",
-                description: "Switch this thread back to build mode",
+                description: gt("Switch this thread back to build mode"),
               },
             ] as const)
           : []),

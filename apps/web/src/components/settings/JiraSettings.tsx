@@ -1,4 +1,5 @@
 import { normalizeJiraBaseUrl, normalizeJiraProjectKeys } from "@t3tools/shared/jira";
+import { useGT } from "gt-react";
 import { useRef } from "react";
 
 import { Input } from "../ui/input";
@@ -20,6 +21,7 @@ function parseProjectKeys(value: string): string[] {
  * and credentials belong to the environment; the project keys can differ per project.
  */
 export function JiraSettings() {
+  const gt = useGT();
   const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const { targets } = useSettingsScope();
@@ -43,7 +45,9 @@ export function JiraSettings() {
       type={input.type ?? "text"}
       autoCapitalize="none"
       spellCheck={false}
-      placeholder={jiraMixed ? "Mixed" : input.placeholder}
+      placeholder={
+        jiraMixed ? gt("Mixed", { $context: "values differ across targets" }) : input.placeholder
+      }
       defaultValue={jiraMixed ? "" : jira[input.field]}
       onChange={() => edited.current.add(input.field)}
       onBlur={(event) => {
@@ -57,28 +61,30 @@ export function JiraSettings() {
   );
 
   return (
-    <SettingsSection id="jira" title="Jira">
+    <SettingsSection id="jira" title={gt("Jira")}>
       <SettingsRow
         serverScoped
         settingKeys={["jira"]}
         {...searchableSetting("jira-site")}
-        description="Issue keys in a thread's branch name link to this site. Leave empty to turn Jira off."
+        description={gt(
+          "Issue keys in a thread's branch name link to this site. Leave empty to turn Jira off.",
+        )}
         status={
           !jiraMixed && jira.baseUrl && normalizeJiraBaseUrl(jira.baseUrl) === null
-            ? "This is not an http or https address, so issues will not link."
+            ? gt("This is not an http or https address, so issues will not link.")
             : undefined
         }
         resetAction={
           jira.baseUrl ? (
             <SettingResetButton
-              ariaLabel="Reset Jira site to default"
+              ariaLabel={gt("Reset Jira site to default")}
               onClick={() => updateSettings({ jira: { baseUrl: "", email: "", apiToken: "" } })}
             />
           ) : null
         }
         control={textInput({
           field: "baseUrl",
-          label: "Jira site URL",
+          label: gt("Jira site URL"),
           placeholder: "https://company.atlassian.net",
           type: "url",
         })}
@@ -88,11 +94,13 @@ export function JiraSettings() {
           <SettingsRow
             serverScoped
             settingKeys={["jira"]}
-            title="Jira account email"
-            description="For Jira Cloud. Leave empty to use a personal access token on Jira Server or Data Center."
+            title={gt("Jira account email")}
+            description={gt(
+              "For Jira Cloud. Leave empty to use a personal access token on Jira Server or Data Center.",
+            )}
             control={textInput({
               field: "email",
-              label: "Jira account email",
+              label: gt("Jira account email"),
               placeholder: "you@company.test",
               type: "email",
             })}
@@ -100,14 +108,16 @@ export function JiraSettings() {
           <SettingsRow
             serverScoped
             settingKeys={["jira"]}
-            title="Jira API token"
-            description="Lets the thread panel show each issue's summary and status. Without it, issues only link to Jira."
-            status={hasToken ? "A token is saved on this environment." : undefined}
+            title={gt("Jira API token")}
+            description={gt(
+              "Lets the thread panel show each issue's summary and status. Without it, issues only link to Jira.",
+            )}
+            status={hasToken ? gt("A token is saved on this environment.") : undefined}
             resetAction={
               hasToken ? (
                 <SettingResetButton
-                  ariaLabel="Reset Jira API token to default"
-                  tooltip="Remove the saved token"
+                  ariaLabel={gt("Reset Jira API token to default")}
+                  tooltip={gt("Remove the saved token")}
                   onClick={() => updateSettings({ jira: { apiToken: "" } })}
                 />
               ) : null
@@ -115,10 +125,12 @@ export function JiraSettings() {
             control={
               <Input
                 key={`${scopeKey}:${jiraMixed}:${hasToken}`}
-                aria-label="Jira API token"
+                aria-label={gt("Jira API token")}
                 type="password"
                 autoComplete="off"
-                placeholder={hasToken ? "Saved; enter a new token to replace it" : "API token"}
+                placeholder={
+                  hasToken ? gt("Saved; enter a new token to replace it") : gt("API token")
+                }
                 defaultValue=""
                 onBlur={(event) => {
                   const value = event.target.value.trim();
@@ -132,11 +144,13 @@ export function JiraSettings() {
             serverScoped
             settingKeys={["jiraProjectKeys"]}
             {...searchableSetting("jira-project-keys")}
-            description="Only these projects count as Jira issues, matched in any case and also in pull request titles. Leave empty to match any uppercase key in branch names."
+            description={gt(
+              "Only these projects count as Jira issues, matched in any case and also in pull request titles. Leave empty to match any uppercase key in branch names.",
+            )}
             resetAction={
               keysMixed || settings.jiraProjectKeys.length > 0 ? (
                 <SettingResetButton
-                  ariaLabel="Reset Jira project keys to default"
+                  ariaLabel={gt("Reset Jira project keys to default")}
                   onClick={() => updateSettings({ jiraProjectKeys: [] })}
                 />
               ) : null
@@ -144,10 +158,15 @@ export function JiraSettings() {
             control={
               <Input
                 key={`${scopeKey}:${keysMixed}:${settings.jiraProjectKeys.join(",")}`}
-                aria-label="Jira project keys"
+                aria-label={gt("Jira project keys")}
                 autoCapitalize="characters"
                 spellCheck={false}
-                placeholder={keysMixed ? "Mixed" : "ABC, OPS"}
+                placeholder={
+                  keysMixed
+                    ? gt("Mixed", { $context: "values differ across targets" })
+                    : // oxlint-disable-next-line t3code/no-untranslated-copy -- example project keys
+                      "ABC, OPS"
+                }
                 defaultValue={keysMixed ? "" : settings.jiraProjectKeys.join(", ")}
                 onChange={() => edited.current.add("jiraProjectKeys")}
                 onBlur={(event) => {

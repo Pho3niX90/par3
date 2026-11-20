@@ -578,15 +578,18 @@ function ThreadSettingsSessionProvider(
       isInstanceEnabled: (instanceId: ProviderInstanceId) =>
         resolveProjectProviderInstanceEnabled(config.settings, props.projectId, instanceId),
     };
-    const row = resolveSidekickRow({
-      ...sidekickInput,
-      supported: config.environment.capabilities.threadSidekick === true,
-      sidekick: props.sidekick.selection,
-    });
+    const row = resolveSidekickRow(
+      {
+        ...sidekickInput,
+        supported: config.environment.capabilities.threadSidekick === true,
+        sidekick: props.sidekick.selection,
+      },
+      messages,
+    );
     return row
       ? {
           row,
-          groups: sidekickPickerGroups(sidekickInput),
+          groups: sidekickPickerGroups(sidekickInput, messages),
           selection: props.sidekick.selection,
           descriptors: resolveProviderOptionDescriptors({
             capabilities: config.providers

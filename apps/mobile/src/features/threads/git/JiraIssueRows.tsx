@@ -7,6 +7,7 @@ import type {
   ServerSettings,
 } from "@t3tools/contracts";
 import { findJiraIssueKeys, jiraIssueUrl, normalizeJiraBaseUrl } from "@t3tools/shared/jira";
+import { useGT } from "gt-react-native";
 import { useMemo } from "react";
 import { Alert } from "react-native";
 
@@ -53,6 +54,7 @@ export function JiraIssueRows(props: {
   if (!baseUrl || keys.length === 0) return null;
 
   return (
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- Jira is a product name
     <ListSection title="Jira">
       {keys.map((key) => (
         <JiraIssueRow
@@ -71,6 +73,7 @@ function JiraIssueRow(props: {
   readonly issueKey: JiraIssueKey;
   readonly url: string;
 }) {
+  const gt = useGT();
   const query = useEnvironmentQuery(
     jiraEnvironment.issue({ environmentId: props.environmentId, input: { key: props.issueKey } }),
   );
@@ -83,12 +86,13 @@ function JiraIssueRow(props: {
         issue
           ? [issue.status?.name, issue.issueType, issue.assignee].filter(Boolean).join(" · ")
           : query.isPending
-            ? "Status pending"
-            : "Open in Jira"
+            ? gt("Status pending")
+            : gt("Open in Jira")
       }
       onPress={() => {
         void tryOpenExternalUrl(props.url, "jira-issue").then((opened) => {
-          if (!opened) Alert.alert("Unable to open issue", "The Jira issue could not be opened.");
+          if (!opened)
+            Alert.alert(gt("Unable to open issue"), gt("The Jira issue could not be opened."));
         });
       }}
     />

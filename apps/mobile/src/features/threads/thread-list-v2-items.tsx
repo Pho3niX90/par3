@@ -136,7 +136,7 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     iconTintClassName: "accent-foreground-muted",
   },
   offline: {
-    label: "Offline",
+    label: msg("Offline", { $context: "thread status" }),
     icon: "wifi.slash",
     className: "text-foreground-muted",
     iconTintClassName: "accent-foreground-muted",

@@ -1557,19 +1557,24 @@ export function PullRequestDetailPanel({
                 (sideThreadRef === null && checkoutRoot === null)
               }
               onClick={() => void updateFromBase.run()}
-              aria-label={updateFromBase.pending ? "Updating..." : "Update from base locally"}
+              aria-label={
+                updateFromBase.pending ? gt("Updating...") : gt("Update from base locally")
+              }
             >
               <PullRequestGlyph.merged aria-hidden className="size-3.5" />
               <span className="@max-[30rem]/pr-header:hidden">
-                {updateFromBase.pending ? "Updating..." : "Update from base"}
+                {updateFromBase.pending ? gt("Updating...") : gt("Update from base")}
               </span>
             </Button>
           </span>
         }
       />
       <TooltipPopup side="top">
-        Merge {handoffSummary?.baseBranch ?? "the base branch"} into this branch here, then resolve
-        any conflicts yourself
+        {handoffSummary?.baseBranch
+          ? gt("Merge {baseBranch} into this branch here, then resolve any conflicts yourself", {
+              baseBranch: handoffSummary.baseBranch,
+            })
+          : gt("Merge the base branch into this branch here, then resolve any conflicts yourself")}
       </TooltipPopup>
     </Tooltip>
   ) : null;

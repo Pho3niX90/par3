@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { T, useGT, Var } from "gt-react-native";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -16,6 +17,7 @@ export interface ThreadBoundSpecBadgeProps {
 
 export function ThreadBoundSpecBadge(props: ThreadBoundSpecBadgeProps) {
   const navigation = useNavigation();
+  const gt = useGT();
   const { boundSpec } = useThreadBoundSpec(props.environmentId, props.projectId, props.threadId);
 
   const { environmentId, projectId } = props;
@@ -29,7 +31,7 @@ export function ThreadBoundSpecBadge(props: ThreadBoundSpecBadgeProps) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Bound spec: ${boundSpec.title}`}
+      accessibilityLabel={gt("Bound spec: {title}", { title: boundSpec.title })}
       onPress={() =>
         navigation.navigate("SpecDetail", {
           environmentId,
@@ -53,7 +55,9 @@ export function ThreadBoundSpecBadge(props: ThreadBoundSpecBadgeProps) {
             </View>
           </View>
           <Text className="text-[10px] font-mono text-foreground-muted" numberOfLines={1}>
-            {boundSpec.slug} · Rev {boundSpec.revision}
+            <T>
+              <Var>{boundSpec.slug}</Var> · Rev <Var>{boundSpec.revision}</Var>
+            </T>
           </Text>
         </View>
       </View>

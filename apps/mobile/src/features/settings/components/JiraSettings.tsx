@@ -1,5 +1,6 @@
 import type { JiraSettings as JiraSettingsValue, ServerSettingsPatch } from "@t3tools/contracts";
 import { normalizeJiraProjectKeys } from "@t3tools/shared/jira";
+import { T, useGT } from "gt-react-native";
 import { useRef } from "react";
 import { View } from "react-native";
 
@@ -19,6 +20,7 @@ export function JiraSettings(props: {
   projectKeysDisabled: boolean;
   onChange: (patch: ServerSettingsPatch) => void;
 }) {
+  const gt = useGT();
   const edited = useRef(new Set<string>());
   const jira = props.jira;
   const hasToken = jira !== null && jira.apiToken.length > 0;
@@ -33,7 +35,7 @@ export function JiraSettings(props: {
       key={`${input.field}:${jira?.[input.field] ?? "mixed"}`}
       accessibilityLabel={input.label}
       defaultValue={jira?.[input.field] ?? ""}
-      placeholder={jira === null ? "Mixed" : input.placeholder}
+      placeholder={jira === null ? gt("Mixed") : input.placeholder}
       editable={!props.siteDisabled}
       autoCapitalize="none"
       autoCorrect={false}
@@ -55,14 +57,17 @@ export function JiraSettings(props: {
   );
 
   return (
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- Jira is a product name
     <SettingsSection title="Jira">
       <View className="gap-2 px-4 py-3">
         <Text className="text-sm text-foreground-muted">
-          Issue keys in a thread's branch name link to this site. Leave empty to turn Jira off.
+          <T>
+            Issue keys in a thread's branch name link to this site. Leave empty to turn Jira off.
+          </T>
         </Text>
         {field({
           field: "baseUrl",
-          label: "Jira site URL",
+          label: gt("Jira site URL"),
           placeholder: "https://company.atlassian.net",
           keyboardType: "url",
         })}
@@ -71,12 +76,14 @@ export function JiraSettings(props: {
         <>
           <View className="gap-2 px-4 py-3">
             <Text className="text-sm text-foreground-muted">
-              Account email for Jira Cloud. Leave empty to use a personal access token on Jira
-              Server or Data Center.
+              <T>
+                Account email for Jira Cloud. Leave empty to use a personal access token on Jira
+                Server or Data Center.
+              </T>
             </Text>
             {field({
               field: "email",
-              label: "Jira account email",
+              label: gt("Jira account email"),
               placeholder: "you@company.test",
               keyboardType: "email-address",
             })}
@@ -84,14 +91,16 @@ export function JiraSettings(props: {
           <View className="gap-2 px-4 py-3">
             <Text className="text-sm text-foreground-muted">
               {hasToken
-                ? "A token is saved. Enter a new one to replace it, or a single space to remove it."
-                : "An API token shows each issue's summary and status."}
+                ? gt(
+                    "A token is saved. Enter a new one to replace it, or a single space to remove it.",
+                  )
+                : gt("An API token shows each issue's summary and status.")}
             </Text>
             <AppTextInput
               key={`token:${hasToken}`}
-              accessibilityLabel="Jira API token"
+              accessibilityLabel={gt("Jira API token")}
               defaultValue=""
-              placeholder={hasToken ? "Saved" : "API token"}
+              placeholder={hasToken ? gt("Saved") : gt("API token")}
               editable={!props.siteDisabled}
               secureTextEntry
               autoCapitalize="none"
@@ -107,14 +116,17 @@ export function JiraSettings(props: {
           </View>
           <View className="gap-2 px-4 py-3">
             <Text className="text-sm text-foreground-muted">
-              Project keys, such as ABC, OPS. Only these count, in any case and in pull request
-              titles too. Leave empty to match any uppercase key in branch names.
+              <T>
+                Project keys, such as ABC, OPS. Only these count, in any case and in pull request
+                titles too. Leave empty to match any uppercase key in branch names.
+              </T>
             </Text>
             <AppTextInput
               key={`keys:${props.projectKeys?.join(",") ?? "mixed"}`}
-              accessibilityLabel="Jira project keys"
+              accessibilityLabel={gt("Jira project keys")}
               defaultValue={props.projectKeys?.join(", ") ?? ""}
-              placeholder={props.projectKeys === null ? "Mixed" : "ABC, OPS"}
+              // oxlint-disable-next-line t3code/no-untranslated-copy -- example project keys
+              placeholder={props.projectKeys === null ? gt("Mixed") : "ABC, OPS"}
               editable={!props.projectKeysDisabled}
               autoCapitalize="characters"
               autoCorrect={false}

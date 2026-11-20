@@ -7,6 +7,9 @@ import {
   type ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { msg } from "gt-react-native";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export type SidekickPickerModel = {
   readonly key: string;
@@ -40,13 +43,15 @@ function providerLabel(provider: Pick<ServerProvider, "displayName" | "instanceI
   return provider.displayName ?? provider.instanceId;
 }
 
-function leadProblem(input: SidekickInput): string | null {
+function leadProblem(input: SidekickInput, resolve: MessageResolver): string | null {
   const provider = input.providers.find(
     (candidate) => candidate.instanceId === input.lead.instanceId,
   );
-  if (!provider) return "The lead provider is not configured.";
+  if (!provider) return resolve(msg("The lead provider is not configured."));
   const canLead = provider.sidekickLead ?? sidekickDriverTraits(provider.driver).sidekickLead;
-  return canLead ? null : `${providerLabel(provider)} cannot lead a sidekick.`;
+  return canLead
+    ? null
+    : resolve(msg("{provider} cannot lead a sidekick."), { provider: providerLabel(provider) });
 }
 
 /**
@@ -58,11 +63,13 @@ export function resolveSidekickRow(
     readonly supported: boolean;
     readonly sidekick: ModelSelection | null;
   },
+  resolve: MessageResolver = m,
 ): SidekickRowPresentation | null {
   if (!input.supported) return null;
-  const lead = leadProblem(input);
+  const lead = leadProblem(input, resolve);
   const sidekick = input.sidekick;
-  if (sidekick === null) return lead === null ? { value: "Off", problem: null } : null;
+  if (sidekick === null)
+    return lead === null ? { value: resolve(msg("Off")), problem: null } : null;
   const provider = input.providers.find(
     (candidate) => candidate.instanceId === sidekick.instanceId,
   );
@@ -71,17 +78,27 @@ export function resolveSidekickRow(
     sidekickSelectionProblem({ lead: input.lead, sidekick, providers: input.providers }) ??
     (input.isInstanceEnabled(sidekick.instanceId)
       ? null
-      : `${provider ? providerLabel(provider) : sidekick.instanceId} is turned off for this project.`);
+      : resolve(msg("{provider} is turned off for this project."), {
+          provider: provider ? providerLabel(provider) : sidekick.instanceId,
+        }));
   return { value: sidekickModelLabel(sidekick, provider), problem };
 }
 
-export function sidekickBillingHint(provider: ServerProvider): string | null {
+export function sidekickBillingHint(
+  provider: ServerProvider,
+  resolve: MessageResolver = m,
+): string | null {
   const billing = provider.billingModel ?? sidekickDriverTraits(provider.driver).billingModel;
-  return billing === "per_request" ? "Billed per request: the lead batches work." : null;
+  return billing === "per_request"
+    ? resolve(msg("Billed per request: the lead batches work."))
+    : null;
 }
 
 /** Models the lead may hand work to, grouped by provider instance. */
-export function sidekickPickerGroups(input: SidekickInput): ReadonlyArray<SidekickPickerGroup> {
+export function sidekickPickerGroups(
+  input: SidekickInput,
+  resolve: MessageResolver = m,
+): ReadonlyArray<SidekickPickerGroup> {
   return input.providers.flatMap((provider) => {
     if (!input.isInstanceEnabled(provider.instanceId)) return [];
     const models = provider.models
@@ -98,7 +115,7 @@ export function sidekickPickerGroups(input: SidekickInput): ReadonlyArray<Sideki
         driver: provider.driver,
         iconUrl: provider.iconUrl,
         label: providerLabel(provider),
-        billingHint: sidekickBillingHint(provider),
+        billingHint: sidekickBillingHint(provider, resolve),
         models,
       },
     ];

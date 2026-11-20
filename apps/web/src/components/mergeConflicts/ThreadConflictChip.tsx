@@ -1,4 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useGT, useMessages } from "gt-react";
 import { mergeOperationNoun } from "@t3tools/client-runtime/state/merge-conflict-state";
 
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -14,18 +15,22 @@ import {
  * summing the repositories the thread works in.
  */
 export function ThreadConflictChip(props: { readonly threadRef: ScopedThreadRef }) {
+  const gt = useGT();
+  const m = useMessages();
   const { environmentId, repositories } = useThreadConflictRepositories(props.threadRef);
   const state = useRepositoriesConflictState(environmentId, repositories);
   if (!state.needsResolution) return null;
   const label = state.canContinue
-    ? `Continue ${mergeOperationNoun(state.operation)}`
-    : `${state.conflictCount} ${state.conflictCount === 1 ? "conflict" : "conflicts"}`;
+    ? gt("Continue {noun}", { noun: mergeOperationNoun(state.operation, m) })
+    : gt("{count, plural, one {{count} conflict} other {{count} conflicts}}", {
+        count: state.conflictCount,
+      });
   return (
     <Button
       size="xs"
       variant="warning-outline"
       className="shrink-0"
-      aria-label={`Resolve conflicts: ${label}`}
+      aria-label={gt("Resolve conflicts: {label}", { label })}
       onClick={() => useRightPanelStore.getState().open(props.threadRef, "merge")}
     >
       <PullRequestGlyph.merged aria-hidden />

@@ -5,10 +5,7 @@ import type {
   ReviewDiffPreviewSource,
   VcsStatusResult,
 } from "@t3tools/contracts";
-import {
-  mergeOperationNoun,
-  selectMergeConflictState,
-} from "@t3tools/client-runtime/state/merge-conflict-state";
+import { selectMergeConflictState } from "@t3tools/client-runtime/state/merge-conflict-state";
 import { summarizeChangedFiles } from "@t3tools/shared/changedFileKind";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import { msg } from "gt-react";
@@ -333,12 +330,24 @@ export function resolveQuickAction(
   if (conflictState.needsResolution) {
     return conflictState.canContinue
       ? {
-          label: `Continue ${mergeOperationNoun(conflictState.operation)}`,
+          label: resolve(
+            msg(
+              "{operation, select, merge {Continue merge} rebase {Continue rebase} cherryPick {Continue cherry-pick} revert {Continue revert} other {Continue conflict resolution}}",
+              {
+                operation:
+                  conflictState.operation === "cherry-pick"
+                    ? "cherryPick"
+                    : (conflictState.operation ?? "other"),
+              },
+            ),
+          ),
           disabled: false,
           kind: "resolve_conflicts",
         }
       : {
-          label: `Resolve conflicts (${conflictState.conflictCount})`,
+          label: resolve(
+            msg("Resolve conflicts ({count})", { count: conflictState.conflictCount }),
+          ),
           disabled: false,
           kind: "resolve_conflicts",
         };

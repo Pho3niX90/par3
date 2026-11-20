@@ -1,4 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { T } from "gt-react";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { Button } from "../ui/button";
 import { memo } from "react";
@@ -19,7 +20,9 @@ export const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBann
     <ComposerBanner.Row>
       <ComposerBanner.Icon />
       <ComposerBanner.Content>
-        <span className="shrink-0 font-medium text-muted-foreground">Plan ready</span>
+        <span className="shrink-0 font-medium text-muted-foreground">
+          <T>Plan ready</T>
+        </span>
         {planTitle ? (
           <span className="min-w-0 flex-1 truncate text-foreground/85">{planTitle}</span>
         ) : null}
@@ -30,7 +33,7 @@ export const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBann
           variant="ghost"
           onClick={() => useRightPanelStore.getState().openPlan(threadRef, planId, itemId)}
         >
-          Open
+          <T>Open</T>
         </Button>
       </ComposerBanner.Actions>
     </ComposerBanner.Row>

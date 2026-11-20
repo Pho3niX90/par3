@@ -1,5 +1,6 @@
 import type { SyncConflict, SyncEnvironmentView } from "@t3tools/client-runtime/sync/plan";
 import type { EnvironmentId, SyncSkipReason } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -33,10 +34,10 @@ export function VaultSyncSettingsPanel() {
 }
 
 const SKIP_REASONS: Record<SyncSkipReason, string> = {
-  "needs-vault": "Holds a saved secret; move it to the vault to sync",
-  "too-large": "Too large to sync",
-  binary: "Binary files don't sync",
-  symlink: "Symlinks don't sync",
+  "needs-vault": msg("Holds a saved secret; move it to the vault to sync"),
+  "too-large": msg("Too large to sync"),
+  binary: msg("Binary files don't sync"),
+  symlink: msg("Symlinks don't sync"),
 };
 
 /** MCP servers sync by id; people know them by name. */
@@ -56,6 +57,7 @@ function itemName(
 }
 
 function SyncSettings() {
+  const gt = useGT();
   const { environments } = useEnvironments();
   const views = useSyncViews();
   const plan = useSyncPlan();
@@ -77,7 +79,7 @@ function SyncSettings() {
   );
   const labelOf = (environmentId: EnvironmentId) =>
     environments.find((environment) => environment.environmentId === environmentId)?.label ??
-    "another machine";
+    gt("another machine");
   const categoryLabel = (categoryId: string) =>
     views.flatMap((view) => view.snapshot.categories).find((category) => category.id === categoryId)
       ?.label ?? categoryId;
@@ -89,8 +91,10 @@ function SyncSettings() {
     if (result.failed + result.rejected > 0) {
       toastManager.add({
         type: "error",
-        title: `Could not settle ${itemName(conflict.categoryId, conflict.name, environments)}`,
-        description: "A machine refused the change or could not be reached.",
+        title: gt("Could not settle {name}", {
+          name: itemName(conflict.categoryId, conflict.name, environments),
+        }),
+        description: gt("A machine refused the change or could not be reached."),
       });
     }
   };
@@ -98,24 +102,26 @@ function SyncSettings() {
   return (
     <SettingsSection
       id="sync"
-      title="Sync"
+      title={gt("Sync")}
       headerAction={
         Object.keys(errors).length > 0 ? (
           <Button size="xs" variant="ghost" disabled={running} onClick={retrySync}>
-            <RefreshCwIcon className="size-3.5" /> Retry
+            <RefreshCwIcon className="size-3.5" /> <T>Retry</T>
           </Button>
         ) : null
       }
     >
       <div className="space-y-4 px-4 py-4 sm:px-5">
         <p className="text-xs text-muted-foreground">
-          Keeps the vault, shared MCP servers, and provider instructions, agents, commands, and
-          skills the same on every machine you choose. Syncs while Par3 is connected to both
-          machines.
+          <T>
+            Keeps the vault, shared MCP servers, and provider instructions, agents, commands, and
+            skills the same on every machine you choose. Syncs while Par3 is connected to both
+            machines.
+          </T>
         </p>
         {views.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Connect a machine running a current version of Par3 to sync.
+            <T>Connect a machine running a current version of Par3 to sync.</T>
           </p>
         ) : (
           <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
@@ -134,18 +140,25 @@ function SyncSettings() {
         )}
         {outdated.length > 0 ? (
           <p className="text-xs text-muted-foreground">
-            Update Par3 on {outdated.map((environment) => environment.label).join(", ")} to sync.
+            <T>
+              Update Par3 on{" "}
+              <Var>{outdated.map((environment) => environment.label).join(", ")}</Var> to sync.
+            </T>
           </p>
         ) : null}
         {unmanaged.length > 0 ? (
           <p className="text-xs text-muted-foreground">
-            This connection can't manage sync on{" "}
-            {unmanaged.map((environment) => environment.label).join(", ")}.
+            <T>
+              This connection can't manage sync on{" "}
+              <Var>{unmanaged.map((environment) => environment.label).join(", ")}</Var>.
+            </T>
           </p>
         ) : null}
         {plan.conflicts.length > 0 ? (
           <div className="space-y-2">
-            <p className="text-sm">Different on each machine</p>
+            <p className="text-sm">
+              <T>Different on each machine</T>
+            </p>
             <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
               {plan.conflicts.map((conflict) => (
                 <li key={conflict.key} className="space-y-2 px-3 py-2 text-sm">
@@ -166,7 +179,7 @@ function SyncSettings() {
                         disabled={resolving !== null}
                         onClick={() => setMerging(conflict)}
                       >
-                        Merge…
+                        <T>Merge…</T>
                       </Button>
                     )}
                     {conflict.candidates
@@ -179,7 +192,9 @@ function SyncSettings() {
                           disabled={resolving !== null}
                           onClick={() => void resolve(conflict, candidate.environmentId)}
                         >
-                          Keep version from {labelOf(candidate.environmentId)}
+                          <T>
+                            Keep version from <Var>{labelOf(candidate.environmentId)}</Var>
+                          </T>
                         </Button>
                       ))}
                     <Button
@@ -188,7 +203,8 @@ function SyncSettings() {
                       disabled={resolving !== null}
                       onClick={() => void resolve(conflict, "delete")}
                     >
-                      {resolving === conflict.key ? <Spinner size="xs" /> : null} Delete everywhere
+                      {resolving === conflict.key ? <Spinner size="xs" /> : null}{" "}
+                      <T>Delete everywhere</T>
                     </Button>
                   </div>
                 </li>
@@ -215,6 +231,8 @@ function SyncMachineRow(props: {
   readonly running: boolean;
   readonly environments: ReadonlyArray<EnvironmentPresentation>;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { snapshot, environmentId } = props.view;
   const participation = snapshot.participation;
   const setParticipation = useAtomCommand(serverEnvironment.syncSetParticipation, {
@@ -236,7 +254,7 @@ function SyncMachineRow(props: {
     if (result._tag !== "Success") {
       toastManager.add({
         type: "error",
-        title: `Could not change sync on ${props.label}`,
+        title: gt("Could not change sync on {label}", { label: props.label }),
         description: describeCommandFailure(result),
       });
     }
@@ -246,15 +264,19 @@ function SyncMachineRow(props: {
   const categories = participation?.categories ?? [];
   const status = !enabled
     ? participation === null
-      ? "Not set up"
-      : "Not syncing; files stay as they are"
+      ? gt("Not set up")
+      : gt("Not syncing; files stay as they are")
     : props.error
       ? props.error
       : props.counts.conflicts > 0
-        ? `${props.counts.conflicts} ${props.counts.conflicts === 1 ? "item differs" : "items differ"}`
+        ? gt("{count, plural, one {{count} item differs} other {{count} items differ}}", {
+            count: props.counts.conflicts,
+          })
         : props.counts.pending > 0
-          ? `${props.counts.pending} pending${props.running ? "…" : ""}`
-          : "In sync";
+          ? props.running
+            ? gt("{count} pending…", { count: props.counts.pending })
+            : gt("{count} pending", { count: props.counts.pending })
+          : gt("In sync");
   const skipped = snapshot.items.filter(
     (item) => item.skipped !== undefined && categories.includes(item.categoryId),
   );
@@ -273,7 +295,7 @@ function SyncMachineRow(props: {
           </p>
         </div>
         <label className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-          Sync this machine
+          <T>Sync this machine</T>
           <Switch
             checked={enabled}
             disabled={busy}
@@ -304,7 +326,10 @@ function SyncMachineRow(props: {
                 size="sm"
                 checked={categories.includes(category.id)}
                 disabled={busy || (!category.available && !categories.includes(category.id))}
-                aria-label={`Sync ${category.label} on ${props.label}`}
+                aria-label={gt("Sync {category} on {label}", {
+                  category: category.label,
+                  label: props.label,
+                })}
                 onCheckedChange={(next) =>
                   void save(
                     true,
@@ -320,14 +345,16 @@ function SyncMachineRow(props: {
       ) : null}
       {enabled && skipped.length > 0 ? (
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Stays on this machine</p>
+          <p className="text-xs text-muted-foreground">
+            <T>Stays on this machine</T>
+          </p>
           <ul className="space-y-0.5 text-xs">
             {skipped.map((item) => (
               <li key={item.key}>
                 <span className="font-mono">
                   {itemName(item.categoryId, item.name, props.environments)}
                 </span>
-                <span className="text-muted-foreground"> · {SKIP_REASONS[item.skipped!]}</span>
+                <span className="text-muted-foreground"> · {m(SKIP_REASONS[item.skipped!])}</span>
               </li>
             ))}
           </ul>

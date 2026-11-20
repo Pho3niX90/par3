@@ -142,7 +142,7 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
                 </span>
               ) : (
                 <span className="text-muted-foreground">
-                  This model's context window size is unknown, so no percentage is shown.
+                  {gt("This model's context window size is unknown, so no percentage is shown.")}
                 </span>
               )}
               {threshold !== null && threshold > 0 ? (

@@ -12,6 +12,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { BotIcon } from "lucide-react";
+import { T, useGT } from "gt-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { useProjects, useThreadShells } from "~/state/entities";
@@ -104,9 +105,11 @@ export function MergeConflictsPanel(props: MergeConflictsPanelProps) {
     return (
       <Empty size="compact">
         <EmptyHeader>
-          <EmptyTitle>No repository</EmptyTitle>
+          <EmptyTitle>
+            <T>No repository</T>
+          </EmptyTitle>
           <EmptyDescription>
-            This thread has no repository to resolve conflicts in.
+            <T>This thread has no repository to resolve conflicts in.</T>
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -138,6 +141,7 @@ function RepositorySection(props: {
   readonly onAskAgent: ((prompt: string) => Promise<void>) | undefined;
   readonly openFileMerge: (cwd: string, path: string) => void;
 }) {
+  const gt = useGT();
   const { environmentId, repository } = props;
   const { cwd } = repository;
   const target = { environmentId, input: { cwd } } as const;
@@ -209,9 +213,11 @@ function RepositorySection(props: {
     return props.showHeading ? null : (
       <Empty size="compact">
         <EmptyHeader>
-          <EmptyTitle>Nothing to resolve</EmptyTitle>
+          <EmptyTitle>
+            <T>Nothing to resolve</T>
+          </EmptyTitle>
           <EmptyDescription>
-            No merge, rebase, cherry-pick or revert is in progress here.
+            <T>No merge, rebase, cherry-pick or revert is in progress here.</T>
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -254,11 +260,16 @@ function RepositorySection(props: {
       type: resolved.length > 0 ? "success" : "info",
       title:
         resolved.length > 0
-          ? `Resolved ${resolved.length} ${resolved.length === 1 ? "file" : "files"}`
-          : "Nothing could be resolved automatically",
+          ? gt("{count, plural, one {Resolved {count} file} other {Resolved {count} files}}", {
+              count: resolved.length,
+            })
+          : gt("Nothing could be resolved automatically"),
       ...(skipped.length > 0
         ? {
-            description: `${skipped.length} ${skipped.length === 1 ? "file needs" : "files need"} a decision from you.`,
+            description: gt(
+              "{count, plural, one {{count} file needs a decision from you.} other {{count} files need a decision from you.}}",
+              { count: skipped.length },
+            ),
           }
         : {}),
     });
@@ -284,11 +295,14 @@ function RepositorySection(props: {
     });
     try {
       await props.onAskAgent(prompt);
-      toastManager.add({ type: "success", title: "Asked the agent to resolve the conflicts" });
+      toastManager.add({
+        type: "success",
+        title: gt("Asked the agent to resolve the conflicts"),
+      });
     } catch (error) {
       toastManager.add({
         type: "error",
-        title: "Could not ask the agent",
+        title: gt("Could not ask the agent"),
         description: error instanceof Error ? error.message : undefined,
       });
     }
@@ -317,16 +331,22 @@ function RepositorySection(props: {
           ) : null}
           <Badge variant={conflictState.conflictCount > 0 ? "warning" : "success"} size="sm">
             {conflictState.conflictCount > 0
-              ? `${conflictState.conflictCount} ${conflictState.conflictCount === 1 ? "conflict" : "conflicts"}`
-              : "All resolved"}
+              ? gt("{count, plural, one {{count} conflict} other {{count} conflicts}}", {
+                  count: conflictState.conflictCount,
+                })
+              : gt("All resolved")}
           </Badge>
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-2 text-xs text-muted-foreground">
-          <dt>Ours</dt>
+          <dt>
+            <T>Ours</T>
+          </dt>
           <dd className="min-w-0 truncate">
             <TruncatedText value={labels.ours} className="text-foreground" /> · {sides.ours}
           </dd>
-          <dt>Theirs</dt>
+          <dt>
+            <T>Theirs</T>
+          </dt>
           <dd className="min-w-0 truncate">
             <TruncatedText value={labels.theirs} className="text-foreground" /> · {sides.theirs}
           </dd>
@@ -343,7 +363,7 @@ function RepositorySection(props: {
           onClick={() => void resolveSimple()}
         >
           {bulkPending === "auto" ? <Spinner size="sm" /> : null}
-          Resolve simple conflicts in all files
+          <T>Resolve simple conflicts in all files</T>
         </Button>
         {props.onAskAgent ? (
           <Button
@@ -353,7 +373,7 @@ function RepositorySection(props: {
             onClick={() => void askAgent()}
           >
             <BotIcon aria-hidden />
-            Ask agent
+            <T>Ask agent</T>
           </Button>
         ) : null}
         <span className="flex-1" />
@@ -365,7 +385,7 @@ function RepositorySection(props: {
               disabled={disabled}
               onClick={() => setAbortOpen(true)}
             >
-              Abort
+              <T>Abort</T>
             </Button>
             <Button
               size="xs"
@@ -398,15 +418,20 @@ function RepositorySection(props: {
       </ul>
       {entries.length > MAX_RENDERED_ROWS ? (
         <p className="text-xs text-muted-foreground">
-          Showing {MAX_RENDERED_ROWS} of {entries.length} files. Resolve simple conflicts or ask the
-          agent to handle the rest.
+          {gt(
+            "Showing {shown} of {total} files. Resolve simple conflicts or ask the agent to handle the rest.",
+            { shown: MAX_RENDERED_ROWS, total: entries.length },
+          )}
         </p>
       ) : null}
 
       {resolvedPaths.length > 0 ? (
         <div className="flex flex-col gap-1.5">
           <h4 className="text-xs font-medium text-muted-foreground">
-            Resolved in this {kind ?? "operation"} ({resolvedPaths.length})
+            {gt("Resolved in this {operation} ({count})", {
+              operation: kind ?? "operation",
+              count: resolvedPaths.length,
+            })}
           </h4>
           <ul className="flex flex-col divide-y divide-border/60 rounded-md border border-border/60">
             {resolvedPaths.map((path) => (
@@ -421,7 +446,7 @@ function RepositorySection(props: {
                   onClick={() => void reopen(path)}
                 >
                   {pendingPath === path ? <Spinner size="sm" /> : null}
-                  Reopen
+                  <T>Reopen</T>
                 </Button>
               </li>
             ))}
@@ -436,7 +461,9 @@ function RepositorySection(props: {
             <AlertDialogDescription>{confirmation.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              <T>Cancel</T>
+            </AlertDialogClose>
             <AlertDialogClose
               render={<Button variant="destructive" />}
               onClick={() => void runOperation("abort")}
@@ -495,7 +522,7 @@ function ConflictRow(props: {
         </Button>
         {actions.canMerge ? (
           <Button size="xs" variant="outline" disabled={props.disabled} onClick={props.onMerge}>
-            Merge…
+            <T>Merge…</T>
           </Button>
         ) : null}
         {actions.canUseRecordedResolution ? (
@@ -505,7 +532,7 @@ function ConflictRow(props: {
             disabled={props.disabled}
             onClick={props.onUseRecorded}
           >
-            Use git's recorded resolution
+            <T>Use git's recorded resolution</T>
           </Button>
         ) : null}
       </div>

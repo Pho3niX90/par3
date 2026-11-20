@@ -1089,7 +1089,7 @@ export default function DiffPanel({
             <DropdownMenuTrigger
               render={<Button size="xs" variant="ghost" />}
               className="min-w-0 max-w-48"
-              aria-label={`Repository: ${childRepository.relativePath}`}
+              aria-label={gt("Repository: {path}", { path: childRepository.relativePath })}
               disabled={childRepositories.length < 2}
             >
               <span className="truncate">{childRepository.relativePath}</span>

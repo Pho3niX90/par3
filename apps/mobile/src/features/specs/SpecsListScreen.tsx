@@ -3,6 +3,7 @@ import { Pressable, ScrollView, View } from "react-native";
 
 import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useNavigation } from "@react-navigation/native";
+import { msg, T, useGT, useMessages, Var } from "gt-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { EnvironmentId, ProjectId, SpecSummary, SpecStatus } from "@t3tools/contracts";
 
@@ -18,7 +19,21 @@ export interface SpecsListScreenProps {
   readonly projectId: ProjectId;
 }
 
+const STATUS_FILTERS = [
+  { value: "all", label: msg("All") },
+  { value: "draft", label: msg("Draft") },
+  { value: "review", label: msg("Review") },
+  { value: "approved", label: msg("Approved") },
+  { value: "in-progress", label: msg("In-progress") },
+  { value: "implemented", label: msg("Implemented") },
+  { value: "done", label: msg("Done") },
+  { value: "blocked", label: msg("Blocked") },
+  { value: "rejected", label: msg("Rejected") },
+] as const;
+
 export function SpecsListScreen(props: SpecsListScreenProps) {
+  const gt = useGT();
+  const m = useMessages();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,7 +71,7 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
         <View className="flex-row items-center justify-between">
           <View className="flex-1 min-w-0 pr-2">
             <Text className="text-xl font-t3-bold text-foreground" numberOfLines={1}>
-              {currentProject?.title ?? "Project"} Specs
+              {gt("{title} Specs", { title: currentProject?.title ?? gt("Project") })}
             </Text>
             {currentProject?.workspaceRoot ? (
               <Text className="text-xs text-foreground-muted" numberOfLines={1} selectable>
@@ -67,7 +82,7 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
           {canMutate && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Create Spec"
+              accessibilityLabel={gt("Create Spec")}
               onPress={() =>
                 navigation.navigate("SpecEditor", {
                   environmentId: props.environmentId,
@@ -78,7 +93,9 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
               className="flex-row items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 active:opacity-80"
             >
               <SymbolView name="plus" size={14} tintColorClassName="text-accent-foreground" />
-              <Text className="text-sm font-t3-semibold text-accent-foreground">New Spec</Text>
+              <Text className="text-sm font-t3-semibold text-accent-foreground">
+                <T>New Spec</T>
+              </Text>
             </Pressable>
           )}
         </View>
@@ -87,8 +104,8 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
         <View className="flex-row items-center rounded-xl bg-card border border-border-subtle px-3 py-1.5">
           <SymbolView name="magnifyingglass" size={16} tintColorClassName="text-foreground-muted" />
           <AppTextInput
-            accessibilityLabel="Search specs"
-            placeholder="Search specs by title or slug..."
+            accessibilityLabel={gt("Search specs")}
+            placeholder={gt("Search specs by title or slug...")}
             className="flex-1 ml-2 text-sm text-foreground py-0.5"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -107,19 +124,7 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
           showsHorizontalScrollIndicator={false}
           contentContainerClassName="gap-2 py-1"
         >
-          {(
-            [
-              "all",
-              "draft",
-              "review",
-              "approved",
-              "in-progress",
-              "implemented",
-              "done",
-              "blocked",
-              "rejected",
-            ] as const
-          ).map((status) => {
+          {STATUS_FILTERS.map(({ value: status, label }) => {
             const active = statusFilter === status;
             return (
               <Pressable
@@ -137,7 +142,7 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
                     active ? "text-background font-t3-bold" : "text-foreground-muted"
                   }`}
                 >
-                  {status}
+                  {m(label)}
                 </Text>
               </Pressable>
             );
@@ -155,14 +160,14 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
         refreshControl={<RefreshControl refreshing={isPending} onRefresh={refresh} />}
       >
         {error !== null && specs.length === 0 ? (
-          <EmptyState title="Couldn't load specs" detail={error} />
+          <EmptyState title={gt("Couldn't load specs")} detail={error} />
         ) : filteredSpecs.length === 0 ? (
           <EmptyState
-            title="No specs found"
+            title={gt("No specs found")}
             detail={
               searchQuery.length > 0
-                ? "No specs match your current search query."
-                : "Create a spec to begin structured requirements, review, and verification."
+                ? gt("No specs match your current search query.")
+                : gt("Create a spec to begin structured requirements, review, and verification.")
             }
           />
         ) : (
@@ -187,6 +192,7 @@ export function SpecsListScreen(props: SpecsListScreenProps) {
 
 function SpecSummaryCard(props: { readonly spec: SpecSummary; readonly onPress: () => void }) {
   const { spec, onPress } = props;
+  const gt = useGT();
   const formattedDate = React.useMemo(() => {
     const d = new Date(spec.updatedAt);
     return isNaN(d.getTime()) ? spec.updatedAt : d.toLocaleDateString();
@@ -195,7 +201,7 @@ function SpecSummaryCard(props: { readonly spec: SpecSummary; readonly onPress: 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Spec ${spec.title}`}
+      accessibilityLabel={gt("Spec {title}", { title: spec.title })}
       onPress={onPress}
       className="rounded-2xl border border-border-subtle bg-surface p-4 gap-2 active:opacity-75 shadow-sm"
     >
@@ -215,7 +221,11 @@ function SpecSummaryCard(props: { readonly spec: SpecSummary; readonly onPress: 
           {spec.slug}
         </Text>
         <Text className="text-xs text-foreground-subtle">·</Text>
-        <Text className="text-xs font-t3-medium text-foreground-muted">Rev {spec.revision}</Text>
+        <Text className="text-xs font-t3-medium text-foreground-muted">
+          <T>
+            Rev <Var>{spec.revision}</Var>
+          </T>
+        </Text>
         <Text className="text-xs text-foreground-subtle">·</Text>
         <Text className="text-xs text-foreground-muted">{formattedDate}</Text>
       </View>

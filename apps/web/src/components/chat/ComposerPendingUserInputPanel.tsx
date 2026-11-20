@@ -1,6 +1,6 @@
 import { type RuntimeRequestId, type ScopedThreadRef } from "@t3tools/contracts";
 import { markdownProseDirection, textDirection } from "~/textDirection";
-import { useGT } from "gt-react";
+import { useGT, useMessages } from "gt-react";
 import { memo, use, useEffect, useEffectEvent, useRef, useState } from "react";
 import { BackgroundThreadContext } from "./backgroundThread";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -94,6 +94,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   onDismiss: (requestId: RuntimeRequestId) => void;
 }) {
   const gt = useGT();
+  const m = useMessages();
   // Message-mode requests remain answerable after their provider turn ends.
   const canRespond = prompt.responseCapability !== "not_resumable";
   const responseDisabled = disabled || isResponding || !canRespond;
@@ -286,9 +287,13 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         <ComposerBanner.Scroll>
           <ComposerBanner.Body className="ps-6 pe-4 pb-1 wrap-anywhere sm:ps-5.5">
             {prompt.questions.length > 1 ? (
-              <ul className="mb-2 space-y-0.5" aria-label="All questions">
+              <ul className="mb-2 space-y-0.5" aria-label={gt("All questions")}>
                 {prompt.questions.map((question, index) => {
-                  const summary = summarizePendingUserInputAnswer(question, answers[question.id]);
+                  const summary = summarizePendingUserInputAnswer(
+                    question,
+                    answers[question.id],
+                    m,
+                  );
                   const isActive = index === progress.questionIndex;
                   return (
                     <li key={question.id}>
@@ -316,7 +321,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                           {question.header}
                         </span>
                         <span className="min-w-0 flex-1 truncate text-secondary-label">
-                          {summary ?? "Not answered"}
+                          {summary ?? gt("Not answered")}
                         </span>
                       </button>
                     </li>

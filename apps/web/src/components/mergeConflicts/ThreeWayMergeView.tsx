@@ -9,6 +9,7 @@ import {
   CheckCheckIcon,
   ListChecksIcon,
 } from "lucide-react";
+import { T, useGT } from "gt-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 
 import { resolveShortcutCommand, shortcutLabelForCommand } from "~/keybindings";
@@ -73,8 +74,6 @@ export interface ThreeWayMergeViewProps {
   readonly onReload: () => void;
 }
 
-const pluralize = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
-
 /** Text of the result pane for one range of lines, as the chunk actions need it. */
 function actionContext(editor: MergeEditor): ActionContext | null {
   const document = editor.getEditState()?.document;
@@ -112,6 +111,7 @@ export function ThreeWayMergeView(props: ThreeWayMergeViewProps) {
 }
 
 function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: MergeSession }) {
+  const gt = useGT();
   const { session, input: file } = props;
   const { controller, timeline, lines, merge } = session;
   const { resolvedTheme } = useTheme();
@@ -170,6 +170,12 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
   }, [controller, model, lines.base.length]);
 
   const summary = summarizeModel(model);
+  const changesLabel = gt("{count, plural, one {{count} change} other {{count} changes}}", {
+    count: summary.changes,
+  });
+  const conflictsLabel = gt("{count, plural, one {{count} conflict} other {{count} conflicts}}", {
+    count: summary.conflicts,
+  });
 
   const handleEditChange = (event: {
     readonly changes: ReadonlyArray<unknown>;
@@ -301,7 +307,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label="Previous conflict"
+                aria-label={gt("Previous conflict")}
                 disabled={summary.conflicts === 0}
                 onClick={() => goToConflict("previous")}
               />
@@ -310,7 +316,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
             <ChevronUpIcon />
           </TooltipTrigger>
           <TooltipPopup side="bottom">
-            Previous conflict {shortcut("merge.prevConflict") ?? ""}
+            {gt("Previous conflict")} {shortcut("merge.prevConflict") ?? ""}
           </TooltipPopup>
         </Tooltip>
         <Tooltip>
@@ -319,7 +325,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label="Next conflict"
+                aria-label={gt("Next conflict")}
                 disabled={summary.conflicts === 0}
                 onClick={() => goToConflict("next")}
               />
@@ -328,16 +334,16 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
             <ChevronDownIcon />
           </TooltipTrigger>
           <TooltipPopup side="bottom">
-            Next conflict {shortcut("merge.nextConflict") ?? ""}
+            {gt("Next conflict")} {shortcut("merge.nextConflict") ?? ""}
           </TooltipPopup>
         </Tooltip>
         <span className="text-xs text-muted-foreground" role="status" data-testid="merge-counter">
-          {pluralize(summary.changes, "change")} · {pluralize(summary.conflicts, "conflict")}
+          {changesLabel} · {conflictsLabel}
         </span>
         <Menu>
           <MenuTrigger render={<Button size="xs" variant="outline" disabled={busy} />}>
             <CheckCheckIcon />
-            Apply non-conflicting
+            <T>Apply non-conflicting</T>
           </MenuTrigger>
           <MenuPopup align="end">
             <MenuItem
@@ -345,21 +351,21 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
                 withContext((context) => planApplyNonConflicting(timeline.model, "left", context))
               }
             >
-              From the left
+              <T>From the left</T>
             </MenuItem>
             <MenuItem
               onClick={() =>
                 withContext((context) => planApplyNonConflicting(timeline.model, "all", context))
               }
             >
-              From both sides
+              <T>From both sides</T>
             </MenuItem>
             <MenuItem
               onClick={() =>
                 withContext((context) => planApplyNonConflicting(timeline.model, "right", context))
               }
             >
-              From the right
+              <T>From the right</T>
             </MenuItem>
           </MenuPopup>
         </Menu>
@@ -370,26 +376,30 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
           onClick={() => withContext((context) => planResolveSimple(timeline.model, context))}
         >
           <ListChecksIcon />
-          Resolve simple conflicts
+          <T>Resolve simple conflicts</T>
         </Button>
         {file.base === null ? null : (
           <Menu>
             <MenuTrigger render={<Button size="xs" variant="outline" />}>
               <GitCompareIcon />
-              Compare with base
+              <T>Compare with base</T>
             </MenuTrigger>
             <MenuPopup align="end">
-              <MenuItem onClick={() => setComparison("ours")}>Base and ours</MenuItem>
-              <MenuItem onClick={() => setComparison("theirs")}>Base and theirs</MenuItem>
+              <MenuItem onClick={() => setComparison("ours")}>
+                <T>Base and ours</T>
+              </MenuItem>
+              <MenuItem onClick={() => setComparison("theirs")}>
+                <T>Base and theirs</T>
+              </MenuItem>
             </MenuPopup>
           </Menu>
         )}
         <Button size="xs" variant="ghost" disabled={applying} onClick={props.onCancel}>
-          Cancel
+          <T>Cancel</T>
         </Button>
         <Button size="xs" disabled={busy} onClick={requestApply}>
           {applying ? <Spinner size="sm" /> : null}
-          {props.hasNextFile ? "Apply and next file" : "Apply"}
+          {props.hasNextFile ? gt("Apply and next file") : gt("Apply")}
         </Button>
       </div>
 
@@ -400,7 +410,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
         >
           <span className="min-w-0 flex-1">{staleMessage}</span>
           <Button size="xs" variant="warning-outline" onClick={props.onReload}>
-            Reload
+            <T>Reload</T>
           </Button>
         </div>
       ) : null}
@@ -408,7 +418,7 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]">
         <PaneTitle>{file.labels.ours}</PaneTitle>
         <span />
-        <PaneTitle>Result</PaneTitle>
+        <PaneTitle>{gt("Result")}</PaneTitle>
         <span />
         <PaneTitle>{file.labels.theirs}</PaneTitle>
 
@@ -489,16 +499,28 @@ function MergeViewBody(props: ThreeWayMergeViewProps & { readonly session: Merge
       <AlertDialog open={confirmingApply} onOpenChange={setConfirmingApply}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Apply with conflicts left?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <T>Apply with conflicts left?</T>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {pluralize(summary.conflicts, "conflict")}{" "}
-              {file.base === null ? "are unresolved" : "still hold the base text"}. Applying keeps
-              the result exactly as it is now.
+              {file.base === null
+                ? gt(
+                    "{count, plural, one {{count} conflict is unresolved. Applying keeps the result exactly as it is now.} other {{count} conflicts are unresolved. Applying keeps the result exactly as it is now.}}",
+                    { count: summary.conflicts },
+                  )
+                : gt(
+                    "{count, plural, one {{count} conflict still holds the base text. Applying keeps the result exactly as it is now.} other {{count} conflicts still hold the base text. Applying keeps the result exactly as it is now.}}",
+                    { count: summary.conflicts },
+                  )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Keep editing</AlertDialogClose>
-            <Button onClick={() => void apply()}>Apply anyway</Button>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              <T>Keep editing</T>
+            </AlertDialogClose>
+            <Button onClick={() => void apply()}>
+              <T>Apply anyway</T>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>
       </AlertDialog>
@@ -533,6 +555,7 @@ function BaseComparisonDialog(props: {
   readonly theme: ReturnType<typeof resolveDiffThemeName>;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
   const open = props.side !== null;
   // Only built while the dialog is open, so a view nobody compares in never pays for the diff.
   const fileDiff = open
@@ -545,7 +568,11 @@ function BaseComparisonDialog(props: {
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : props.onClose())}>
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>Base compared with {props.side ?? "ours"}</DialogTitle>
+          <DialogTitle>
+            {props.side === "theirs"
+              ? gt("Base compared with theirs")
+              : gt("Base compared with ours")}
+          </DialogTitle>
         </DialogHeader>
         <DialogPanel>
           {fileDiff ? (

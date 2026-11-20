@@ -2,6 +2,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describeThreadCost } from "@t3tools/shared/usageFormat";
 import { AsyncResult } from "effect/reactivity";
+import { T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 
 import { serverEnvironment } from "../../state/server";
@@ -26,26 +27,33 @@ function ThreadCostEstimate({ environmentId, threadId }: ThreadDetailsCostProps)
   const atom = serverEnvironment.threadCost({ environmentId, input: { threadId } });
   const result = useAtomValue(atom);
   const refresh = useAtomRefresh(atom);
+  const m = useMessages();
   const cost = AsyncResult.getOrElse(result, () => null);
 
   if (cost === null) {
     return result._tag === "Failure" ? (
       <div className="flex items-center justify-between gap-3 px-3 py-1 text-xs">
-        <span className="text-muted-foreground">Could not estimate this thread's cost.</span>
+        <span className="text-muted-foreground">
+          <T>Could not estimate this thread's cost.</T>
+        </span>
         <ThreadDetailsControl size="xs" variant="ghost" part="row" panel onClick={refresh}>
-          Retry
+          <T>Retry</T>
         </ThreadDetailsControl>
       </div>
     ) : (
-      <p className="px-3 py-1 text-xs text-muted-foreground">Estimating…</p>
+      <p className="px-3 py-1 text-xs text-muted-foreground">
+        <T>Estimating…</T>
+      </p>
     );
   }
 
-  const description = describeThreadCost(cost);
+  const description = describeThreadCost(cost, m);
   return (
     <div className="flex flex-col gap-1 px-3 py-1 text-xs">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-muted-foreground">Estimated cost</span>
+        <span className="text-muted-foreground">
+          <T>Estimated cost</T>
+        </span>
         <span className="font-medium tabular-nums text-foreground">{description.amount}</span>
       </div>
       {description.breakdown.map((entry) => (
@@ -59,7 +67,9 @@ function ThreadCostEstimate({ environmentId, threadId }: ThreadDetailsCostProps)
           {note}
         </p>
       ))}
-      <p className="text-muted-foreground">API-equivalent, not your subscription bill.</p>
+      <p className="text-muted-foreground">
+        <T>API-equivalent, not your subscription bill.</T>
+      </p>
     </div>
   );
 }
@@ -76,15 +86,20 @@ function ThreadCostRequest({ environmentId, threadId }: ThreadDetailsCostProps) 
       panel
       onClick={() => setRequested(true)}
     >
-      Estimate cost
+      <T>Estimate cost</T>
     </ThreadDetailsControl>
   );
 }
 
 /** Asks only on request: an estimate scans provider history, which opening a thread must not do. */
 export function ThreadDetailsCost({ environmentId, threadId }: ThreadDetailsCostProps) {
+  const gt = useGT();
   return (
-    <ThreadDetailsSection headingId="thread-details-cost-heading" title="Cost" showHeading={false}>
+    <ThreadDetailsSection
+      headingId="thread-details-cost-heading"
+      title={gt("Cost")}
+      showHeading={false}
+    >
       <ThreadCostRequest
         key={`${environmentId}:${threadId}`}
         environmentId={environmentId}

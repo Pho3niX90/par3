@@ -2,6 +2,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describeThreadCost } from "@t3tools/shared/usageFormat";
 import { AsyncResult } from "effect/reactivity";
+import { T, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
@@ -30,23 +31,28 @@ function ThreadCostEstimate(props: {
   });
   const result = useAtomValue(atom);
   const refresh = useAtomRefresh(atom);
+  const m = useMessages();
   const cost = AsyncResult.getOrElse(result, () => null);
   if (cost === null) {
     return result._tag === "Failure" ? (
       <Pressable accessibilityRole="button" className="px-4 py-3" onPress={refresh}>
         <Text className="text-sm text-foreground-muted">
-          Could not estimate this thread's cost. Tap to retry.
+          <T>Could not estimate this thread's cost. Tap to retry.</T>
         </Text>
       </Pressable>
     ) : (
-      <Text className="px-4 py-3 text-sm text-foreground-muted">Estimating…</Text>
+      <Text className="px-4 py-3 text-sm text-foreground-muted">
+        <T>Estimating…</T>
+      </Text>
     );
   }
-  const description = describeThreadCost(cost);
+  const description = describeThreadCost(cost, m);
   return (
     <View className="gap-1 px-4 py-3">
       <View className="flex-row justify-between gap-3">
-        <Text className="text-sm font-t3-medium text-foreground">Estimated cost</Text>
+        <Text className="text-sm font-t3-medium text-foreground">
+          <T>Estimated cost</T>
+        </Text>
         <Text className="text-sm text-foreground">{description.amount}</Text>
       </View>
       {description.breakdown.map((entry) => (
@@ -61,7 +67,7 @@ function ThreadCostEstimate(props: {
         </Text>
       ))}
       <Text className="text-xs text-foreground-muted">
-        API-equivalent, not your subscription bill.
+        <T>API-equivalent, not your subscription bill.</T>
       </Text>
     </View>
   );
@@ -80,7 +86,9 @@ function ThreadCostRequest(props: {
       className="min-h-11 flex-row items-center bg-grouped-card px-4 py-2 active:bg-subtle"
       onPress={() => setRequested(true)}
     >
-      <Text className="text-sm font-t3-medium text-foreground">Estimate cost</Text>
+      <Text className="text-sm font-t3-medium text-foreground">
+        <T>Estimate cost</T>
+      </Text>
     </Pressable>
   );
 }
@@ -91,7 +99,9 @@ export function ThreadCostSection() {
   if (!selectedThread) return null;
   return (
     <>
-      <Text className="px-5 pb-2 pt-7 text-sm font-t3-medium text-foreground-muted">Cost</Text>
+      <Text className="px-5 pb-2 pt-7 text-sm font-t3-medium text-foreground-muted">
+        <T>Cost</T>
+      </Text>
       <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">
         <ThreadCostRequest
           key={`${selectedThread.environmentId}:${selectedThread.id}`}

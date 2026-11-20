@@ -8,9 +8,11 @@ import type {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { Link } from "@tanstack/react-router";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { MoreVertical, PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { m as resolveNow, type MessageResolver } from "../../i18n/messages";
 import { randomUUID } from "../../lib/utils";
 import { serverEnvironment } from "../../state/server";
 import { useSyncViews } from "../../state/sync";
@@ -58,21 +60,22 @@ type TestOutcome =
 
 /** Agents reach these through the `t3-code` MCP server, so every provider gets them at once. */
 export function McpServersSettings() {
+  const gt = useGT();
   const { environment, scope } = useSettingsScope();
   if (scope.kind !== "environment" || !environment) {
     return (
-      <SettingsSection id="mcp-servers" title="Shared MCP servers">
+      <SettingsSection id="mcp-servers" title={gt("Shared MCP servers")}>
         <SettingsScopeNotice target="environment">
-          Choose one environment to manage the MCP servers it shares with agents.
+          {gt("Choose one environment to manage the MCP servers it shares with agents.")}
         </SettingsScopeNotice>
       </SettingsSection>
     );
   }
   if (environment.serverConfig?.environment.capabilities.mcpGateway !== true) {
     return (
-      <SettingsSection id="mcp-servers" title="Shared MCP servers">
+      <SettingsSection id="mcp-servers" title={gt("Shared MCP servers")}>
         <p className="px-4 py-4 text-sm text-muted-foreground sm:px-5">
-          Update this environment's server to share MCP servers with agents.
+          <T>Update this environment's server to share MCP servers with agents.</T>
         </p>
       </SettingsSection>
     );
@@ -81,6 +84,7 @@ export function McpServersSettings() {
 }
 
 function McpServersForm() {
+  const gt = useGT();
   const { environment } = useSettingsScope();
   const environmentId = environment?.environmentId ?? null;
   const servers = useScopedSettings((settings) => settings.mcpServers);
@@ -136,7 +140,9 @@ function McpServersForm() {
             status: "failed",
             error: (() => {
               const error = Cause.squash(response.cause);
-              return error instanceof Error ? error.message : "The connection test failed.";
+              return error instanceof Error
+                ? error.message
+                : resolveNow(msg("The connection test failed."));
             })(),
           };
     if (testGenerations.current.get(server.id) !== generation) return;
@@ -165,7 +171,7 @@ function McpServersForm() {
   return (
     <SettingsSection
       id="mcp-servers"
-      title="Shared MCP servers"
+      title={gt("Shared MCP servers")}
       headerAction={
         <Button
           size="xs"
@@ -186,18 +192,22 @@ function McpServersForm() {
             })
           }
         >
-          <PlusIcon className="size-3.5" /> Add server
+          <PlusIcon className="size-3.5" /> <T>Add server</T>
         </Button>
       }
     >
       <div className="px-4 py-4 sm:px-5">
         <p className="text-xs text-muted-foreground">
-          Every agent in every thread on this environment can use these servers through Par3,
-          whichever provider runs it. Add a server here or in a provider's own MCP config, not both.
-          A command server runs on this environment's machine.
+          <T>
+            Every agent in every thread on this environment can use these servers through Par3,
+            whichever provider runs it. Add a server here or in a provider's own MCP config, not
+            both. A command server runs on this environment's machine.
+          </T>
         </p>
         {servers.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">No shared MCP servers yet.</p>
+          <p className="mt-4 text-sm text-muted-foreground">
+            <T>No shared MCP servers yet.</T>
+          </p>
         ) : (
           <ul className="mt-4 divide-y divide-border/60 rounded-lg border border-border/60">
             {servers.map((server) => (
@@ -248,23 +258,32 @@ function statusPresentation(
   server: McpServerConfig,
   status: McpGatewayServerStatus | undefined,
   test: TestOutcome | undefined,
+  resolve: MessageResolver,
 ) {
-  if (!server.enabled) return { label: "Disabled", dot: "bg-muted-foreground/40" };
-  if (test?.status === "pending") return { label: "Testing…", dot: "bg-warning" };
-  if (test?.status === "failed") return { label: "Connection failed", dot: "bg-destructive" };
+  if (!server.enabled) {
+    return { label: resolve(msg("Disabled")), dot: "bg-muted-foreground/40" };
+  }
+  if (test?.status === "pending") return { label: resolve(msg("Testing…")), dot: "bg-warning" };
+  if (test?.status === "failed") {
+    return { label: resolve(msg("Connection failed")), dot: "bg-destructive" };
+  }
   switch (status?.state) {
     case "connected":
       return {
         label:
           status.toolCount === undefined
-            ? "Connected"
-            : `Connected · ${status.toolCount} ${status.toolCount === 1 ? "tool" : "tools"}`,
+            ? resolve(msg("Connected"))
+            : resolve(
+                msg("Connected · {count, plural, one {{count} tool} other {{count} tools}}", {
+                  count: status.toolCount,
+                }),
+              ),
         dot: "bg-success",
       };
     case "error":
-      return { label: "Connection failed", dot: "bg-destructive" };
+      return { label: resolve(msg("Connection failed")), dot: "bg-destructive" };
     default:
-      return { label: "Connects on first use", dot: "bg-muted-foreground/40" };
+      return { label: resolve(msg("Connects on first use")), dot: "bg-muted-foreground/40" };
   }
 }
 
@@ -280,8 +299,10 @@ function McpServerRow(props: {
   readonly onTest: () => void;
   readonly onRemove: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { server, status, test } = props;
-  const presentation = statusPresentation(server, status, test);
+  const presentation = statusPresentation(server, status, test, m);
   const error =
     test?.status === "failed" ? test.error : status?.state === "error" ? status.error : undefined;
   const tools = test?.status === "done" ? test.result.tools : null;
@@ -305,11 +326,13 @@ function McpServerRow(props: {
           </p>
           {props.needsVault ? (
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Holds a saved secret;{" "}
-              <Link to="/settings/sync" className="underline underline-offset-2">
-                move it to the vault
-              </Link>{" "}
-              to sync.
+              <T>
+                Holds a saved secret;{" "}
+                <Link to="/settings/sync" className="underline underline-offset-2">
+                  move it to the vault
+                </Link>{" "}
+                to sync.
+              </T>
             </p>
           ) : null}
         </div>
@@ -318,7 +341,7 @@ function McpServerRow(props: {
             size="sm"
             checked={server.enabled}
             disabled={props.disabled}
-            aria-label={`Share ${server.name} with agents`}
+            aria-label={gt("Share {name} with agents", { name: server.name })}
             onCheckedChange={props.onToggle}
           />
           <Menu>
@@ -328,17 +351,21 @@ function McpServerRow(props: {
                   size="icon-sm"
                   variant="ghost-muted"
                   disabled={props.disabled}
-                  aria-label={`${server.name} options`}
+                  aria-label={gt("{name} options", { name: server.name })}
                 />
               }
             >
               <MoreVertical />
             </MenuTrigger>
             <MenuPopup align="end">
-              <MenuItem onClick={props.onTest}>Test connection</MenuItem>
-              <MenuItem onClick={props.onEdit}>Edit</MenuItem>
+              <MenuItem onClick={props.onTest}>
+                <T>Test connection</T>
+              </MenuItem>
+              <MenuItem onClick={props.onEdit}>
+                <T>Edit</T>
+              </MenuItem>
               <MenuItem variant="destructive" onClick={props.onRemove}>
-                Remove
+                <T>Remove</T>
               </MenuItem>
             </MenuPopup>
           </Menu>
@@ -352,7 +379,9 @@ function McpServerRow(props: {
       {tools ? (
         <div className="mt-3">
           <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>Tools agents may call</span>
+            <span>
+              <T>Tools agents may call</T>
+            </span>
             {server.toolPolicy.mode === "allow" ? (
               <Button
                 size="xs"
@@ -360,12 +389,14 @@ function McpServerRow(props: {
                 disabled={props.disabled}
                 onClick={() => props.onPolicy({ ...server.toolPolicy, mode: "all" })}
               >
-                Allow all
+                <T>Allow all</T>
               </Button>
             ) : null}
           </div>
           {tools.length === 0 ? (
-            <p className="mt-1 text-xs text-muted-foreground">This server offers no tools.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              <T>This server offers no tools.</T>
+            </p>
           ) : (
             <ul className="mt-1 space-y-1">
               {tools.map((tool) => (
@@ -386,7 +417,10 @@ function McpServerRow(props: {
                     <span className="min-w-0">
                       <span className="font-mono">{tool.name}</span>
                       {tool.annotations?.readOnlyHint ? (
-                        <span className="text-muted-foreground"> · read-only</span>
+                        <span className="text-muted-foreground">
+                          {" · "}
+                          <T>read-only</T>
+                        </span>
                       ) : null}
                       {tool.description ? (
                         <span className="block truncate text-muted-foreground">
@@ -429,6 +463,7 @@ function VariablesEditor(props: {
   readonly disabled: boolean;
   readonly onChange: (variables: ReadonlyArray<Variable>) => void;
 }) {
+  const gt = useGT();
   const edit = (index: number, change: Parameters<typeof editMcpVariable>[1]) =>
     props.onChange(
       props.variables.map((variable, at) =>
@@ -448,7 +483,7 @@ function VariablesEditor(props: {
             props.onChange([...props.variables, withKey({ name: "", value: "", sensitive: true })])
           }
         >
-          <PlusIcon className="size-3.5" /> Add
+          <PlusIcon className="size-3.5" /> <T>Add</T>
         </Button>
       </div>
       {props.variables.map((variable, index) => (
@@ -457,7 +492,7 @@ function VariablesEditor(props: {
           className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] gap-2"
         >
           <Input
-            aria-label={`${props.label} name`}
+            aria-label={gt("{label} name", { label: props.label })}
             value={variable.name}
             disabled={props.disabled}
             spellCheck={false}
@@ -467,7 +502,7 @@ function VariablesEditor(props: {
           {variable.sensitive ? (
             <div className="flex min-w-0 items-center gap-1">
               <SecretInput
-                aria-label={`${props.label} value`}
+                aria-label={gt("{label} value", { label: props.label })}
                 configured={variable.valueRedacted === true}
                 value={variable.valueRedacted ? "" : variable.value}
                 disabled={props.disabled}
@@ -481,7 +516,7 @@ function VariablesEditor(props: {
             </div>
           ) : (
             <Input
-              aria-label={`${props.label} value`}
+              aria-label={gt("{label} value", { label: props.label })}
               value={variable.value}
               disabled={props.disabled}
               spellCheck={false}
@@ -496,14 +531,16 @@ function VariablesEditor(props: {
                 edit(index, { value: variable.valueRedacted ? "" : variable.value, sensitive })
               }
             />
-            Secret
+            <T>Secret</T>
           </label>
           <Button
             type="button"
             size="icon-sm"
             variant="ghost-muted"
             disabled={props.disabled}
-            aria-label={`Remove ${variable.name || "entry"}`}
+            aria-label={
+              variable.name ? gt("Remove {name}", { name: variable.name }) : gt("Remove entry")
+            }
             onClick={() => props.onChange(props.variables.filter((_, at) => at !== index))}
           >
             <XIcon />
@@ -523,6 +560,8 @@ function McpServerEditor(props: {
   readonly onClose: () => void;
   readonly onSave: (server: McpServerConfig) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const [draft, setDraft] = useState(props.server);
   const [environment, setEnvironment] = useState<ReadonlyArray<Variable>>(() =>
     props.server.environment.map(withKey),
@@ -533,7 +572,7 @@ function McpServerEditor(props: {
   const [argsText, setArgsText] = useState(
     props.server.transport.type === "stdio" ? props.server.transport.args.join("\n") : "",
   );
-  const nameError = mcpServerNameError(draft.name, props.servers, draft.id);
+  const nameError = mcpServerNameError(draft.name, props.servers, draft.id, m);
   const transport = draft.transport;
   const transportReady =
     transport.type === "stdio" ? transport.command.trim() !== "" : mcpServerUrlValid(transport.url);
@@ -580,14 +619,22 @@ function McpServerEditor(props: {
         }
       >
         <DialogHeader>
-          <DialogTitle>{props.isNew ? "Add MCP server" : "Edit MCP server"}</DialogTitle>
+          <DialogTitle>{props.isNew ? gt("Add MCP server") : gt("Edit MCP server")}</DialogTitle>
           <DialogDescription>
-            Agents call its tools through Par3 as <code>{draft.name.trim() || "name"}</code>.
+            <T>
+              Agents call its tools through Par3 as{" "}
+              <code>
+                <Var>{draft.name.trim() || "name"}</Var>
+              </code>
+              .
+            </T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <label className="block space-y-1.5 text-sm">
-            <span>Name</span>
+            <span>
+              <T>Name</T>
+            </span>
             <Input
               autoFocus
               required
@@ -602,16 +649,18 @@ function McpServerEditor(props: {
             ) : null}
           </label>
           <label className="block space-y-1.5 text-sm">
-            <span>Description for agents</span>
+            <span>
+              <T>Description for agents</T>
+            </span>
             <Input
               value={draft.description ?? ""}
               disabled={props.busy}
-              placeholder="Issues and projects for the platform team"
+              placeholder={gt("Issues and projects for the platform team")}
               onChange={(event) => setDraft({ ...draft, description: event.target.value })}
             />
           </label>
           <ToggleGroup
-            aria-label="Connection type"
+            aria-label={gt("Connection type")}
             variant="segmented"
             value={[transport.type]}
             onValueChange={(next) => {
@@ -623,13 +672,17 @@ function McpServerEditor(props: {
               }
             }}
           >
-            <Toggle value="stdio">Command</Toggle>
+            <Toggle value="stdio">
+              <T>Command</T>
+            </Toggle>
             <Toggle value="http">HTTP</Toggle>
           </ToggleGroup>
           {transport.type === "stdio" ? (
             <>
               <label className="block space-y-1.5 text-sm">
-                <span>Command</span>
+                <span>
+                  <T>Command</T>
+                </span>
                 <Input
                   required
                   value={transport.command}
@@ -642,7 +695,9 @@ function McpServerEditor(props: {
                 />
               </label>
               <label className="block space-y-1.5 text-sm">
-                <span>Arguments, one per line</span>
+                <span>
+                  <T>Arguments, one per line</T>
+                </span>
                 <Textarea
                   value={argsText}
                   disabled={props.busy}
@@ -652,19 +707,22 @@ function McpServerEditor(props: {
                 />
               </label>
               <label className="block space-y-1.5 text-sm">
-                <span>Working directory</span>
+                <span>
+                  <T>Working directory</T>
+                </span>
                 <Input
                   value={transport.cwd ?? ""}
                   disabled={props.busy}
                   spellCheck={false}
-                  placeholder="The server's own directory"
+                  placeholder={gt("The server's own directory")}
                   onChange={(event) =>
                     setDraft({ ...draft, transport: { ...transport, cwd: event.target.value } })
                   }
                 />
               </label>
               <VariablesEditor
-                label="Environment variables"
+                label={gt("Environment variables")}
+                // oxlint-disable-next-line t3code/no-untranslated-copy -- example environment variable name
                 namePlaceholder="API_KEY"
                 variables={environment}
                 environmentId={props.environmentId}
@@ -675,7 +733,9 @@ function McpServerEditor(props: {
           ) : (
             <>
               <label className="block space-y-1.5 text-sm">
-                <span>URL</span>
+                <span>
+                  <T>URL</T>
+                </span>
                 <Input
                   required
                   type="url"
@@ -689,7 +749,8 @@ function McpServerEditor(props: {
                 />
               </label>
               <VariablesEditor
-                label="Headers"
+                label={gt("Headers")}
+                // oxlint-disable-next-line t3code/no-untranslated-copy -- HTTP header name
                 namePlaceholder="Authorization"
                 variables={headers}
                 environmentId={props.environmentId}
@@ -701,10 +762,10 @@ function McpServerEditor(props: {
         </DialogPanel>
         <DialogFooter>
           <Button type="button" variant="ghost" disabled={props.busy} onClick={props.onClose}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button type="submit" disabled={props.busy || !valid}>
-            {props.busy ? <Spinner size="xs" /> : null} Save server
+            {props.busy ? <Spinner size="xs" /> : null} <T>Save server</T>
           </Button>
         </DialogFooter>
       </DialogPopup>

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { T, useGT } from "gt-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
@@ -29,6 +30,7 @@ function slugify(text: string): string {
 export function SpecEditorScreen(props: SpecEditorScreenProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const gt = useGT();
   const styles = useMarkdownPreviewStyles();
 
   const isEditing = props.mode === "edit" && Boolean(props.slug);
@@ -69,11 +71,11 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
     const trimmedTitle = title.trim();
     const trimmedSlug = slug.trim();
     if (!trimmedTitle) {
-      Alert.alert("Title required", "Please provide a spec title.");
+      Alert.alert(gt("Title required"), gt("Please provide a spec title."));
       return;
     }
     if (!trimmedSlug) {
-      Alert.alert("Slug required", "Please provide a slug identifier for the spec.");
+      Alert.alert(gt("Slug required"), gt("Please provide a slug identifier for the spec."));
       return;
     }
 
@@ -99,7 +101,7 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
         navigation.goBack();
       }
     } catch (err: any) {
-      Alert.alert("Failed to save spec", err?.message ?? "An error occurred while saving.");
+      Alert.alert(gt("Failed to save spec"), err?.message ?? gt("An error occurred while saving."));
     }
     setIsSaving(false);
   };
@@ -115,22 +117,24 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
           onPress={() => navigation.goBack()}
           className="p-1 -ml-1 active:opacity-70"
         >
-          <Text className="text-sm font-t3-medium text-foreground-muted">Cancel</Text>
+          <Text className="text-sm font-t3-medium text-foreground-muted">
+            <T>Cancel</T>
+          </Text>
         </Pressable>
 
         <Text className="text-base font-t3-bold text-foreground">
-          {isEditing ? "Edit Spec" : "New Spec"}
+          {isEditing ? gt("Edit Spec") : gt("New Spec")}
         </Text>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Save Spec"
+          accessibilityLabel={gt("Save Spec")}
           disabled={isSaving}
           onPress={handleSave}
           className="rounded-full bg-accent px-4 py-1.5 active:opacity-80"
         >
           <Text className="text-sm font-t3-semibold text-accent-foreground">
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? gt("Saving...") : gt("Save")}
           </Text>
         </Pressable>
       </View>
@@ -145,10 +149,12 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
       >
         {/* Title */}
         <View className="gap-1.5">
-          <Text className="text-xs font-t3-semibold text-foreground-muted">Title</Text>
+          <Text className="text-xs font-t3-semibold text-foreground-muted">
+            <T>Title</T>
+          </Text>
           <AppTextInput
-            accessibilityLabel="Spec title"
-            placeholder="e.g. Spec mode implementation"
+            accessibilityLabel={gt("Spec title")}
+            placeholder={gt("e.g. Spec mode implementation")}
             className="rounded-xl border border-border-subtle bg-surface px-3 py-2.5 text-base text-foreground"
             value={title}
             onChangeText={handleTitleChange}
@@ -157,10 +163,12 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
 
         {/* Slug */}
         <View className="gap-1.5">
-          <Text className="text-xs font-t3-semibold text-foreground-muted">Slug (identifier)</Text>
+          <Text className="text-xs font-t3-semibold text-foreground-muted">
+            <T>Slug (identifier)</T>
+          </Text>
           <AppTextInput
-            accessibilityLabel="Spec slug"
-            placeholder="e.g. spec-mode"
+            accessibilityLabel={gt("Spec slug")}
+            placeholder={gt("e.g. spec-mode")}
             editable={!isEditing}
             autoCapitalize="none"
             className={`rounded-xl border border-border-subtle bg-surface px-3 py-2.5 text-sm font-mono text-foreground ${
@@ -175,11 +183,11 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
         {!isEditing && (
           <View className="gap-1.5">
             <Text className="text-xs font-t3-semibold text-foreground-muted">
-              Supersedes (optional slug)
+              <T>Supersedes (optional slug)</T>
             </Text>
             <AppTextInput
-              accessibilityLabel="Supersedes spec slug"
-              placeholder="e.g. legacy-spec"
+              accessibilityLabel={gt("Supersedes spec slug")}
+              placeholder={gt("e.g. legacy-spec")}
               autoCapitalize="none"
               className="rounded-xl border border-border-subtle bg-surface px-3 py-2.5 text-sm font-mono text-foreground"
               value={supersedes}
@@ -192,7 +200,7 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
         <View className="gap-2">
           <View className="flex-row items-center justify-between">
             <Text className="text-xs font-t3-semibold text-foreground-muted">
-              Requirements (Markdown)
+              <T>Requirements (Markdown)</T>
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -205,7 +213,7 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
                 tintColorClassName="text-foreground"
               />
               <Text className="text-xs font-t3-medium text-foreground">
-                {previewMode ? "Edit" : "Preview"}
+                {previewMode ? gt("Edit") : gt("Preview")}
               </Text>
             </Pressable>
           </View>
@@ -213,14 +221,16 @@ export function SpecEditorScreen(props: SpecEditorScreenProps) {
           {previewMode ? (
             <View className="rounded-xl border border-border-subtle bg-surface p-4 min-h-[240px]">
               <SelectableMarkdownText
-                markdown={content || "_No content to preview._"}
+                markdown={content || gt("_No content to preview._")}
                 textStyle={styles.nativeTextStyle}
               />
             </View>
           ) : (
             <AppTextInput
-              accessibilityLabel="Requirements markdown content"
-              placeholder="# Requirements&#10;&#10;Describe user stories, constraints, acceptance criteria..."
+              accessibilityLabel={gt("Requirements markdown content")}
+              placeholder={gt(
+                "# Requirements\n\nDescribe user stories, constraints, acceptance criteria...",
+              )}
               multiline
               textAlignVertical="top"
               className="rounded-xl border border-border-subtle bg-surface p-3 text-sm text-foreground min-h-[240px]"

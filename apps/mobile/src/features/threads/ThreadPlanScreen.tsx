@@ -2,6 +2,7 @@ import type { StaticScreenProps } from "@react-navigation/native";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { proposedPlanTitle } from "@t3tools/shared/proposedPlanText";
+import { useGT } from "gt-react-native";
 import { View } from "react-native";
 
 import { LoadingScreen } from "../../components/LoadingScreen";
@@ -20,6 +21,7 @@ type ThreadPlanScreenProps = StaticScreenProps<{
 }>;
 
 export function ThreadPlanScreen({ route }: ThreadPlanScreenProps) {
+  const gt = useGT();
   const params = route.params;
   const environmentId = EnvironmentId.make(params.environmentId);
   const threadId = ThreadId.make(params.threadId);
@@ -39,21 +41,23 @@ export function ThreadPlanScreen({ route }: ThreadPlanScreenProps) {
     }),
   );
   const item = detail.data?.item;
-  if (!item && detail.isPending) return <LoadingScreen message="Loading plan…" embedded />;
+  if (!item && detail.isPending) return <LoadingScreen message={gt("Loading plan…")} embedded />;
   if (detail.error || item?.type !== "proposed_plan")
     return (
       <View className="flex-1 justify-center bg-screen px-5">
         <EmptyState
-          title="Plan unavailable"
-          detail={detail.error ?? "This plan could not be found."}
-          actionLabel="Retry"
+          title={gt("Plan unavailable")}
+          detail={detail.error ?? gt("This plan could not be found.")}
+          actionLabel={gt("Retry")}
           onAction={detail.refresh}
         />
       </View>
     );
   return (
     <>
-      <NativeStackScreenOptions options={{ title: proposedPlanTitle(item.markdown) ?? "Plan" }} />
+      <NativeStackScreenOptions
+        options={{ title: proposedPlanTitle(item.markdown) ?? gt("Plan") }}
+      />
       <FileMarkdownPreview
         cwd={baseDirectory ?? ""}
         baseDirectory={baseDirectory ?? ""}

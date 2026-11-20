@@ -1,5 +1,6 @@
 import type { ThreadStructure } from "@t3tools/client-runtime/state/models";
 import { MessageSquarePlus } from "lucide-react";
+import { T, useGT } from "gt-react";
 import { cn } from "../../lib/utils";
 import { randomUUID } from "../../lib/utils";
 import { memo, useDeferredValue, useEffect, useRef, useState } from "react";
@@ -64,6 +65,7 @@ const PlanSection = memo(function PlanSection({
   cwd: string | undefined;
   images: ComposerImageAttachment[];
 }) {
+  const gt = useGT();
   return (
     <ChatMarkdown
       text={markdown}
@@ -81,7 +83,7 @@ const PlanSection = memo(function PlanSection({
             className="max-h-96 max-w-full rounded-lg object-contain"
           />
         ) : (
-          <span>Image unavailable on this device</span>
+          <span>{gt("Image unavailable on this device")}</span>
         );
       }}
     />
@@ -98,6 +100,7 @@ export default function PlanPanel({
   busy,
   onSubmit,
 }: PlanPanelActions & { threadRef: ScopedThreadRef; planId: string; itemId?: string }) {
+  const gt = useGT();
   const artifact = projection?.plans.find(
     (entry) => entry.id === planId && entry.kind === "proposed_plan",
   );
@@ -121,7 +124,7 @@ export default function PlanPanel({
   if (!markdown)
     return (
       <div className="p-6 text-sm text-muted-foreground">
-        {detail.error ?? (detail.isPending ? "Loading plan…" : "This plan is unavailable.")}
+        {detail.error ?? (detail.isPending ? gt("Loading plan…") : gt("This plan is unavailable."))}
       </div>
     );
   return (
@@ -156,6 +159,7 @@ function PlanDocument({
   markdown: string;
   status: string | null;
 }) {
+  const gt = useGT();
   const key = planDraftKey(scopedThreadKey(threadRef), planId);
   const stored = usePlanDraftStore((state) => state.drafts[key]);
   const draft: PlanDraft = stored ?? {
@@ -218,7 +222,9 @@ function PlanDocument({
       ).catch(() => ({ ok: false as const, reason: "unreadable" }));
       if (!isPlanPreparationCurrent(key, generation)) break;
       if (!prepared.ok) {
-        setError(`Could not attach ${file.name}: ${prepared.reason}.`);
+        setError(
+          gt("Could not attach {name}: {reason}.", { name: file.name, reason: prepared.reason }),
+        );
         continue;
       }
       images.push({
@@ -290,11 +296,11 @@ function PlanDocument({
     );
     const sent = await onSubmit({ kind, planId, markdown, text, images }).catch(
       (cause: unknown) => {
-        setError(cause instanceof Error ? cause.message : "Could not send plan. Try again.");
+        setError(cause instanceof Error ? cause.message : gt("Could not send plan. Try again."));
         return false;
       },
     );
-    if (!sent) setError((message) => message ?? "Plan action was not sent.");
+    if (!sent) setError((message) => message ?? gt("Plan action was not sent."));
     setSending(false);
   }
   return (
@@ -302,19 +308,19 @@ function PlanDocument({
       <header className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">
-            {proposedPlanTitle(draft.markdown) ?? "Proposed plan"}
+            {proposedPlanTitle(draft.markdown) ?? gt("Proposed plan")}
           </h2>
           {status !== null ? (
             <p className="text-xs text-muted-foreground">
               {status === "completed"
-                ? "Implemented"
+                ? gt("Implemented")
                 : status === "superseded"
-                  ? "Replaced by a newer plan"
+                  ? gt("Replaced by a newer plan")
                   : status === "draft"
-                    ? "Plan in progress"
+                    ? gt("Plan in progress")
                     : edited
-                      ? "Edited"
-                      : "Ready for review"}
+                      ? gt("Edited")
+                      : gt("Ready for review")}
             </p>
           ) : null}
         </div>
@@ -326,17 +332,17 @@ function PlanDocument({
                 disabled={!editable || preparing}
                 onClick={() => void submit("implement")}
               >
-                Implement
+                <T>Implement</T>
               </Button>
               <Menu>
                 <MenuTrigger
                   render={<Button size="sm" variant="outline" disabled={!editable || preparing} />}
                 >
-                  More
+                  <T>More</T>
                 </MenuTrigger>
                 <MenuPopup>
                   <MenuItem onClick={() => void submit("implement-new-thread")}>
-                    Implement in new thread
+                    <T>Implement in new thread</T>
                   </MenuItem>
                 </MenuPopup>
               </Menu>
@@ -358,7 +364,7 @@ function PlanDocument({
               disabled={busy || sending}
               onClick={() => setEditing(!editing)}
             >
-              {editing ? "Preview" : "Edit"}
+              {editing ? gt("Preview") : gt("Edit")}
             </Button>
           ) : null}
           {stored ? (
@@ -368,24 +374,26 @@ function PlanDocument({
               disabled={sending}
               onClick={() => usePlanDraftStore.getState().discard(key)}
             >
-              Discard draft
+              <T>Discard draft</T>
             </Button>
           ) : null}
         </div>
         {status !== null && !active && stored ? (
           <p className="mb-4 text-sm text-muted-foreground">
-            Your draft is kept on this device. This plan can no longer be changed.
+            <T>Your draft is kept on this device. This plan can no longer be changed.</T>
           </p>
         ) : null}
         {missingImages ? (
           <p className="mb-4 text-sm text-muted-foreground">
-            Some images are no longer on this device. Attach them again before sending; unavailable
-            references will be removed.
+            <T>
+              Some images are no longer on this device. Attach them again before sending;
+              unavailable references will be removed.
+            </T>
           </p>
         ) : null}
         <div className="grid items-start gap-6 @3xl:grid-cols-[12rem_minmax(0,1fr)]">
           <nav
-            aria-label="Plan outline"
+            aria-label={gt("Plan outline")}
             className="hidden @3xl:sticky @3xl:top-0 @3xl:grid @3xl:gap-2"
           >
             {sections.map((section) => (
@@ -404,7 +412,9 @@ function PlanDocument({
           <div className="min-w-0">
             <div className="mb-4 @3xl:hidden">
               <Menu>
-                <MenuTrigger render={<Button size="sm" variant="outline" />}>Outline</MenuTrigger>
+                <MenuTrigger render={<Button size="sm" variant="outline" />}>
+                  <T>Outline</T>
+                </MenuTrigger>
                 <MenuPopup>
                   {sections.map((section) => (
                     <MenuItem
@@ -436,7 +446,7 @@ function PlanDocument({
                       if (element) editors.current.set("plan", element);
                       else editors.current.delete("plan");
                     }}
-                    aria-label="Plan markdown"
+                    aria-label={gt("Plan markdown")}
                     value={draft.markdown}
                     onChange={(event) => save({ markdown: event.target.value })}
                     onPaste={(event) => {
@@ -454,7 +464,7 @@ function PlanDocument({
                       disabled={!editable || preparing}
                       onClick={() => imageInputs.current.get("plan")?.click()}
                     >
-                      Attach screenshots
+                      <T>Attach screenshots</T>
                     </Button>
                     <input
                       hidden
@@ -499,7 +509,7 @@ function PlanDocument({
                         >
                           <Button
                             size="icon-xs"
-                            aria-label={`Comment on ${section.title}`}
+                            aria-label={gt("Comment on {title}", { title: section.title })}
                             aria-expanded={commentSection === section.id}
                             variant="ghost"
                             onClick={() =>
@@ -527,7 +537,7 @@ function PlanDocument({
                               if (element) editors.current.set(section.id, element);
                               else editors.current.delete(section.id);
                             }}
-                            aria-label={`Comment on ${section.title}`}
+                            aria-label={gt("Comment on {title}", { title: section.title })}
                             onDragOver={(event) => event.preventDefault()}
                             onDrop={(event) => {
                               event.preventDefault();
@@ -553,7 +563,7 @@ function PlanDocument({
                               disabled={!editable || preparing}
                               onClick={() => imageInputs.current.get(section.id)?.click()}
                             >
-                              Attach screenshots
+                              <T>Attach screenshots</T>
                             </Button>
                             <input
                               hidden
@@ -612,7 +622,7 @@ function PlanDocument({
                         })
                       }
                     >
-                      Remove
+                      <T>Remove</T>
                     </Button>
                   ) : null}
                 </div>
@@ -624,7 +634,9 @@ function PlanDocument({
               disabled={!editable || preparing}
               onClick={() => void submit("feedback")}
             >
-              Send feedback ({draft.comments.filter((comment) => comment.text.trim()).length})
+              {gt("Send feedback ({count})", {
+                count: draft.comments.filter((comment) => comment.text.trim()).length,
+              })}
             </Button>
           ) : null}
         </footer>

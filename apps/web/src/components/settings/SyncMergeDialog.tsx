@@ -1,8 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { SyncConflict } from "@t3tools/client-runtime/sync/plan";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { msg, T, useGT } from "gt-react";
 import { useEffect, useState } from "react";
 
+import { m } from "../../i18n/messages";
 import { serverEnvironment, primaryServerKeybindingsAtom } from "../../state/server";
 import { describeCommandFailure, useApplySyncMerge, useSyncPlan } from "../../state/sync";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -28,10 +30,11 @@ export function SyncMergeDialog(props: {
   readonly labelOf: (environmentId: EnvironmentId) => string;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
   return (
     <Dialog open={props.conflictKey !== null} onOpenChange={(open) => !open && props.onClose()}>
       <DialogPopup
-        aria-label={`Merge ${props.title}`}
+        aria-label={gt("Merge {title}", { title: props.title })}
         className="h-[85vh] max-w-[min(96vw,1600px)] overflow-hidden"
         showCloseButton={false}
         bottomStickOnMobile={false}
@@ -78,12 +81,17 @@ function SyncMergeBody(props: {
         const failed = [left, right].find((result) => result?._tag !== "Success");
         setLoad({
           status: "error",
-          message: failed ? describeCommandFailure(failed) : "Could not read both versions.",
+          message: failed
+            ? describeCommandFailure(failed)
+            : m(msg("Could not read both versions.")),
         });
         return;
       }
       if (left.value.hash !== sides[0].hash || right.value.hash !== sides[1].hash) {
-        setLoad({ status: "error", message: "A machine changed this item while it was read." });
+        setLoad({
+          status: "error",
+          message: m(msg("A machine changed this item while it was read.")),
+        });
         return;
       }
       const sideLabel = (environmentIds: ReadonlyArray<EnvironmentId>) =>
@@ -120,15 +128,18 @@ function SyncMergeBody(props: {
     if (result === "stale" || result.stale > 0) {
       return {
         status: "stale",
-        message:
-          "This item changed on a machine since you opened it. Reload to merge the current versions; your edits here will be discarded.",
+        message: m(
+          msg(
+            "This item changed on a machine since you opened it. Reload to merge the current versions; your edits here will be discarded.",
+          ),
+        ),
       };
     }
     if (result.failed + result.rejected > 0) {
       toastManager.add({
         type: "error",
-        title: "Could not apply the merge everywhere",
-        description: "A machine refused the change or could not be reached.",
+        title: m(msg("Could not apply the merge everywhere")),
+        description: m(msg("A machine refused the change or could not be reached.")),
       });
       return { status: "failed" };
     }
@@ -140,11 +151,15 @@ function SyncMergeBody(props: {
     return (
       <Empty size="compact">
         <EmptyHeader>
-          <EmptyTitle>Nothing to merge</EmptyTitle>
-          <EmptyDescription>This item is no longer two versions of a file.</EmptyDescription>
+          <EmptyTitle>
+            <T>Nothing to merge</T>
+          </EmptyTitle>
+          <EmptyDescription>
+            <T>This item is no longer two versions of a file.</T>
+          </EmptyDescription>
         </EmptyHeader>
         <Button size="xs" variant="outline" onClick={props.onClose}>
-          Close
+          <T>Close</T>
         </Button>
       </Empty>
     );
@@ -153,7 +168,7 @@ function SyncMergeBody(props: {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
         <Spinner size="sm" />
-        Reading both versions…
+        <T>Reading both versions…</T>
       </div>
     );
   }
@@ -161,15 +176,17 @@ function SyncMergeBody(props: {
     return (
       <Empty size="compact">
         <EmptyHeader>
-          <EmptyTitle>Could not open the merge</EmptyTitle>
+          <EmptyTitle>
+            <T>Could not open the merge</T>
+          </EmptyTitle>
           <EmptyDescription>{load.message}</EmptyDescription>
         </EmptyHeader>
         <div className="flex gap-2">
           <Button size="xs" variant="outline" onClick={props.onClose}>
-            Close
+            <T>Close</T>
           </Button>
           <Button size="xs" onClick={reload}>
-            Try again
+            <T>Try again</T>
           </Button>
         </div>
       </Empty>

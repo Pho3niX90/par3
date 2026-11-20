@@ -5,21 +5,24 @@ import type {
   VcsConflictKind,
   VcsOperationKind,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m } from "../../i18n/messages";
 
 export type ConflictSide = "ours" | "theirs";
 
 const KIND_LABELS: Record<VcsConflictKind, string> = {
-  "both-modified": "Both modified",
-  "both-added": "Both added",
-  "both-deleted": "Both deleted",
-  "added-by-us": "Added by us",
-  "added-by-them": "Added by them",
-  "deleted-by-us": "Deleted by us",
-  "deleted-by-them": "Deleted by them",
+  "both-modified": msg("Both modified"),
+  "both-added": msg("Both added"),
+  "both-deleted": msg("Both deleted"),
+  "added-by-us": msg("Added by us"),
+  "added-by-them": msg("Added by them"),
+  "deleted-by-us": msg("Deleted by us"),
+  "deleted-by-them": msg("Deleted by them"),
 };
 
 export function conflictKindLabel(kind: VcsConflictKind): string {
-  return KIND_LABELS[kind];
+  return m(KIND_LABELS[kind]);
 }
 
 /** Whether choosing `side` keeps the file or removes it, which is what the button should say. */
@@ -42,8 +45,11 @@ export interface ConflictRowActions {
 export function conflictRowActions(
   entry: Pick<MergeConflictListEntry, "kind" | "fileLevelReason" | "rerereResolved">,
 ): ConflictRowActions {
-  const sideLabel = (side: ConflictSide) =>
-    `Accept ${side}${sideOutcome(entry.kind, side) === "delete" ? " (delete)" : ""}`;
+  const sideLabel = (side: ConflictSide) => {
+    const deletes = sideOutcome(entry.kind, side) === "delete";
+    if (side === "ours") return m(deletes ? msg("Accept ours (delete)") : msg("Accept ours"));
+    return m(deletes ? msg("Accept theirs (delete)") : msg("Accept theirs"));
+  };
   const fileLevelOnly = entry.fileLevelReason !== undefined;
   return {
     ours: { label: sideLabel("ours") },
@@ -58,25 +64,25 @@ export function fileLevelReasonLabel(
 ) {
   switch (reason) {
     case "binary":
-      return "Binary file";
+      return m(msg("Binary file"));
     case "too-large":
-      return "Too large to merge here";
+      return m(msg("Too large to merge here"));
     case "filter":
-      return "Filtered file (such as Git LFS)";
+      return m(msg("Filtered file (such as Git LFS)"));
     case "special-file":
-      return "Symlink or submodule";
+      return m(msg("Symlink or submodule"));
   }
 }
 
 const OPERATION_TITLES: Record<VcsOperationKind, string> = {
-  merge: "Merge",
-  rebase: "Rebase",
-  "cherry-pick": "Cherry-pick",
-  revert: "Revert",
+  merge: msg("Merge"),
+  rebase: msg("Rebase"),
+  "cherry-pick": msg("Cherry-pick"),
+  revert: msg("Revert"),
 };
 
 export function operationTitle(operation: VcsOperationKind | null): string {
-  return operation === null ? "Conflicts" : OPERATION_TITLES[operation];
+  return operation === null ? m(msg("Conflicts")) : m(OPERATION_TITLES[operation]);
 }
 
 /**
@@ -88,29 +94,44 @@ export function sideDescriptions(operation: VcsOperationKind | null): {
   readonly theirs: string;
 } {
   if (operation === "rebase") {
-    return { ours: "Upstream, being rebased onto", theirs: "Your commit being replayed" };
+    return {
+      ours: m(msg("Upstream, being rebased onto")),
+      theirs: m(msg("Your commit being replayed")),
+    };
   }
-  if (operation === "merge") return { ours: "Current branch", theirs: "Incoming branch" };
-  if (operation === "cherry-pick") return { ours: "Current branch", theirs: "Picked commit" };
-  if (operation === "revert")
-    return { ours: "Current branch", theirs: "Before the reverted commit" };
-  return { ours: "Current", theirs: "Incoming" };
+  if (operation === "merge") {
+    return { ours: m(msg("Current branch")), theirs: m(msg("Incoming branch")) };
+  }
+  if (operation === "cherry-pick") {
+    return { ours: m(msg("Current branch")), theirs: m(msg("Picked commit")) };
+  }
+  if (operation === "revert") {
+    return { ours: m(msg("Current branch")), theirs: m(msg("Before the reverted commit")) };
+  }
+  return { ours: m(msg("Current")), theirs: m(msg("Incoming")) };
 }
 
 export function rebaseStepLabel(step: MergeConflictOperation["step"]): string | null {
-  return step === undefined ? null : `Step ${step.current} of ${step.total}`;
+  return step === undefined
+    ? null
+    : m(msg("Step {current} of {total}", { current: step.current, total: step.total }));
 }
 
 export function continueLabel(operation: VcsOperationKind | null): string {
-  return operation === null ? "Continue" : `Continue ${operation}`;
+  return operation === null ? m(msg("Continue")) : m(msg("Continue {operation}", { operation }));
 }
 
 export function abortConfirmation(operation: VcsOperationKind | null) {
   const noun = operation ?? "operation";
   return {
-    title: `Abort the ${noun}?`,
-    description: `Git returns the repository to how it was before the ${noun} started. Resolutions you made so far are lost, and if the ${noun} was started outside Par3, uncommitted edits that existed beforehand can be discarded too.`,
-    confirmLabel: `Abort ${noun}`,
+    title: m(msg("Abort the {noun}?", { noun })),
+    description: m(
+      msg(
+        "Git returns the repository to how it was before the {noun} started. Resolutions you made so far are lost, and if the {noun} was started outside Par3, uncommitted edits that existed beforehand can be discarded too.",
+        { noun },
+      ),
+    ),
+    confirmLabel: m(msg("Abort {noun}", { noun })),
   };
 }
 
@@ -121,21 +142,21 @@ export function continueOutcomeToast(
   const noun = operation ?? "operation";
   switch (outcome) {
     case "completed":
-      return { type: "success", title: `The ${noun} is complete` };
+      return { type: "success", title: m(msg("The {noun} is complete", { noun })) };
     case "conflicts":
       return {
         type: "info",
-        title: "Next step has conflicts",
-        description: "Resolve them to keep going.",
+        title: m(msg("Next step has conflicts")),
+        description: m(msg("Resolve them to keep going.")),
       };
     case "paused":
       return {
         type: "info",
-        title: `The ${noun} paused`,
-        description: "Git stopped for you to review before continuing.",
+        title: m(msg("The {noun} paused", { noun })),
+        description: m(msg("Git stopped for you to review before continuing.")),
       };
     case "aborted":
-      return { type: "success", title: `The ${noun} was aborted` };
+      return { type: "success", title: m(msg("The {noun} was aborted", { noun })) };
   }
 }
 
@@ -144,9 +165,11 @@ export function mutationBlockedReason(input: {
   readonly canWriteSourceControl: boolean;
   readonly turnRunningInRepository: boolean;
 }): string | null {
-  if (!input.canWriteSourceControl) return "This connection cannot change source control.";
+  if (!input.canWriteSourceControl) return m(msg("This connection cannot change source control."));
   if (input.turnRunningInRepository) {
-    return "An agent is working in this repository. Wait for it to finish, or stop it first.";
+    return m(
+      msg("An agent is working in this repository. Wait for it to finish, or stop it first."),
+    );
   }
   return null;
 }

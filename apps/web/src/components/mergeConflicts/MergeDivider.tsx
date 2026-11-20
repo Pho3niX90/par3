@@ -1,4 +1,5 @@
 import { ChevronsLeftIcon, ChevronsRightIcon, EllipsisIcon, XIcon } from "lucide-react";
+import { T, useGT } from "gt-react";
 
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -24,8 +25,8 @@ export function MergeDivider(props: {
   readonly disabled: boolean;
   readonly onAction: (chunkId: number, action: ChunkAction) => void;
 }) {
+  const gt = useGT();
   const { side } = props;
-  const label = side === "ours" ? "ours" : "theirs";
   const AcceptIcon = side === "ours" ? ChevronsRightIcon : ChevronsLeftIcon;
   return (
     <div
@@ -70,7 +71,11 @@ export function MergeDivider(props: {
               <Button
                 size="icon-micro"
                 variant="outline"
-                aria-label={`Accept ${label} for change ${connector.chunkId + 1}`}
+                aria-label={
+                  side === "ours"
+                    ? gt("Accept ours for change {number}", { number: connector.chunkId + 1 })
+                    : gt("Accept theirs for change {number}", { number: connector.chunkId + 1 })
+                }
                 disabled={props.disabled}
                 onClick={() => props.onAction(connector.chunkId, { type: "accept", side })}
               >
@@ -81,7 +86,11 @@ export function MergeDivider(props: {
               <Button
                 size="icon-micro"
                 variant="ghost-muted"
-                aria-label={`Ignore ${label} for change ${connector.chunkId + 1}`}
+                aria-label={
+                  side === "ours"
+                    ? gt("Ignore ours for change {number}", { number: connector.chunkId + 1 })
+                    : gt("Ignore theirs for change {number}", { number: connector.chunkId + 1 })
+                }
                 disabled={props.disabled}
                 onClick={() => props.onAction(connector.chunkId, { type: "ignore", side })}
               >
@@ -95,7 +104,9 @@ export function MergeDivider(props: {
                     <Button
                       size="icon-micro"
                       variant="ghost-muted"
-                      aria-label={`More ways to resolve change ${connector.chunkId + 1}`}
+                      aria-label={gt("More ways to resolve change {number}", {
+                        number: connector.chunkId + 1,
+                      })}
                       disabled={props.disabled}
                     />
                   }
@@ -108,7 +119,7 @@ export function MergeDivider(props: {
                       props.onAction(connector.chunkId, { type: "acceptBoth", order: "ours-first" })
                     }
                   >
-                    Accept both, ours first
+                    <T>Accept both, ours first</T>
                   </MenuItem>
                   <MenuItem
                     onClick={() =>
@@ -118,7 +129,7 @@ export function MergeDivider(props: {
                       })
                     }
                   >
-                    Accept both, theirs first
+                    <T>Accept both, theirs first</T>
                   </MenuItem>
                 </MenuPopup>
               </Menu>

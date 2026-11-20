@@ -1,3 +1,4 @@
+import { T, Var, useGT } from "gt-react";
 import { useState, useId } from "react";
 import {
   isAtomCommandInterrupted,
@@ -37,6 +38,7 @@ export function PlanExportActions({
   environmentId: EnvironmentId;
   workspaceRoot: string | undefined;
 }) {
+  const gt = useGT();
   const canWriteFiles = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [savePath, setSavePath] = useState("");
@@ -50,8 +52,9 @@ export function PlanExportActions({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not copy plan",
-          description: error instanceof Error ? error.message : "An error occurred while copying.",
+          title: gt("Could not copy plan"),
+          description:
+            error instanceof Error ? error.message : gt("An error occurred while copying."),
         }),
       );
     },
@@ -73,8 +76,8 @@ export function PlanExportActions({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Workspace path is unavailable",
-          description: "This thread does not have a workspace path to save into.",
+          title: gt("Workspace path is unavailable"),
+          description: gt("This thread does not have a workspace path to save into."),
         }),
       );
       return;
@@ -91,7 +94,7 @@ export function PlanExportActions({
     if (!relativePath) {
       toastManager.add({
         type: "warning",
-        title: "Enter a workspace path",
+        title: gt("Enter a workspace path"),
       });
       return;
     }
@@ -111,7 +114,7 @@ export function PlanExportActions({
         setIsSaveDialogOpen(false);
         toastManager.add({
           type: "success",
-          title: "Plan saved to workspace",
+          title: gt("Plan saved to workspace"),
           description: result.value.relativePath,
         });
         return;
@@ -121,8 +124,9 @@ export function PlanExportActions({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not save plan",
-            description: error instanceof Error ? error.message : "An error occurred while saving.",
+            title: gt("Could not save plan"),
+            description:
+              error instanceof Error ? error.message : gt("An error occurred while saving."),
           }),
         );
       }
@@ -132,17 +136,23 @@ export function PlanExportActions({
   return (
     <>
       <Menu>
-        <MenuTrigger render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}>
+        <MenuTrigger
+          render={<Button aria-label={gt("Plan actions")} size="icon-xs" variant="outline" />}
+        >
           <EllipsisIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
         <MenuPopup align="end">
-          <MenuItem onClick={handleCopyPlan}>{isCopied ? "Copied!" : "Copy to clipboard"}</MenuItem>
-          <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
+          <MenuItem onClick={handleCopyPlan}>
+            {isCopied ? gt("Copied!") : gt("Copy to clipboard")}
+          </MenuItem>
+          <MenuItem onClick={handleDownload}>
+            <T>Download as markdown</T>
+          </MenuItem>
           <MenuItem
             onClick={openSaveDialog}
             disabled={!canWriteFiles || !workspaceRoot || isSavingToWorkspace}
           >
-            Save to workspace
+            <T>Save to workspace</T>
           </MenuItem>
         </MenuPopup>
       </Menu>
@@ -156,14 +166,24 @@ export function PlanExportActions({
       >
         <DialogPopup className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Save plan to workspace</DialogTitle>
+            <DialogTitle>
+              <T>Save plan to workspace</T>
+            </DialogTitle>
             <DialogDescription>
-              Enter a path relative to <code>{workspaceRoot ?? "the workspace"}</code>.
+              <T>
+                Enter a path relative to{" "}
+                <code>
+                  <Var>{workspaceRoot ?? gt("the workspace")}</Var>
+                </code>
+                .
+              </T>
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <label htmlFor={savePathInputId} className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Workspace path</span>
+              <span className="text-xs font-medium text-foreground">
+                <T>Workspace path</T>
+              </span>
               <Input
                 id={savePathInputId}
                 value={savePath}
@@ -181,14 +201,14 @@ export function PlanExportActions({
               onClick={() => setIsSaveDialogOpen(false)}
               disabled={isSavingToWorkspace}
             >
-              Cancel
+              <T>Cancel</T>
             </Button>
             <Button
               size="sm"
               onClick={() => void handleSaveToWorkspace()}
               disabled={!canWriteFiles || isSavingToWorkspace}
             >
-              {isSavingToWorkspace ? "Saving..." : "Save"}
+              {isSavingToWorkspace ? gt("Saving...") : gt("Save")}
             </Button>
           </DialogFooter>
         </DialogPopup>

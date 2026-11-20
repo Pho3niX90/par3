@@ -10,8 +10,10 @@ import {
   specRoleSupported,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { msg } from "gt-react-native";
 import { useCallback } from "react";
 
+import { m, type MessageResolver } from "../i18n/messages";
 import { uuidv4 } from "../lib/uuid";
 import { useEnvironmentQuery } from "./query";
 import { serverEnvironment } from "./server";
@@ -26,12 +28,16 @@ export function isSpecRoleSupported(driver: string | null | undefined, role: Spe
 export function explainSpecRoleSupport(
   driver: string | null | undefined,
   role: SpecRole,
+  resolve: MessageResolver = m,
 ): string | null {
   if (isSpecRoleSupported(driver, role)) return null;
-  const provider = driver || "This provider";
+  const provider = driver || resolve(msg("This provider"));
   return role === "requirements" || role === "researcher" || role === "verifier"
-    ? `${provider} can't run the ${role} role. It needs Codex or Claude.`
-    : `${provider} can't run the ${role} role in Spec mode.`;
+    ? resolve(msg("{provider} can't run the {role} role. It needs Codex or Claude."), {
+        provider,
+        role,
+      })
+    : resolve(msg("{provider} can't run the {role} role in Spec mode."), { provider, role });
 }
 
 export function useSpecPermissions(environmentId: EnvironmentId | null) {

@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { T, useGT, useMessages, Var } from "gt-react-native";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Platform, ScrollView, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,6 +55,7 @@ type MergeConflictsSheetProps = StaticScreenProps<{
 
 export function MergeConflictsSheet(props: MergeConflictsSheetProps) {
   const navigation = useNavigation();
+  const gt = useGT();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
@@ -96,7 +98,12 @@ export function MergeConflictsSheet(props: MergeConflictsSheetProps) {
         />
       ) : null}
       {Platform.OS === "android" ? (
-        <AppBar sheet title="Merge conflicts" onBack={() => navigation.goBack()} hideBottomBorder />
+        <AppBar
+          sheet
+          title={gt("Merge conflicts")}
+          onBack={() => navigation.goBack()}
+          hideBottomBorder
+        />
       ) : (
         <View className="min-h-4 pt-2" />
       )}
@@ -111,8 +118,8 @@ export function MergeConflictsSheet(props: MergeConflictsSheetProps) {
           {repositories.length === 0 ? (
             <EmptyState
               variant="plain"
-              title="No repository"
-              detail="This thread has no repository to resolve conflicts in."
+              title={gt("No repository")}
+              detail={gt("This thread has no repository to resolve conflicts in.")}
             />
           ) : (
             repositories.map((repository) => (
@@ -140,6 +147,8 @@ function RepositoryConflicts(props: {
   readonly thread: EnvironmentThreadShell | null;
 }) {
   const { environmentId, cwd } = props;
+  const gt = useGT();
+  const m = useMessages();
   const target = { environmentId, input: { cwd } } as const;
   const statusQuery = useEnvironmentQuery(vcsEnvironment.status(target));
   const state = selectMergeConflictState(statusQuery.data);
@@ -157,9 +166,9 @@ function RepositoryConflicts(props: {
   const projects = useProjects();
   const turnRunning = hasRunningTurnInRepository({ environmentId, cwd, threads, projects });
   const blockedReason = !canWrite
-    ? "This connection cannot change source control."
+    ? gt("This connection cannot change source control.")
     : turnRunning
-      ? "An agent is working in this repository. Wait for it to finish, or stop it first."
+      ? gt("An agent is working in this repository. Wait for it to finish, or stop it first.")
       : null;
 
   const [pending, setPending] = useState<string | null>(null);
@@ -192,8 +201,8 @@ function RepositoryConflicts(props: {
     return props.showLabel ? null : (
       <EmptyState
         variant="plain"
-        title="Nothing to resolve"
-        detail="No merge, rebase, cherry-pick or revert is in progress here."
+        title={gt("Nothing to resolve")}
+        detail={gt("No merge, rebase, cherry-pick or revert is in progress here.")}
       />
     );
   }
@@ -210,10 +219,10 @@ function RepositoryConflicts(props: {
   };
 
   const chooseFor = (entry: MergeConflictListEntry) => {
-    const choices = conflictChoices(entry).slice(0, 3);
+    const choices = conflictChoices(entry, m).slice(0, 3);
     Dialog.alert(
       entry.path,
-      conflictKindLabel(entry.kind),
+      conflictKindLabel(entry.kind, m),
       choices.map((choice) => ({
         text: choice.label,
         onPress: () => void resolve(entry, choice.resolution),
@@ -230,10 +239,15 @@ function RepositoryConflicts(props: {
     const { resolved, skipped } = result.value;
     setNotice(
       resolved.length > 0
-        ? `Resolved ${resolved.length} ${resolved.length === 1 ? "file" : "files"}.${
-            skipped.length > 0 ? ` ${skipped.length} still need a decision.` : ""
-          }`
-        : "Nothing could be resolved automatically.",
+        ? gt(
+            "{resolvedCount, plural, one {Resolved {resolvedCount} file.} other {Resolved {resolvedCount} files.}}{hasSkipped, select, yes { {skippedCount} still need a decision.} other {}}",
+            {
+              resolvedCount: resolved.length,
+              hasSkipped: skipped.length > 0 ? "yes" : "no",
+              skippedCount: skipped.length,
+            },
+          )
+        : gt("Nothing could be resolved automatically."),
     );
   };
 
@@ -243,12 +257,12 @@ function RepositoryConflicts(props: {
     setPending(null);
     listQuery.refresh();
     if (result._tag === "Success") {
-      setNotice(operationOutcomeMessage(operation, result.value.outcome));
+      setNotice(operationOutcomeMessage(operation, result.value.outcome, m));
     }
   };
 
   const confirmAbort = () => {
-    const copy = abortCopy(operation);
+    const copy = abortCopy(operation, m);
     Dialog.confirm({
       title: copy.title,
       message: copy.message,
@@ -290,14 +304,17 @@ function RepositoryConflicts(props: {
     setPending(null);
     setNotice(
       result._tag === "Success"
-        ? "Asked the agent to resolve the conflicts."
-        : "Could not ask the agent.",
+        ? gt("Asked the agent to resolve the conflicts.")
+        : gt("Could not ask the agent."),
     );
   };
 
-  const noun = mergeOperationNoun(operation);
+  const noun = mergeOperationNoun(operation, m);
   const stepLabel = list?.operation?.step
-    ? `Step ${list.operation.step.current} of ${list.operation.step.total}`
+    ? gt("Step {current} of {total}", {
+        current: list.operation.step.current,
+        total: list.operation.step.total,
+      })
     : null;
 
   return (
@@ -310,14 +327,26 @@ function RepositoryConflicts(props: {
       <View className="gap-1 px-2">
         <Text textRole="title" className="font-t3-bold text-foreground">
           {state.canContinue
-            ? `Ready to continue the ${noun}`
-            : `${state.conflictCount} ${state.conflictCount === 1 ? "conflict" : "conflicts"} in the ${noun}${stepLabel ? ` · ${stepLabel}` : ""}`}
+            ? gt("Ready to continue the {noun}", { noun })
+            : stepLabel
+              ? gt(
+                  "{count, plural, one {{count} conflict in the {noun} · {step}} other {{count} conflicts in the {noun} · {step}}}",
+                  { count: state.conflictCount, noun, step: stepLabel },
+                )
+              : gt(
+                  "{count, plural, one {{count} conflict in the {noun}} other {{count} conflicts in the {noun}}}",
+                  { count: state.conflictCount, noun },
+                )}
         </Text>
         <Text textRole="footnote" className="text-foreground-muted">
-          Ours: {labels.ours}
+          <T>
+            Ours: <Var>{labels.ours}</Var>
+          </T>
         </Text>
         <Text textRole="footnote" className="text-foreground-muted">
-          Theirs: {labels.theirs}
+          <T>
+            Theirs: <Var>{labels.theirs}</Var>
+          </T>
         </Text>
       </View>
 
@@ -326,7 +355,7 @@ function RepositoryConflicts(props: {
 
       <View className="gap-2">
         <Button
-          label="Resolve simple conflicts"
+          label={gt("Resolve simple conflicts")}
           icon="bolt.circle"
           fullWidth
           disabled={disabled || state.conflictCount === 0}
@@ -335,7 +364,7 @@ function RepositoryConflicts(props: {
         />
         {props.thread ? (
           <Button
-            label="Ask agent"
+            label={gt("Ask agent")}
             icon="brain"
             fullWidth
             disabled={disabled || state.conflictCount === 0}
@@ -346,7 +375,7 @@ function RepositoryConflicts(props: {
         {operation !== null ? (
           <>
             <Button
-              label={`Continue ${operation}`}
+              label={gt("Continue {noun}", { noun })}
               tone="primary"
               fullWidth
               disabled={disabled || state.conflictCount > 0}
@@ -354,7 +383,7 @@ function RepositoryConflicts(props: {
               onPress={() => void runOperation("continue")}
             />
             <Button
-              label={`Abort ${operation}`}
+              label={gt("Abort {noun}", { noun })}
               tone="danger"
               fullWidth
               disabled={disabled}
@@ -367,18 +396,21 @@ function RepositoryConflicts(props: {
 
       {entries.length > 0 ? (
         <ListSection
-          title="Conflicted files"
+          title={gt("Conflicted files")}
           footer={
             entries.length > MAX_ROWS
-              ? `Showing ${MAX_ROWS} of ${entries.length}. Resolve simple conflicts or ask the agent for the rest.`
-              : "Tap a file to accept a side. Files are never downloaded to this device."
+              ? gt(
+                  "Showing {shown} of {total}. Resolve simple conflicts or ask the agent for the rest.",
+                  { shown: MAX_ROWS, total: entries.length },
+                )
+              : gt("Tap a file to accept a side. Files are never downloaded to this device.")
           }
         >
           {entries.slice(0, MAX_ROWS).map((entry) => (
             <ListActionRow
               key={entry.path}
               label={entry.path}
-              description={[conflictKindLabel(entry.kind), entry.fileLevelReason]
+              description={[conflictKindLabel(entry.kind, m), entry.fileLevelReason]
                 .filter(Boolean)
                 .join(" · ")}
               disabled={disabled}
