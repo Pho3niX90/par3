@@ -1582,7 +1582,7 @@ function OpenCommandPaletteDialog(props: {
 
   // A draft's provider is picked in its composer, which ignores the toggle when it cannot plan.
   const activeThreadProviderCanPlan =
-    activeThread === null ||
+    !activeThread ||
     providersByEnvironment
       .get(activeThread.environmentId)
       ?.find((provider) => provider.instanceId === activeThread.modelSelection.instanceId)
