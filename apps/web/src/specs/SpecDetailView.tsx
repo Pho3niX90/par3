@@ -9,6 +9,7 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, TriangleAlertIcon } from "lucide-react";
+import { T, Var, useGT } from "gt-react";
 import { useState, type ReactNode } from "react";
 
 import ChatMarkdown from "../components/ChatMarkdown";
@@ -68,11 +69,27 @@ function TaskRow({ task }: { readonly task: SpecTask }) {
         </Badge>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {task.acs.length > 0 ? <span>Covers {task.acs.join(", ")}</span> : null}
-        {task.dependsOn.length > 0 ? <span>After {task.dependsOn.join(", ")}</span> : null}
+        {task.acs.length > 0 ? (
+          <span>
+            <T>
+              Covers <Var>{task.acs.join(", ")}</Var>
+            </T>
+          </span>
+        ) : null}
+        {task.dependsOn.length > 0 ? (
+          <span>
+            <T>
+              After <Var>{task.dependsOn.join(", ")}</Var>
+            </T>
+          </span>
+        ) : null}
       </div>
       {task.verify ? (
-        <div className="text-xs text-muted-foreground">Verify: {task.verify}</div>
+        <div className="text-xs text-muted-foreground">
+          <T>
+            Verify: <Var>{task.verify}</Var>
+          </T>
+        </div>
       ) : null}
     </li>
   );
@@ -89,6 +106,7 @@ function EvidenceRow({
   readonly confirming: boolean;
   readonly onConfirm: () => void;
 }) {
+  const gt = useGT();
   const needsConfirmation = evidence.kind === "manual" && evidence.confirmedBy === undefined;
   return (
     <li className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2 text-sm">
@@ -97,13 +115,31 @@ function EvidenceRow({
         <span className="min-w-0 flex-1">{evidence.description}</span>
         <Badge variant="outline">{evidence.kind}</Badge>
         <Badge variant={evidence.passed ? "success" : "destructive"}>
-          {evidence.passed ? "Passed" : "Failed"}
+          {evidence.passed ? gt("Passed") : gt("Failed")}
         </Badge>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {evidence.acs.length > 0 ? <span>Covers {evidence.acs.join(", ")}</span> : null}
-        {evidence.checkpoint ? <span>Checkpoint {evidence.checkpoint}</span> : null}
-        {evidence.confirmedBy ? <span>Confirmed by {evidence.confirmedBy}</span> : null}
+        {evidence.acs.length > 0 ? (
+          <span>
+            <T>
+              Covers <Var>{evidence.acs.join(", ")}</Var>
+            </T>
+          </span>
+        ) : null}
+        {evidence.checkpoint ? (
+          <span>
+            <T>
+              Checkpoint <Var>{evidence.checkpoint}</Var>
+            </T>
+          </span>
+        ) : null}
+        {evidence.confirmedBy ? (
+          <span>
+            <T>
+              Confirmed by <Var>{evidence.confirmedBy}</Var>
+            </T>
+          </span>
+        ) : null}
         {needsConfirmation ? (
           <Button
             size="xs"
@@ -111,7 +147,7 @@ function EvidenceRow({
             disabled={!canConfirm || confirming}
             onClick={onConfirm}
           >
-            Confirm
+            <T>Confirm</T>
           </Button>
         ) : null}
       </div>
@@ -134,6 +170,7 @@ function BoundThreadRow({
   readonly busy: boolean;
   readonly onUnbind: () => void;
 }) {
+  const gt = useGT();
   const navigate = useNavigate();
   const shell = useThreadShell(scopeThreadRef(environmentId, threadId));
   return (
@@ -145,12 +182,12 @@ function BoundThreadRow({
           void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } })
         }
       >
-        {shell?.title ?? `Thread ${threadId.slice(0, 8)}`}
+        {shell?.title ?? gt("Thread {id}", { id: threadId.slice(0, 8) })}
       </Button>
       <Badge variant="outline">{roleLabel}</Badge>
       <div className="flex-1" />
       <Button size="xs" variant="outline" disabled={!canUnbind || busy} onClick={onUnbind}>
-        Leave Spec mode
+        <T>Leave Spec mode</T>
       </Button>
     </li>
   );
@@ -169,6 +206,7 @@ export function SpecDetailView({
   readonly onBack: () => void;
   readonly onEdit: (spec: SpecDocument) => void;
 }) {
+  const gt = useGT();
   const view = useSpecsData(environmentId, { projectId, slug: slug as SpecDocument["slug"] });
   const { canMutate } = useProjectSpecModeState(environmentId, projectId);
   const runMutation = useRunSpecMutation();
@@ -182,7 +220,7 @@ export function SpecDetailView({
       <div className="flex flex-col gap-4">
         <div>
           <Button variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeftIcon /> All specs
+            <ArrowLeftIcon /> <T>All specs</T>
           </Button>
         </div>
         {view.error ? (
@@ -191,10 +229,12 @@ export function SpecDetailView({
           </Alert>
         ) : view.isPending ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Spinner /> Loading spec
+            <Spinner /> <T>Loading spec</T>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">This spec no longer exists.</p>
+          <p className="text-sm text-muted-foreground">
+            <T>This spec no longer exists.</T>
+          </p>
         )}
       </div>
     );
@@ -250,7 +290,7 @@ export function SpecDetailView({
     <div className="flex flex-col gap-6">
       <div>
         <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeftIcon /> All specs
+          <ArrowLeftIcon /> <T>All specs</T>
         </Button>
       </div>
 
@@ -262,9 +302,23 @@ export function SpecDetailView({
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <code>{spec.slug}</code>
-          <span>Revision {spec.revision}</span>
-          <span>Updated {formatSpecTimestamp(spec.updatedAt)}</span>
-          {spec.supersedes ? <span>Supersedes {spec.supersedes}</span> : null}
+          <span>
+            <T>
+              Revision <Var>{spec.revision}</Var>
+            </T>
+          </span>
+          <span>
+            <T>
+              Updated <Var>{formatSpecTimestamp(spec.updatedAt)}</Var>
+            </T>
+          </span>
+          {spec.supersedes ? (
+            <span>
+              <T>
+                Supersedes <Var>{spec.supersedes}</Var>
+              </T>
+            </span>
+          ) : null}
         </div>
         <code className="text-xs break-all">{spec.workspacePath}</code>
       </header>
@@ -272,7 +326,9 @@ export function SpecDetailView({
       {spec.error ? (
         <Alert variant="error">
           <TriangleAlertIcon />
-          <AlertTitle>This spec has an error</AlertTitle>
+          <AlertTitle>
+            <T>This spec has an error</T>
+          </AlertTitle>
           <AlertDescription>{spec.error}</AlertDescription>
         </Alert>
       ) : null}
@@ -307,7 +363,7 @@ export function SpecDetailView({
       ) : null}
 
       {spec.findings.length > 0 ? (
-        <Section title="Readiness findings">
+        <Section title={gt("Readiness findings")}>
           <ul className="flex flex-col gap-1.5">
             {spec.findings.map((finding) => (
               <li
@@ -327,33 +383,40 @@ export function SpecDetailView({
         </Section>
       ) : null}
 
-      <Section title="Requirements">
+      <Section title={gt("Requirements")}>
         <ChatMarkdown text={spec.content} cwd={spec.workspacePath} environmentId={environmentId} />
       </Section>
 
-      <Section title="Approval">
+      <Section title={gt("Approval")}>
         {spec.approval ? (
           <div className="flex flex-col gap-1.5">
             <p className="text-sm">
-              Approved by {spec.approval.subject} ({spec.approval.label}) on{" "}
-              {formatSpecTimestamp(spec.approval.approvedAt)} at revision {spec.approval.revision}.
+              <T>
+                Approved by <Var>{spec.approval.subject}</Var> (<Var>{spec.approval.label}</Var>) on{" "}
+                <Var>{formatSpecTimestamp(spec.approval.approvedAt)}</Var> at revision{" "}
+                <Var>{spec.approval.revision}</Var>.
+              </T>
             </p>
             {!spec.approvalValid ? (
               <p className="text-sm text-warning-foreground">
-                The spec changed after this approval, so it no longer counts.
+                <T>The spec changed after this approval, so it no longer counts.</T>
               </p>
             ) : null}
-            <Hash label="Spec hash" value={spec.approval.specHash} />
-            <Hash label="Constitution hash" value={spec.approval.constitutionHash} />
+            <Hash label={gt("Spec hash")} value={spec.approval.specHash} />
+            <Hash label={gt("Constitution hash")} value={spec.approval.constitutionHash} />
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Not approved.</p>
+          <p className="text-sm text-muted-foreground">
+            <T>Not approved.</T>
+          </p>
         )}
       </Section>
 
-      <Section title={`Tasks (${spec.tasks.length})`}>
+      <Section title={gt("Tasks ({count})", { count: spec.tasks.length })}>
         {spec.tasks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tasks yet.</p>
+          <p className="text-sm text-muted-foreground">
+            <T>No tasks yet.</T>
+          </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {spec.tasks.map((task) => (
@@ -363,9 +426,11 @@ export function SpecDetailView({
         )}
       </Section>
 
-      <Section title={`Evidence (${spec.evidence.length})`}>
+      <Section title={gt("Evidence ({count})", { count: spec.evidence.length })}>
         {spec.evidence.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No evidence recorded.</p>
+          <p className="text-sm text-muted-foreground">
+            <T>No evidence recorded.</T>
+          </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {spec.evidence.map((entry) => (
@@ -383,9 +448,11 @@ export function SpecDetailView({
         )}
       </Section>
 
-      <Section title={`Threads (${spec.bindings.length})`}>
+      <Section title={gt("Threads ({count})", { count: spec.bindings.length })}>
         {spec.bindings.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No threads are bound to this spec.</p>
+          <p className="text-sm text-muted-foreground">
+            <T>No threads are bound to this spec.</T>
+          </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {spec.bindings.map((binding) => (

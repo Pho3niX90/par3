@@ -1,5 +1,7 @@
 import type { SpecStatus } from "@t3tools/contracts";
 
+import { T } from "gt-react";
+
 import { Badge } from "../components/ui/badge";
 import { formatSpecStatusBadgeVariant, formatSpecStatusLabel } from "./state";
 
@@ -16,9 +18,18 @@ export function SpecApprovalBadge({
   readonly status: SpecStatus;
   readonly approvalValid: boolean;
 }) {
-  if (approvalValid) return <Badge variant="success">Approval valid</Badge>;
+  if (approvalValid)
+    return (
+      <Badge variant="success">
+        <T>Approval valid</T>
+      </Badge>
+    );
   if (status === "approved" || status === "in-progress" || status === "implemented") {
-    return <Badge variant="warning">Approval out of date</Badge>;
+    return (
+      <Badge variant="warning">
+        <T>Approval out of date</T>
+      </Badge>
+    );
   }
   return null;
 }

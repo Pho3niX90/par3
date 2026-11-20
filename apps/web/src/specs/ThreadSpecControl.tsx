@@ -9,6 +9,7 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { FileTextIcon } from "lucide-react";
+import { T, useGT } from "gt-react";
 import { useEffect, useState } from "react";
 
 import { useComposerMenuProps } from "../components/chat/composerEventScope";
@@ -97,10 +98,11 @@ function useLeaveSpecMode(
   projectId: ProjectId | null,
   threadId: ThreadId | null,
 ) {
+  const gt = useGT();
   const runMutation = useRunSpecMutation();
   return async (spec: SpecDocument): Promise<SpecMutationOutcome> => {
     if (projectId === null || threadId === null) {
-      return { ok: false, message: "This thread is not in a project." };
+      return { ok: false, message: gt("This thread is not in a project.") };
     }
     return runMutation(environmentId, {
       action: "unbind",
@@ -117,6 +119,7 @@ export function useThreadSpecBannerItem(
   projectId: ProjectId | null,
   threadId: ThreadId | null,
 ): ComposerBannerStackItem | null {
+  const gt = useGT();
   const state = useThreadSpecState(environmentId, projectId, threadId);
   const navigate = useNavigate();
   const leave = useLeaveSpecMode(environmentId, projectId, threadId);
@@ -127,7 +130,11 @@ export function useThreadSpecBannerItem(
     id: `spec-mode:${boundSpec.slug}`,
     variant: error ? "warning" : "info",
     icon: <FileTextIcon />,
-    title: `${boundSpec.title} · ${formatSpecRoleLabel(boundRole)} · ${formatSpecStatusLabel(boundSpec.status)}`,
+    title: gt("{title} · {role} · {status}", {
+      title: boundSpec.title,
+      role: formatSpecRoleLabel(boundRole),
+      status: formatSpecStatusLabel(boundSpec.status),
+    }),
     description: error ?? nextSpecStepHint(boundSpec.status),
     actions: (
       <>
@@ -141,7 +148,7 @@ export function useThreadSpecBannerItem(
             })
           }
         >
-          Open spec
+          <T>Open spec</T>
         </Button>
         <Button
           size="xs"
@@ -151,7 +158,7 @@ export function useThreadSpecBannerItem(
             void leave(boundSpec).then((outcome) => setError(outcome.ok ? null : outcome.message))
           }
         >
-          Leave Spec mode
+          <T>Leave Spec mode</T>
         </Button>
       </>
     ),
@@ -173,6 +180,7 @@ export function ThreadSpecModeControl({
   readonly size?: ComposerControlSize;
   readonly hidden?: boolean;
 }) {
+  const gt = useGT();
   const state = useThreadSpecState(environmentId, projectId, threadId);
   const floatingLayerProps = useComposerMenuProps();
   const [open, setOpen] = useComposerMenuState(hidden);
@@ -193,7 +201,7 @@ export function ThreadSpecModeControl({
 
   if ((!state.usable && state.boundSpec === null) || projectId === null) return null;
   if (threadId === null) {
-    const label = "Open this project's specs";
+    const label = gt("Open this project's specs");
     return (
       <Tooltip>
         <TooltipTrigger
@@ -213,7 +221,7 @@ export function ThreadSpecModeControl({
         >
           <ComposerControlIcon icon={FileTextIcon} size={size} />
           <span data-composer-control-label className="sr-only sm:not-sr-only">
-            Spec
+            <T>Spec</T>
           </span>
         </TooltipTrigger>
         <TooltipPopup side="top">{label}</TooltipPopup>
@@ -261,8 +269,8 @@ export function ThreadSpecModeControl({
   };
 
   const label = bound
-    ? "Spec mode is on. Manage this thread's spec."
-    : "Bind this thread to a spec";
+    ? gt("Spec mode is on. Manage this thread's spec.")
+    : gt("Bind this thread to a spec");
 
   return (
     <>
@@ -284,7 +292,7 @@ export function ThreadSpecModeControl({
           >
             <ComposerControlIcon icon={FileTextIcon} size={size} />
             <span data-composer-control-label className="sr-only sm:not-sr-only">
-              Spec
+              <T>Spec</T>
             </span>
           </TooltipTrigger>
           <TooltipPopup side="top">{label}</TooltipPopup>
@@ -321,7 +329,7 @@ export function ThreadSpecModeControl({
                       });
                     }}
                   >
-                    Open spec
+                    <T>Open spec</T>
                   </Button>
                   <Button
                     size="sm"
@@ -329,19 +337,21 @@ export function ThreadSpecModeControl({
                     disabled={busy || !state.canMutate}
                     onClick={() => void leave()}
                   >
-                    Leave Spec mode
+                    <T>Leave Spec mode</T>
                   </Button>
                 </div>
               </>
             ) : (
               <>
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-xs text-muted-foreground">Role for this thread</span>
+                  <span className="text-xs text-muted-foreground">
+                    <T>Role for this thread</T>
+                  </span>
                   <Select
                     value={role}
                     onValueChange={(value) => value && setRole(value as SpecRole)}
                   >
-                    <SelectTrigger aria-label="Spec role">
+                    <SelectTrigger aria-label={gt("Spec role")}>
                       <SelectValue>{formatSpecRoleLabel(role)}</SelectValue>
                     </SelectTrigger>
                     <SelectPopup {...floatingLayerProps}>
@@ -354,21 +364,28 @@ export function ThreadSpecModeControl({
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-xs text-muted-foreground">Spec</span>
+                  <span className="text-xs text-muted-foreground">
+                    <T>Spec</T>
+                  </span>
                   {state.specs.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No specs in this project yet.</p>
+                    <p className="text-sm text-muted-foreground">
+                      <T>No specs in this project yet.</T>
+                    </p>
                   ) : (
                     <Select value={selectedSlug} onValueChange={(value) => setSlug(value)}>
-                      <SelectTrigger aria-label="Spec">
+                      <SelectTrigger aria-label={gt("Spec")}>
                         <SelectValue>
                           {state.specs.find((entry) => entry.slug === selectedSlug)?.title ??
-                            "Choose a spec"}
+                            gt("Choose a spec")}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectPopup {...floatingLayerProps}>
                         {state.specs.map((entry) => (
                           <SelectItem key={entry.slug} value={entry.slug}>
-                            {entry.title} ({formatSpecStatusLabel(entry.status)})
+                            {gt("{title} ({status})", {
+                              title: entry.title,
+                              status: formatSpecStatusLabel(entry.status),
+                            })}
                           </SelectItem>
                         ))}
                       </SelectPopup>
@@ -385,7 +402,7 @@ export function ThreadSpecModeControl({
                       if (target) void bind(target);
                     }}
                   >
-                    Use spec
+                    <T>Use spec</T>
                   </Button>
                   <Button
                     size="sm"
@@ -396,7 +413,7 @@ export function ThreadSpecModeControl({
                       setCreating(true);
                     }}
                   >
-                    New spec
+                    <T>New spec</T>
                   </Button>
                 </div>
               </>

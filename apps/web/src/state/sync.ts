@@ -19,9 +19,11 @@ import {
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
+import { msg } from "gt-react";
 import { useContext, useEffect, useEffectEvent, useRef } from "react";
 import { create } from "zustand";
 
+import { m } from "../i18n/messages";
 import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";
 
@@ -78,11 +80,11 @@ export function retrySync() {
 }
 
 export function describeCommandFailure(result: AtomCommandResult<unknown, unknown>): string {
-  if (isAtomCommandInterrupted(result)) return "The request was cancelled.";
+  if (isAtomCommandInterrupted(result)) return m(msg("The request was cancelled."));
   const error = result._tag === "Failure" ? squashAtomCommandFailure(result) : null;
   return error instanceof Error && error.message.trim().length > 0
     ? error.message
-    : "The environment request failed.";
+    : m(msg("The environment request failed."));
 }
 
 /** A transport over the sync commands that remembers the first failure per environment. */
@@ -113,7 +115,11 @@ function makeTransport(registry: AtomRegistry.AtomRegistry) {
       );
       if (result._tag === "Success") {
         const rejected = result.value.results.find((outcome) => outcome.status === "rejected");
-        if (rejected) note(environmentId, rejected.message ?? `${rejected.key} was refused.`);
+        if (rejected)
+          note(
+            environmentId,
+            rejected.message ?? m(msg("{key} was refused.", { key: rejected.key })),
+          );
         return result.value;
       }
       const message = describeCommandFailure(result);

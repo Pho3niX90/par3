@@ -2,6 +2,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId, type SpecDocument, type SpecSummary } from "@t3tools/contracts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
+import { T, Var, useGT } from "gt-react";
 import { useState } from "react";
 
 import { isElectron } from "../env";
@@ -34,8 +35,16 @@ function SpecRow({ spec, onOpen }: { readonly spec: SpecSummary; readonly onOpen
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
           <code>{spec.slug}</code>
-          <span>Revision {spec.revision}</span>
-          <span>Updated {formatSpecTimestamp(spec.updatedAt)}</span>
+          <span>
+            <T>
+              Revision <Var>{spec.revision}</Var>
+            </T>
+          </span>
+          <span>
+            <T>
+              Updated <Var>{formatSpecTimestamp(spec.updatedAt)}</Var>
+            </T>
+          </span>
         </div>
         {spec.error ? <p className="text-xs text-destructive-foreground">{spec.error}</p> : null}
       </button>
@@ -66,11 +75,13 @@ function SpecsList({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-xs text-muted-foreground">Specs are stored in this checkout</span>
+          <span className="text-xs text-muted-foreground">
+            <T>Specs are stored in this checkout</T>
+          </span>
           {path ? <code className="text-sm break-all">{path}</code> : null}
         </div>
         <Button disabled={createDisabledReason !== null} onClick={onCreate}>
-          <PlusIcon /> New spec
+          <PlusIcon /> <T>New spec</T>
         </Button>
       </div>
       {createDisabledReason ? (
@@ -83,10 +94,12 @@ function SpecsList({
       ) : null}
       {view.isPending ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner /> Loading specs
+          <Spinner /> <T>Loading specs</T>
         </div>
       ) : view.specs.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No specs in this project yet.</p>
+        <p className="text-sm text-muted-foreground">
+          <T>No specs in this project yet.</T>
+        </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {view.specs.map((spec) => (
@@ -97,7 +110,7 @@ function SpecsList({
       {view.data?.nextOffset !== undefined ? (
         <div>
           <Button variant="outline" onClick={() => setPages((count) => count + 1)}>
-            Show more
+            <T>Show more</T>
           </Button>
         </div>
       ) : null}
@@ -131,12 +144,16 @@ function SpecsBody({
   if (!capabilitiesSupported) {
     return (
       <p className="text-sm text-muted-foreground">
-        This environment does not support Spec mode. Update its Par3 server to use specs.
+        <T>This environment does not support Spec mode. Update its Par3 server to use specs.</T>
       </p>
     );
   }
   if (project === null) {
-    return <p className="text-sm text-muted-foreground">This project is not available.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        <T>This project is not available.</T>
+      </p>
+    );
   }
 
   return (
@@ -176,6 +193,7 @@ function SpecsBody({
 }
 
 export function SpecsPage() {
+  const gt = useGT();
   const search = useSearch({ from: "/specs" });
   const environmentId = search.environment ? EnvironmentId.make(search.environment) : null;
   const projectId = search.project ? ProjectId.make(search.project) : null;
@@ -188,7 +206,7 @@ export function SpecsPage() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         <WorkspacePageHeader electron={isElectron}>
           <h1 className="min-w-0 truncate text-sm font-medium">
-            Specs{project ? ` · ${project.title}` : ""}
+            {project ? gt("Specs · {title}", { title: project.title }) : gt("Specs")}
           </h1>
         </WorkspacePageHeader>
         <ScrollArea className="min-h-0 flex-1">
@@ -197,7 +215,7 @@ export function SpecsPage() {
               <SpecsBody environmentId={environmentId} projectId={projectId} slug={search.slug} />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Open specs from a project's settings or the command palette.
+                <T>Open specs from a project's settings or the command palette.</T>
               </p>
             )}
           </WorkspacePageContainer>

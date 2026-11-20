@@ -9,7 +9,9 @@ import {
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
+import { msg } from "gt-react";
 
+import { m } from "../i18n/messages";
 import {
   deriveProviderInstanceEntries,
   resolveDefaultProviderModelSelection,
@@ -38,7 +40,7 @@ export function useStartSpecThread(environmentId: EnvironmentId, projectId: Proj
 
   return async (spec: SpecDocument, role: SpecRole): Promise<StartSpecThreadOutcome> => {
     if (project === null || config === null) {
-      return { ok: false, message: "Connect to the environment and try again." };
+      return { ok: false, message: m(msg("Connect to the environment and try again.")) };
     }
     const settings = resolveProjectSettings(
       config.settings ?? DEFAULT_SERVER_SETTINGS,
@@ -50,7 +52,10 @@ export function useStartSpecThread(environmentId: EnvironmentId, projectId: Proj
       settings.defaultModelSelection,
     );
     if (modelSelection === null) {
-      return { ok: false, message: "No provider is available to run the implementation thread." };
+      return {
+        ok: false,
+        message: m(msg("No provider is available to run the implementation thread.")),
+      };
     }
     const driver =
       deriveProviderInstanceEntries(config.providers).find(
@@ -65,7 +70,10 @@ export function useStartSpecThread(environmentId: EnvironmentId, projectId: Proj
       input: {
         threadId,
         projectId,
-        title: role === "requirements" ? `Requirements: ${spec.title}` : `Implement ${spec.title}`,
+        title:
+          role === "requirements"
+            ? m(msg("Requirements: {title}", { title: spec.title }))
+            : m(msg("Implement {title}", { title: spec.title })),
         modelSelection,
         runtimeMode: settings.defaultRuntimeMode,
         interactionMode: "default",
@@ -88,7 +96,11 @@ export function useStartSpecThread(environmentId: EnvironmentId, projectId: Proj
     if (!bound.ok) {
       return {
         ok: false,
-        message: `The thread was created but could not be bound to the spec: ${bound.message}`,
+        message: m(
+          msg("The thread was created but could not be bound to the spec: {message}", {
+            message: bound.message,
+          }),
+        ),
       };
     }
     await navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });

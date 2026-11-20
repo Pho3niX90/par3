@@ -268,7 +268,7 @@ export function buildThreadActionMenuItems(
       ? [
           {
             id: "mention-in-composer" as const,
-            label: "Mention in composer",
+            label: resolve(msg("Mention in composer")),
             icon: "at-sign",
             separatorBefore: true,
           },

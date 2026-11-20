@@ -7,7 +7,7 @@ import { type ChangeRequestTerminology, sourceControlClients } from "../sourceCo
 import { mFallback, msg } from "gt-i18n";
 import type { MFunctionType } from "gt-i18n/types";
 
-import { mergeOperationNoun, selectMergeConflictState } from "./mergeConflictState.ts";
+import { selectMergeConflictState } from "./mergeConflictState.ts";
 
 export type GitActionIconName = "commit" | "push" | "pr";
 
@@ -153,8 +153,18 @@ export function resolveQuickAction(
   if (conflictState.needsResolution) {
     return {
       label: conflictState.canContinue
-        ? `Continue ${mergeOperationNoun(conflictState.operation)}`
-        : `Resolve conflicts (${conflictState.conflictCount})`,
+        ? resolve(
+            msg(
+              "{operation, select, merge {Continue merge} rebase {Continue rebase} cherryPick {Continue cherry-pick} revert {Continue revert} other {Continue conflict resolution}}",
+              {
+                operation:
+                  conflictState.operation === "cherry-pick"
+                    ? "cherryPick"
+                    : (conflictState.operation ?? "other"),
+              },
+            ),
+          )
+        : resolve(msg("Resolve conflicts ({count})", { count: conflictState.conflictCount })),
       disabled: false,
       kind: "resolve_conflicts",
     };

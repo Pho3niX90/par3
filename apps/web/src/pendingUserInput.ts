@@ -10,6 +10,7 @@ import {
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
+import { msg } from "gt-react";
 import {
   buildPendingUserInputAnswers,
   normalizeSelectedOptionValues,
@@ -18,6 +19,7 @@ import {
   type PendingUserInputDraftAnswer,
 } from "@t3tools/client-runtime/state/pending-user-input";
 
+import { m, type MessageResolver } from "./i18n/messages";
 import { collectInlineContextIds } from "./lib/composerContextReferences";
 import {
   previewAnnotationContextRecord,
@@ -92,6 +94,7 @@ export interface PendingUserInputProgress<Q extends UserInputQuestion = UserInpu
 export function summarizePendingUserInputAnswer(
   question: UserInputQuestion,
   draft: PendingUserInputDraftAnswer | undefined,
+  resolve: MessageResolver = m,
 ): string | null {
   const answer = resolvePendingUserInputAnswer(question, draft);
   if (answer === null) return null;
@@ -99,7 +102,7 @@ export function summarizePendingUserInputAnswer(
     question.options.find((option) => (option.value ?? option.label) === value)?.label ?? value;
   const text = typeof answer === "string" ? labelFor(answer) : answer.map(labelFor).join(", ");
   // An attachment-only answer resolves to an empty string.
-  return text.length > 0 ? text : "Attachment";
+  return text.length > 0 ? text : resolve(msg("Attachment"));
 }
 
 const DISPLACED_ANSWER_SEPARATOR = "\n\n";

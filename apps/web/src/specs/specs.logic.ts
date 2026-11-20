@@ -1,4 +1,7 @@
 import { specRoleSupported, type SpecRole, type SpecStatus } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m } from "../i18n/messages";
 
 export type SpecActionId =
   | "edit"
@@ -17,7 +20,7 @@ export interface SpecAction {
   readonly disabledReason: string | null;
 }
 
-const NO_PERMISSION_REASON = "This connection cannot change specs.";
+const noPermissionReason = () => m(msg("This connection cannot change specs."));
 
 function action(
   id: SpecActionId,
@@ -36,59 +39,64 @@ export function resolveSpecActions(input: {
   readonly hasError: boolean;
 }): ReadonlyArray<SpecAction> {
   const { status, canMutate, findingCount, approvalValid, hasError } = input;
-  const gate = (reason: string | null) => (canMutate ? reason : NO_PERMISSION_REASON);
+  const gate = (reason: string | null) => (canMutate ? reason : noPermissionReason());
   const actions: SpecAction[] = [];
   switch (status) {
     case "draft":
       actions.push(
-        action("edit", "Edit", "secondary", gate(null)),
-        action("request-review", "Request review", "primary", gate(null)),
-        action("start-requirements", "Start requirements thread", "secondary", gate(null)),
+        action("edit", m(msg("Edit")), "secondary", gate(null)),
+        action("request-review", m(msg("Request review")), "primary", gate(null)),
+        action("start-requirements", m(msg("Start requirements thread")), "secondary", gate(null)),
       );
       break;
     case "review":
       actions.push(
         action(
           "approve",
-          "Approve",
+          m(msg("Approve")),
           "primary",
           gate(
             findingCount > 0
-              ? `Resolve ${findingCount} readiness ${findingCount === 1 ? "finding" : "findings"} before approving.`
+              ? m(
+                  msg(
+                    "{count, plural, one {Resolve {count} readiness finding before approving.} other {Resolve {count} readiness findings before approving.}}",
+                    { count: findingCount },
+                  ),
+                )
               : null,
           ),
         ),
-        action("request-changes", "Request changes", "secondary", gate(null)),
-        action("reject", "Reject", "destructive", gate(null)),
-        action("start-requirements", "Start requirements thread", "secondary", gate(null)),
+        action("request-changes", m(msg("Request changes")), "secondary", gate(null)),
+        action("reject", m(msg("Reject")), "destructive", gate(null)),
+        action("start-requirements", m(msg("Start requirements thread")), "secondary", gate(null)),
       );
       break;
     case "approved":
       actions.push(
         action(
           "start-implementation",
-          "Start implementation",
+          m(msg("Start implementation")),
           "primary",
           gate(
             approvalValid
               ? null
-              : "The approval is out of date. Reopen the spec and approve it again.",
+              : m(msg("The approval is out of date. Reopen the spec and approve it again.")),
           ),
         ),
       );
-      if (!approvalValid) actions.push(action("reopen", "Reopen", "secondary", gate(null)));
+      if (!approvalValid) actions.push(action("reopen", m(msg("Reopen")), "secondary", gate(null)));
       break;
     case "rejected":
     case "done":
     case "implemented":
     case "blocked":
-      actions.push(action("reopen", "Reopen", "secondary", gate(null)));
+      actions.push(action("reopen", m(msg("Reopen")), "secondary", gate(null)));
       break;
     case "in-progress":
       break;
   }
   if (hasError && !actions.some((entry) => entry.id === "reopen")) {
-    actions.push(action("reopen", "Reopen", "secondary", gate(null)));
+    actions.push(action("reopen", m(msg("Reopen")), "secondary", gate(null)));
   }
   return actions;
 }
@@ -96,21 +104,21 @@ export function resolveSpecActions(input: {
 export function nextSpecStepHint(status: SpecStatus): string {
   switch (status) {
     case "draft":
-      return "Finish the requirements, then request review.";
+      return m(msg("Finish the requirements, then request review."));
     case "review":
-      return "Waiting for a person to approve or request changes.";
+      return m(msg("Waiting for a person to approve or request changes."));
     case "approved":
-      return "Approved. Start implementation in a new thread.";
+      return m(msg("Approved. Start implementation in a new thread."));
     case "in-progress":
-      return "Implementation is in progress.";
+      return m(msg("Implementation is in progress."));
     case "implemented":
-      return "Implemented. Check the evidence, then reopen if needed.";
+      return m(msg("Implemented. Check the evidence, then reopen if needed."));
     case "done":
-      return "Done.";
+      return m(msg("Done."));
     case "blocked":
-      return "Blocked. Reopen the spec to continue.";
+      return m(msg("Blocked. Reopen the spec to continue."));
     case "rejected":
-      return "Rejected. Reopen the spec to revise it.";
+      return m(msg("Rejected. Reopen the spec to revise it."));
   }
 }
 
@@ -124,19 +132,24 @@ const DRIVER_LABELS: Record<string, string> = {
 };
 
 export function specRoleRefusal(driver: string | null, role: SpecRole): string | null {
-  if (driver === null) return "Choose a provider before binding this thread to a spec.";
+  if (driver === null) return m(msg("Choose a provider before binding this thread to a spec."));
   if (specRoleSupported(driver, role)) return null;
   const label = DRIVER_LABELS[driver] ?? driver;
-  return `The ${role} role needs Codex or Claude. ${label} supports the implementation and test roles only.`;
+  return m(
+    msg(
+      "The {role} role needs Codex or Claude. {label} supports the implementation and test roles only.",
+      { role, label },
+    ),
+  );
 }
 
 export function specModeCreateDisabledReason(input: {
   readonly specModeEnabled: boolean;
   readonly canMutate: boolean;
 }): string | null {
-  if (!input.canMutate) return NO_PERMISSION_REASON;
+  if (!input.canMutate) return noPermissionReason();
   if (!input.specModeEnabled) {
-    return "Turn on Spec mode in the project settings to create specs.";
+    return m(msg("Turn on Spec mode in the project settings to create specs."));
   }
   return null;
 }

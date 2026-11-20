@@ -1,4 +1,5 @@
 import type { EnvironmentId, ProjectId, SpecDocument } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { useState } from "react";
 
 import { Alert, AlertDescription } from "../components/ui/alert";
@@ -40,6 +41,7 @@ export function SpecEditorDialog({
   readonly onClose: () => void;
   readonly onSaved: (spec: SpecDocument) => void;
 }) {
+  const gt = useGT();
   const runMutation = useRunSpecMutation();
   const editing = target.mode === "edit" ? target.spec : null;
   const [title, setTitle] = useState(editing?.title ?? "");
@@ -108,22 +110,26 @@ export function SpecEditorDialog({
     >
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit spec" : "New spec"}</DialogTitle>
+          <DialogTitle>{editing ? gt("Edit spec") : gt("New spec")}</DialogTitle>
         </DialogHeader>
         <DialogPanel>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="spec-title">Title</Label>
+              <Label htmlFor="spec-title">
+                <T>Title</T>
+              </Label>
               <Input
                 id="spec-title"
                 value={title}
                 onChange={(event) => onTitleChange(event.target.value)}
-                placeholder="What are we building?"
+                placeholder={gt("What are we building?")}
                 autoFocus
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="spec-slug">Slug</Label>
+              <Label htmlFor="spec-slug">
+                <T>Slug</T>
+              </Label>
               <Input
                 id="spec-slug"
                 font="mono"
@@ -137,12 +143,14 @@ export function SpecEditorDialog({
               />
               {slugInvalid ? (
                 <p className="text-xs text-destructive-foreground">
-                  Use lowercase letters, numbers and single hyphens, up to 80 characters.
+                  <T>Use lowercase letters, numbers and single hyphens, up to 80 characters.</T>
                 </p>
               ) : null}
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="spec-content">Requirements (Markdown)</Label>
+              <Label htmlFor="spec-content">
+                <T>Requirements (Markdown)</T>
+              </Label>
               <Textarea
                 id="spec-content"
                 value={content}
@@ -154,14 +162,16 @@ export function SpecEditorDialog({
             </div>
             {editing === null ? (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="spec-supersedes">Supersedes (optional)</Label>
+                <Label htmlFor="spec-supersedes">
+                  <T>Supersedes (optional)</T>
+                </Label>
                 <Input
                   id="spec-supersedes"
                   font="mono"
                   value={supersedes}
                   aria-invalid={supersedesInvalid || undefined}
                   onChange={(event) => setSupersedes(event.target.value)}
-                  placeholder="slug of an older spec"
+                  placeholder={gt("slug of an older spec")}
                 />
               </div>
             ) : null}
@@ -174,10 +184,10 @@ export function SpecEditorDialog({
         </DialogPanel>
         <DialogFooter>
           <Button variant="outline" disabled={saving} onClick={onClose}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button disabled={!canSave} onClick={() => void save()}>
-            {saving ? "Saving" : editing ? "Save" : "Create spec"}
+            {saving ? gt("Saving") : editing ? gt("Save") : gt("Create spec")}
           </Button>
         </DialogFooter>
       </DialogPopup>

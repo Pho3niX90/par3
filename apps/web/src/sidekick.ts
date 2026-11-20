@@ -7,6 +7,8 @@ import {
   type ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+import { m as defaultResolve, type MessageResolver } from "./i18n/messages";
 
 import { isProviderInstancePickerReady, type ProviderInstanceEntry } from "./providerInstances";
 
@@ -18,7 +20,7 @@ interface SidekickModelOptionSource {
   readonly isUnavailable?: boolean | undefined;
 }
 
-export const SIDEKICK_PER_REQUEST_HINT = "Billed per request: the lead batches work.";
+export const SIDEKICK_PER_REQUEST_HINT = msg("Billed per request: the lead batches work.");
 
 export function providerCanLeadSidekick(provider: ServerProvider | null | undefined): boolean {
   if (!provider) return false;
@@ -86,7 +88,9 @@ export function resolveSidekickPairing(input: {
   readonly selection: ModelSelection | null | undefined;
   readonly lead: ModelRef;
   readonly entries: ReadonlyArray<ProviderInstanceEntry>;
+  readonly resolve?: MessageResolver;
 }): SidekickPairing | null {
+  const resolve = input.resolve ?? defaultResolve;
   const { selection } = input;
   if (selection == null) return null;
   const entry = input.entries.find((candidate) => candidate.instanceId === selection.instanceId);
@@ -95,14 +99,14 @@ export function resolveSidekickPairing(input: {
   );
   const problem =
     leadEntry !== undefined && !providerCanLeadSidekick(leadEntry.snapshot)
-      ? `${leadEntry.displayName} cannot lead with a sidekick.`
+      ? resolve(msg("{name} cannot lead with a sidekick.", { name: leadEntry.displayName }))
       : (sidekickSelectionProblem({
           lead: input.lead,
           sidekick: selection,
           providers: input.entries.map((candidate) => candidate.snapshot),
         }) ??
         (entry !== undefined && !entry.enabled
-          ? `${entry.displayName} is disabled for this project.`
+          ? resolve(msg("{name} is disabled for this project.", { name: entry.displayName }))
           : null));
   return {
     selection,

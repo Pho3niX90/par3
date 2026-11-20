@@ -7,6 +7,8 @@ import {
   type UsageSource,
   type UsageSummaryInput,
 } from "@t3tools/contracts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 const CURRENCY = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -360,39 +362,57 @@ function formatThreadUsd(value: number): string {
   return value > 0 && value < 0.01 ? "<$0.01" : formatUsd(value);
 }
 
-const countOf = (count: number, one: string, many: string) =>
-  `${count} ${count === 1 ? one : many}`;
-
-function threadCostNotes({ coverage }: ThreadCost): readonly string[] {
+function threadCostNotes({ coverage }: ThreadCost, resolve: MFunctionType): readonly string[] {
   const notes: string[] = [];
   if (coverage.untrackedConversations > 0) {
     notes.push(
-      `${countOf(coverage.untrackedConversations, "conversation uses", "conversations use")} a provider with no usage history.`,
+      resolve(
+        msg(
+          "{count, plural, one {{count} conversation uses a provider with no usage history.} other {{count} conversations use a provider with no usage history.}}",
+          { count: coverage.untrackedConversations },
+        ),
+      ),
     );
   }
   if (coverage.conversationsWithoutUsage > 0) {
     notes.push(
-      `${countOf(coverage.conversationsWithoutUsage, "conversation has", "conversations have")} no usage in this machine's history.`,
+      resolve(
+        msg(
+          "{count, plural, one {{count} conversation has no usage in this machine's history.} other {{count} conversations have no usage in this machine's history.}}",
+          { count: coverage.conversationsWithoutUsage },
+        ),
+      ),
     );
   }
   if (coverage.unreadableSources > 0) {
     notes.push(
-      `${countOf(coverage.unreadableSources, "usage source", "usage sources")} could not be fully read.`,
+      resolve(
+        msg(
+          "{count, plural, one {{count} usage source could not be fully read.} other {{count} usage sources could not be fully read.}}",
+          { count: coverage.unreadableSources },
+        ),
+      ),
     );
   }
   if (coverage.unpricedRecords > 0) {
     notes.push(
-      `${countOf(coverage.unpricedRecords, "usage record has", "usage records have")} no known price.`,
+      resolve(
+        msg(
+          "{count, plural, one {{count} usage record has no known price.} other {{count} usage records have no known price.}}",
+          { count: coverage.unpricedRecords },
+        ),
+      ),
     );
   }
   if (notes.length === 0 && !coverage.complete) {
-    notes.push("This thread has not used a provider yet.");
+    notes.push(resolve(msg("This thread has not used a provider yet.")));
   }
   return notes;
 }
 
 function mergeThreadCostModels(
   cost: ThreadCost,
+  resolve: MFunctionType,
 ): readonly ThreadCostDescription["models"][number][] {
   const lines = new Map<string, ThreadCostLine>();
   for (const line of [...cost.thread.models, ...cost.subagents.models]) {
@@ -424,7 +444,10 @@ function mergeThreadCostModels(
     .map((line) => ({
       key: `${line.provider}:${line.model}`,
       label: line.model,
-      amount: line.records === line.unpricedRecords ? "No price" : formatThreadUsd(line.costUsd),
+      amount:
+        line.records === line.unpricedRecords
+          ? resolve(msg("No price"))
+          : formatThreadUsd(line.costUsd),
       // reasoningTokens is a subset of outputTokens and must not be added again.
       tokens: formatTokens(
         line.totals.uncachedInputTokens +
@@ -436,27 +459,33 @@ function mergeThreadCostModels(
 }
 
 /** Shared wording, so web, mobile, and the CLI state the same figure and the same caveats. */
-export function describeThreadCost(cost: ThreadCost): ThreadCostDescription {
+export function describeThreadCost(
+  cost: ThreadCost,
+  resolve: MFunctionType = mFallback,
+): ThreadCostDescription {
   const { totalCostUsd, coverage, thread, subagents } = cost;
   const unknown = totalCostUsd === 0 && !coverage.complete;
+  const subagentCount = subagents.threadCount + (subagents.nativeAgentCount ?? 0);
   return {
-    amount: unknown ? "Unknown" : `${formatThreadUsd(totalCostUsd)}${coverage.complete ? "" : "+"}`,
+    amount: unknown
+      ? resolve(msg("Unknown"))
+      : `${formatThreadUsd(totalCostUsd)}${coverage.complete ? "" : "+"}`,
     breakdown: unknown
       ? []
       : [
-          { label: "This thread", amount: formatThreadUsd(thread.costUsd) },
+          { label: resolve(msg("This thread")), amount: formatThreadUsd(thread.costUsd) },
           {
             label: subagents.nativeAgentCountUnknown
-              ? "Sub-agents"
-              : countOf(
-                  subagents.threadCount + (subagents.nativeAgentCount ?? 0),
-                  "sub-agent",
-                  "sub-agents",
+              ? resolve(msg("Sub-agents"))
+              : resolve(
+                  msg("{count, plural, one {{count} sub-agent} other {{count} sub-agents}}", {
+                    count: subagentCount,
+                  }),
                 ),
             amount: formatThreadUsd(subagents.costUsd),
           },
         ],
-    models: mergeThreadCostModels(cost),
-    notes: threadCostNotes(cost),
+    models: mergeThreadCostModels(cost, resolve),
+    notes: threadCostNotes(cost, resolve),
   };
 }

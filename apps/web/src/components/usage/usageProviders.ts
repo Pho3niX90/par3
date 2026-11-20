@@ -43,6 +43,7 @@ export const PROVIDER_PRESENTATION = {
     driverKind: ProviderDriverKind.make("pi"),
   },
   copilot: {
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
     label: "GitHub Copilot",
     color: "#c86bb4",
     driverKind: ProviderDriverKind.make("copilot"),

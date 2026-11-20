@@ -136,12 +136,15 @@ export function resolvePlanFollowUpSubmission(input: {
   };
 }
 
-export function buildPlanImplementationThreadTitle(planMarkdown: string): string {
+export function buildPlanImplementationThreadTitle(
+  planMarkdown: string,
+  resolve: MessageResolver = m,
+): string {
   const title = proposedPlanTitle(planMarkdown);
   if (!title) {
-    return "Implement plan";
+    return resolve(msg("Implement plan"));
   }
-  return `Implement ${title}`;
+  return resolve(msg("Implement {title}", { title }));
 }
 
 export function buildProposedPlanMarkdownFilename(planMarkdown: string): string {

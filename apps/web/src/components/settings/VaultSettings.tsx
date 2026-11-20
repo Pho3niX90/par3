@@ -8,6 +8,7 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { KeyRoundIcon, MoreVertical, PlusIcon } from "lucide-react";
 import { useContext, useEffect, useEffectEvent, useState } from "react";
 
@@ -60,6 +61,7 @@ interface VaultMachine {
 }
 
 export function VaultSettings() {
+  const gt = useGT();
   const { environments } = useEnvironments();
   const connected = environments.filter(
     (environment) => environment.connection.phase === "connected",
@@ -80,16 +82,18 @@ export function VaultSettings() {
   const members = machines.filter((machine) => machine.data?.status.member === true);
 
   return (
-    <SettingsSection id="vault" title="Vault">
+    <SettingsSection id="vault" title={gt("Vault")}>
       <div className="space-y-4 px-4 py-4 sm:px-5">
         <p className="text-xs text-muted-foreground">
-          Secrets stored once and used by name as <code>vault:NAME</code> in provider and MCP server
-          settings. Values never reach this app; machines pass them to each other only encrypted
-          with the vault key.
+          <T>
+            Secrets stored once and used by name as <code>vault:NAME</code> in provider and MCP
+            server settings. Values never reach this app; machines pass them to each other only
+            encrypted with the vault key.
+          </T>
         </p>
         {vaultEnvironments.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Connect a machine running a current version of Par3 to use the vault.
+            <T>Connect a machine running a current version of Par3 to use the vault.</T>
           </p>
         ) : (
           <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
@@ -108,8 +112,11 @@ export function VaultSettings() {
         )}
         {outdated.length > 0 ? (
           <p className="text-xs text-muted-foreground">
-            Update Par3 on {outdated.map((environment) => environment.label).join(", ")} to use the
-            vault there.
+            <T>
+              Update Par3 on{" "}
+              <Var>{outdated.map((environment) => environment.label).join(", ")}</Var> to use the
+              vault there.
+            </T>
           </p>
         ) : null}
       </div>
@@ -138,6 +145,7 @@ function VaultMachineRow(props: {
   readonly members: ReadonlyArray<VaultMachine>;
   readonly anyMember: boolean;
 }) {
+  const gt = useGT();
   const { environment, data, error } = props.machine;
   const environmentId = environment.environmentId;
   const registry = useContext(RegistryContext);
@@ -171,20 +179,33 @@ function VaultMachineRow(props: {
 
   const leave = async () => {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Leave the vault on ${environment.label}?\nThis deletes the vault key and every secret stored on this machine. Settings that use vault:NAME there stop working.`,
+      gt(
+        "Leave the vault on {label}?\nThis deletes the vault key and every secret stored on this machine. Settings that use vault:NAME there stop working.",
+        { label: environment.label },
+      ),
       { variant: "destructive" },
     );
-    if (confirmed)
-      await run({ _tag: "leave" }, `Could not leave the vault on ${environment.label}`);
+    if (confirmed) {
+      await run(
+        { _tag: "leave" },
+        gt("Could not leave the vault on {label}", { label: environment.label }),
+      );
+    }
   };
 
   const remove = async (entry: VaultEntry) => {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Delete ${entry.name} from the vault?\nMachines that sync the vault delete it too.`,
+      gt("Delete {name} from the vault?\nMachines that sync the vault delete it too.", {
+        name: entry.name,
+      }),
       { variant: "destructive" },
     );
-    if (confirmed)
-      await run({ _tag: "delete", name: entry.name }, `Could not delete ${entry.name}`);
+    if (confirmed) {
+      await run(
+        { _tag: "delete", name: entry.name },
+        gt("Could not delete {name}", { name: entry.name }),
+      );
+    }
   };
 
   const member = data?.status.member === true;
@@ -195,15 +216,21 @@ function VaultMachineRow(props: {
           <div className="font-medium">{environment.label}</div>
           <p className="text-xs text-muted-foreground">
             {data === null
-              ? (error ?? "Loading…")
+              ? (error ?? gt("Loading…"))
               : member
-                ? `In the vault${data.status.vaultFingerprint ? ` ${data.status.vaultFingerprint}` : ""}`
-                : "Not in the vault"}
+                ? data.status.vaultFingerprint
+                  ? gt("In the vault {fingerprint}", { fingerprint: data.status.vaultFingerprint })
+                  : gt("In the vault")
+                : gt("Not in the vault")}
           </p>
           {data ? (
             <p className="text-xs text-muted-foreground">
-              This machine's vault key fingerprint:{" "}
-              <span className="font-mono">{data.status.recipient.fingerprint}</span>
+              <T>
+                This machine's vault key fingerprint:{" "}
+                <span className="font-mono">
+                  <Var>{data.status.recipient.fingerprint}</Var>
+                </span>
+              </T>
             </p>
           ) : null}
         </div>
@@ -216,7 +243,7 @@ function VaultMachineRow(props: {
                 disabled={!canWrite || busy}
                 onClick={() => setEditing("new")}
               >
-                <PlusIcon className="size-3.5" /> Add secret
+                <PlusIcon className="size-3.5" /> <T>Add secret</T>
               </Button>
               <Menu>
                 <MenuTrigger
@@ -225,7 +252,7 @@ function VaultMachineRow(props: {
                       size="icon-sm"
                       variant="ghost-muted"
                       disabled={busy}
-                      aria-label={`Vault options for ${environment.label}`}
+                      aria-label={gt("Vault options for {label}", { label: environment.label })}
                     />
                   }
                 >
@@ -233,10 +260,10 @@ function VaultMachineRow(props: {
                 </MenuTrigger>
                 <MenuPopup align="end">
                   <MenuItem disabled={!canWrite} onClick={() => setImporting(true)}>
-                    Import existing secrets
+                    <T>Import existing secrets</T>
                   </MenuItem>
                   <MenuItem variant="destructive" disabled={!isOwner} onClick={() => void leave()}>
-                    Leave vault on this machine
+                    <T>Leave vault on this machine</T>
                   </MenuItem>
                 </MenuPopup>
               </Menu>
@@ -248,7 +275,7 @@ function VaultMachineRow(props: {
               disabled={!isOwner || busy || props.members.length === 0}
               onClick={() => setJoining(true)}
             >
-              Join vault
+              <T>Join vault</T>
             </Button>
           ) : (
             <Button
@@ -256,10 +283,16 @@ function VaultMachineRow(props: {
               variant="outline"
               disabled={!isOwner || busy}
               onClick={() =>
-                void run({ _tag: "create" }, `Could not create a vault on ${environment.label}`)
+                void run(
+                  { _tag: "create" },
+                  gt("Could not create a vault on {label}", { label: environment.label }),
+                )
               }
             >
-              {busy ? <Spinner size="xs" /> : null} Create vault on {environment.label}
+              {busy ? <Spinner size="xs" /> : null}{" "}
+              <T>
+                Create vault on <Var>{environment.label}</Var>
+              </T>
             </Button>
           )}
         </div>
@@ -267,7 +300,9 @@ function VaultMachineRow(props: {
       {member && data ? (
         <>
           {data.entries.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No secrets yet.</p>
+            <p className="text-xs text-muted-foreground">
+              <T>No secrets yet.</T>
+            </p>
           ) : (
             <ul className="divide-y divide-border/60 rounded-md border border-border/60">
               {data.entries.map((entry) => (
@@ -276,12 +311,14 @@ function VaultMachineRow(props: {
                     <div className="font-mono text-sm">{entry.name}</div>
                     <p className="truncate text-xs text-muted-foreground">
                       {entry.description ? `${entry.description} · ` : ""}
-                      Updated {formatRelativeTimeLabel(entry.updatedAt)}
+                      <T>
+                        Updated <Var>{formatRelativeTimeLabel(entry.updatedAt)}</Var>
+                      </T>
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      Agents may read
+                      <T>Agents may read</T>
                       <Switch
                         size="sm"
                         checked={entry.agentReadable}
@@ -289,7 +326,7 @@ function VaultMachineRow(props: {
                         onCheckedChange={(agentReadable) =>
                           void run(
                             { _tag: "setAgentReadable", name: entry.name, agentReadable },
-                            `Could not change ${entry.name}`,
+                            gt("Could not change {name}", { name: entry.name }),
                           )
                         }
                       />
@@ -301,16 +338,18 @@ function VaultMachineRow(props: {
                             size="icon-sm"
                             variant="ghost-muted"
                             disabled={!canWrite || busy}
-                            aria-label={`${entry.name} options`}
+                            aria-label={gt("{name} options", { name: entry.name })}
                           />
                         }
                       >
                         <MoreVertical />
                       </MenuTrigger>
                       <MenuPopup align="end">
-                        <MenuItem onClick={() => setEditing(entry)}>Edit</MenuItem>
+                        <MenuItem onClick={() => setEditing(entry)}>
+                          <T>Edit</T>
+                        </MenuItem>
                         <MenuItem variant="destructive" onClick={() => void remove(entry)}>
-                          Delete
+                          <T>Delete</T>
                         </MenuItem>
                       </MenuPopup>
                     </Menu>
@@ -321,7 +360,9 @@ function VaultMachineRow(props: {
           )}
           {data.audit.length > 0 ? (
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Recent agent reads</p>
+              <p className="text-xs text-muted-foreground">
+                <T>Recent agent reads</T>
+              </p>
               <ul className="space-y-0.5 text-xs">
                 {data.audit.slice(0, 10).map((entry) => (
                   <li key={`${entry.name}:${entry.at}`} className="flex gap-2">
@@ -349,7 +390,7 @@ function VaultMachineRow(props: {
           existingNames={data?.entries.map((entry) => entry.name) ?? []}
           onClose={() => setEditing(null)}
           onSave={async (input) => {
-            const saved = await run(input, `Could not save ${input.name}`);
+            const saved = await run(input, gt("Could not save {name}", { name: input.name }));
             if (saved) setEditing(null);
           }}
         />
@@ -362,13 +403,16 @@ function VaultMachineRow(props: {
           onImport={async (items) => {
             const imported = await run(
               { _tag: "import", items },
-              `Could not import secrets on ${environment.label}`,
+              gt("Could not import secrets on {label}", { label: environment.label }),
             );
             if (imported) {
               setImporting(false);
               toastManager.add({
                 type: "success",
-                title: `Moved ${items.length} ${items.length === 1 ? "secret" : "secrets"} into the vault`,
+                title: gt(
+                  "Moved {count, plural, one {{count} secret} other {{count} secrets}} into the vault",
+                  { count: items.length },
+                ),
               });
             }
           }}
@@ -392,12 +436,14 @@ function VaultSecretDialog(props: {
   readonly onClose: () => void;
   readonly onSave: (input: Extract<VaultMutation, { _tag: "set" }>) => Promise<void>;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const isNew = props.entry === null;
   const [name, setName] = useState(props.entry?.name ?? "");
   const [description, setDescription] = useState(props.entry?.description ?? "");
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
-  const nameError = isNew ? vaultSecretNameError(name, props.existingNames) : null;
+  const nameError = isNew ? vaultSecretNameError(name, props.existingNames, m) : null;
   const valid = nameError === null && (!isNew || value !== "");
   return (
     <Dialog
@@ -426,20 +472,31 @@ function VaultSecretDialog(props: {
         }
       >
         <DialogHeader>
-          <DialogTitle>{isNew ? "Add secret" : `Edit ${props.entry?.name}`}</DialogTitle>
+          <DialogTitle>
+            {isNew ? gt("Add secret") : gt("Edit {name}", { name: props.entry?.name ?? "" })}
+          </DialogTitle>
           <DialogDescription>
-            Use it in settings as <code>vault:{name.trim() || "NAME"}</code>.
+            <T>
+              Use it in settings as{" "}
+              <code>
+                vault:<Var>{name.trim() || "NAME"}</Var>
+              </code>
+              .
+            </T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <label className="block space-y-1.5 text-sm">
-            <span>Name</span>
+            <span>
+              <T>Name</T>
+            </span>
             <Input
               autoFocus={isNew}
               required
               value={name}
               disabled={!isNew || busy}
               spellCheck={false}
+              // oxlint-disable-next-line t3code/no-untranslated-copy -- example environment variable name
               placeholder="OPENAI_API_KEY"
               onChange={(event) => setName(event.target.value)}
             />
@@ -448,17 +505,21 @@ function VaultSecretDialog(props: {
             ) : null}
           </label>
           <label className="block space-y-1.5 text-sm">
-            <span>Description</span>
+            <span>
+              <T>Description</T>
+            </span>
             <Input
               value={description}
               maxLength={500}
               disabled={busy}
-              placeholder="What it unlocks"
+              placeholder={gt("What it unlocks")}
               onChange={(event) => setDescription(event.target.value)}
             />
           </label>
           <label className="block space-y-1.5 text-sm">
-            <span>Value</span>
+            <span>
+              <T>Value</T>
+            </span>
             <SecretInput
               autoFocus={!isNew}
               configured={!isNew}
@@ -470,10 +531,10 @@ function VaultSecretDialog(props: {
         </DialogPanel>
         <DialogFooter>
           <Button type="button" variant="ghost" disabled={busy} onClick={props.onClose}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button type="submit" disabled={busy || !valid}>
-            {busy ? <Spinner size="xs" /> : null} Save secret
+            {busy ? <Spinner size="xs" /> : null} <T>Save secret</T>
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -489,6 +550,8 @@ function VaultImportDialog(props: {
   readonly onClose: () => void;
   readonly onImport: (items: ReadonlyArray<{ id: string; name: string }>) => Promise<void>;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const loadCandidates = useAtomCommand(serverEnvironment.vaultImportCandidates, {
     reportFailure: false,
   });
@@ -521,10 +584,11 @@ function VaultImportDialog(props: {
   const errors = new Map(
     selected.map((draft, index) => [
       draft.id,
-      vaultSecretNameError(draft.name, [
-        ...props.existingNames,
-        ...names.filter((_, at) => at !== index),
-      ]),
+      vaultSecretNameError(
+        draft.name,
+        [...props.existingNames, ...names.filter((_, at) => at !== index)],
+        m,
+      ),
     ]),
   );
   const valid = selected.length > 0 && [...errors.values()].every((error) => error === null);
@@ -542,10 +606,14 @@ function VaultImportDialog(props: {
     >
       <DialogPopup showCloseButton={!busy}>
         <DialogHeader>
-          <DialogTitle>Import existing secrets</DialogTitle>
+          <DialogTitle>
+            <T>Import existing secrets</T>
+          </DialogTitle>
           <DialogDescription>
-            Moves secrets saved in this machine's settings into the vault and points those settings
-            at <code>vault:NAME</code>.
+            <T>
+              Moves secrets saved in this machine's settings into the vault and points those
+              settings at <code>vault:NAME</code>.
+            </T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -556,7 +624,9 @@ function VaultImportDialog(props: {
               <Spinner size="xs" />
             )
           ) : drafts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No saved secrets to import.</p>
+            <p className="text-sm text-muted-foreground">
+              <T>No saved secrets to import.</T>
+            </p>
           ) : (
             <ul className="space-y-2">
               {drafts.map((draft) => {
@@ -571,7 +641,7 @@ function VaultImportDialog(props: {
                     <div className="min-w-0 flex-1 space-y-1">
                       <p className="truncate text-xs text-muted-foreground">{draft.label}</p>
                       <Input
-                        aria-label={`Vault name for ${draft.label}`}
+                        aria-label={gt("Vault name for {label}", { label: draft.label })}
                         value={draft.name}
                         disabled={busy || !draft.selected}
                         spellCheck={false}
@@ -587,7 +657,7 @@ function VaultImportDialog(props: {
         </DialogPanel>
         <DialogFooter>
           <Button variant="ghost" disabled={busy} onClick={props.onClose}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button
             disabled={busy || !valid}
@@ -599,7 +669,10 @@ function VaultImportDialog(props: {
               setBusy(false);
             }}
           >
-            {busy ? <Spinner size="xs" /> : null} Import {selected.length}
+            {busy ? <Spinner size="xs" /> : null}{" "}
+            <T>
+              Import <Var>{selected.length}</Var>
+            </T>
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -613,6 +686,7 @@ function JoinVaultDialog(props: {
   readonly members: ReadonlyArray<EnvironmentPresentation>;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
   const registry = useContext(RegistryContext);
   const [memberId, setMemberId] = useState(props.members[0]?.environmentId ?? null);
   const member = props.members.find((candidate) => candidate.environmentId === memberId);
@@ -648,8 +722,8 @@ function JoinVaultDialog(props: {
     }
     toastManager.add({
       type: "success",
-      title: `${props.joiner.label} joined the vault`,
-      description: "Turn on Vault secrets under Sync to copy the secrets to it.",
+      title: gt("{label} joined the vault", { label: props.joiner.label }),
+      description: gt("Turn on Vault secrets under Sync to copy the secrets to it."),
     });
     props.onClose();
   };
@@ -663,17 +737,22 @@ function JoinVaultDialog(props: {
     >
       <DialogPopup showCloseButton={!busy}>
         <DialogHeader>
-          <DialogTitle>Join {props.joiner.label} to the vault?</DialogTitle>
+          <DialogTitle>
+            {gt("Join {label} to the vault?", { label: props.joiner.label })}
+          </DialogTitle>
           <DialogDescription>
-            {member?.label ?? "A vault machine"} hands its vault key to {props.joiner.label},
-            encrypted so only that machine can open it. Anyone who controls {props.joiner.label} can
-            then read every secret.
+            {gt(
+              "{member} hands its vault key to {joiner}, encrypted so only that machine can open it. Anyone who controls {joiner} can then read every secret.",
+              { member: member?.label ?? gt("A vault machine"), joiner: props.joiner.label },
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           {props.members.length > 1 ? (
             <div className="flex flex-wrap gap-1.5 text-sm">
-              <span className="text-muted-foreground">Key from</span>
+              <span className="text-muted-foreground">
+                <T>Key from</T>
+              </span>
               {props.members.map((candidate) => (
                 <Button
                   key={candidate.environmentId}
@@ -688,11 +767,17 @@ function JoinVaultDialog(props: {
             </div>
           ) : null}
           <div className="space-y-1 text-sm">
-            <p>{props.joiner.label}'s vault key fingerprint</p>
+            <p>
+              <T>
+                <Var>{props.joiner.label}</Var>'s vault key fingerprint
+              </T>
+            </p>
             <p className="font-mono text-base">{props.recipient.fingerprint}</p>
             <p className="text-xs text-muted-foreground">
-              Open Par3 on {props.joiner.label} itself and check that Settings, Vault & sync shows
-              the same fingerprint under "This machine's vault key fingerprint".
+              <T>
+                Open Par3 on <Var>{props.joiner.label}</Var> itself and check that Settings, Vault &
+                sync shows the same fingerprint under "This machine's vault key fingerprint".
+              </T>
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm">
@@ -701,21 +786,23 @@ function JoinVaultDialog(props: {
               disabled={busy}
               onCheckedChange={(next) => setConfirmed(next)}
             />
-            The fingerprints match
+            <T>The fingerprints match</T>
           </label>
           {!canWrap && member ? (
             <p className="text-xs text-muted-foreground">
-              This connection can't hand out the vault key on {member.label}.
+              <T>
+                This connection can't hand out the vault key on <Var>{member.label}</Var>.
+              </T>
             </p>
           ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </DialogPanel>
         <DialogFooter>
           <Button variant="ghost" disabled={busy} onClick={props.onClose}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button disabled={busy || !confirmed || !canWrap || !member} onClick={() => void join()}>
-            {busy ? <Spinner size="xs" /> : <KeyRoundIcon className="size-3.5" />} Join vault
+            {busy ? <Spinner size="xs" /> : <KeyRoundIcon className="size-3.5" />} <T>Join vault</T>
           </Button>
         </DialogFooter>
       </DialogPopup>

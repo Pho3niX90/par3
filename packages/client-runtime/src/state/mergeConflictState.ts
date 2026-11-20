@@ -1,4 +1,6 @@
 import type { VcsOperationKind, VcsStatusLocalResult } from "@t3tools/contracts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models.ts";
 
@@ -64,15 +66,22 @@ export function sumMergeConflictStates(
   };
 }
 
-const OPERATION_NOUNS: Record<VcsOperationKind, string> = {
-  merge: "merge",
-  rebase: "rebase",
-  "cherry-pick": "cherry-pick",
-  revert: "revert",
-};
-
-export function mergeOperationNoun(operation: VcsOperationKind | null): string {
-  return operation === null ? "conflict resolution" : OPERATION_NOUNS[operation];
+export function mergeOperationNoun(
+  operation: VcsOperationKind | null,
+  resolve: MFunctionType = mFallback,
+): string {
+  switch (operation) {
+    case null:
+      return resolve(msg("conflict resolution"));
+    case "merge":
+      return resolve(msg("merge"));
+    case "rebase":
+      return resolve(msg("rebase"));
+    case "cherry-pick":
+      return resolve(msg("cherry-pick"));
+    case "revert":
+      return resolve(msg("revert"));
+  }
 }
 
 type RunningTurnThread = Pick<

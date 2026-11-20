@@ -20,7 +20,9 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { Atom } from "effect/reactivity";
+import { msg } from "gt-react";
 
+import { m } from "../i18n/messages";
 import { randomUUID } from "../lib/utils";
 import { useEnvironmentQuery } from "../state/query";
 import { serverEnvironment, specsLive, specsMutate, specsQuery } from "../state/server";
@@ -168,7 +170,7 @@ export function describeSpecFailure(error: unknown): string {
     const message = (error as { message: unknown }).message;
     if (typeof message === "string" && message.trim().length > 0) return message;
   }
-  return "The spec request failed.";
+  return m(msg("The spec request failed."));
 }
 
 export function useRunSpecMutation() {
@@ -183,7 +185,7 @@ export function useRunSpecMutation() {
     });
     if (result._tag === "Success") return { ok: true, document: result.value };
     if (isAtomCommandInterrupted(result))
-      return { ok: false, message: "The request was cancelled." };
+      return { ok: false, message: m(msg("The request was cancelled.")) };
     return { ok: false, message: describeSpecFailure(squashAtomCommandFailure(result)) };
   };
 }
@@ -219,21 +221,21 @@ export function makeSpecRevision(revision: number): typeof NonNegativeInt.Type {
 export function formatSpecStatusLabel(status: SpecStatus): string {
   switch (status) {
     case "draft":
-      return "Draft";
+      return m(msg("Draft"));
     case "review":
-      return "In review";
+      return m(msg("In review"));
     case "approved":
-      return "Approved";
+      return m(msg("Approved"));
     case "in-progress":
-      return "In progress";
+      return m(msg("In progress"));
     case "implemented":
-      return "Implemented";
+      return m(msg("Implemented"));
     case "done":
-      return "Done";
+      return m(msg("Done"));
     case "blocked":
-      return "Blocked";
+      return m(msg("Blocked"));
     case "rejected":
-      return "Rejected";
+      return m(msg("Rejected"));
   }
 }
 
@@ -260,15 +262,15 @@ export function formatSpecStatusBadgeVariant(
 export function formatSpecRoleLabel(role: SpecRole): string {
   switch (role) {
     case "requirements":
-      return "Requirements";
+      return m(msg("Requirements"));
     case "implementation":
-      return "Implementation";
+      return m(msg("Implementation"));
     case "test":
-      return "Test";
+      return m(msg("Test"));
     case "researcher":
-      return "Researcher";
+      return m(msg("Researcher"));
     case "verifier":
-      return "Verifier";
+      return m(msg("Verifier"));
   }
 }
 
