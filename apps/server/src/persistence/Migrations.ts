@@ -123,6 +123,10 @@ import Migration0099 from "./Migrations/097_IssueTrackerBindings.ts";
 import Migration0100 from "./Migrations/098_ActiveShellIndexIndexes.ts";
 // Upstream numbers this 99; Par3 runs it as 101.
 import Migration0101 from "./Migrations/099_BackgroundRecoveryIndexes.ts";
+// Upstream numbers these 100 to 102; Par3 runs them as 102 to 104.
+import Migration0102 from "./Migrations/100_TurnStartReadIndexes.ts";
+import Migration0103 from "./Migrations/101_DelegatedTaskReadIndexes.ts";
+import Migration0104 from "./Migrations/102_ThreadItemCounts.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -227,6 +231,9 @@ const migrationEntries = [
   [99, "IssueTrackerBindings", Migration0099],
   [100, "ActiveShellIndexIndexes", Migration0100],
   [101, "BackgroundRecoveryIndexes", Migration0101],
+  [102, "TurnStartReadIndexes", Migration0102],
+  [103, "DelegatedTaskReadIndexes", Migration0103],
+  [104, "ThreadItemCounts", Migration0104],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

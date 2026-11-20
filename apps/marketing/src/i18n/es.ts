@@ -41,7 +41,7 @@ export const es: Messages = {
       "Par3 no revende tokens. Conecta Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, Grok, Antigravity o Pi con las credenciales que ya tienes. Nosotros los orquestamos, tú conservas tu plan.",
     googleSignIn: "Inicio de sesión con Google",
     harnessPoints: [
-      "Sin reventa de claves. Sin límites de cuota.",
+      "Sin venta de claves. Sin límites de cuota.",
       "Cambia de modelo a mitad del hilo.",
       "Copilot funciona con GitHub Enterprise.",
       "Añade cualquier agente del ACP Registry.",

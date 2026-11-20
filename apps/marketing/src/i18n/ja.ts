@@ -105,7 +105,7 @@ export const ja: Messages = {
     ],
     forkOnGithub: "GitHub でフォーク",
     browseSource: "ソースを見る",
-    ctaTitle: "あなたのエージェントに、ターミナルだけではもったいない。",
+    ctaTitle: "あなたのエージェントに、ターミナルよりふさわしい場所を。",
     ctaSub:
       "Par3 は無料、オープンソース、そして高速。インストールして、すでに契約しているエージェントを接続し、出荷前にすべての計画をレビューしましょう。",
     otherPlatforms: "Windows · Linux · その他",

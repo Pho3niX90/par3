@@ -102,7 +102,7 @@ export const ko: Messages = {
     ],
     forkOnGithub: "GitHub에서 포크",
     browseSource: "소스 보기",
-    ctaTitle: "에이전트를 터미널에만 두기엔 아깝습니다.",
+    ctaTitle: "에이전트에게 터미널보다 나은 작업 공간을.",
     ctaSub:
       "Par3는 무료이고, 오픈 소스이며, 빠릅니다. 설치하고, 이미 결제 중인 에이전트를 연결하고, 배포 전에 모든 계획을 검토하세요.",
     otherPlatforms: "Windows · Linux · 기타",

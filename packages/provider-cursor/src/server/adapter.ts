@@ -4,6 +4,7 @@ import type {
   InteractionUpdate,
   McpServerConfig,
   RunResult,
+  SDKModel,
   SDKUserMessage,
   SettingSource,
   ToolCall,
@@ -104,6 +105,7 @@ export const CursorProviderCapabilitiesV2 = {
     emitsTurnStarted: true,
     emitsTurnCompleted: true,
     supportsInterrupt: true,
+    supportsNativeResume: true,
     supportsActiveSteering: true,
     // A steer can move a foreground subagent to the background. Mailbox wakes
     // stay queued so a notification does not cut into the live turn.
@@ -307,10 +309,25 @@ const CURSOR_AGENT_SETTING_SOURCES = [
   "plugins",
 ] as const satisfies ReadonlyArray<SettingSource>;
 
+/** Recorded after a compaction or rewind, so a resumed conversation is not assumed to hold them. */
+const NOTHING_TOLD: T3PromptInstructionState = {
+  hasT3Mcp: false,
+  hasDeviceTools: false,
+  sidekick: null,
+};
+
+/** A conversation that already has turns but that this process has not sent to was told on its first run. */
+const ORCHESTRATION_TOLD: T3PromptInstructionState = {
+  hasT3Mcp: true,
+  hasDeviceTools: false,
+  sidekick: null,
+};
+
 export function makeCursorAgentOptions(input: {
   readonly apiKey?: string;
   readonly modelSelection: ModelSelection;
   readonly models?: ReadonlyArray<ServerProviderModel>;
+  readonly sdkModels?: ReadonlyArray<SDKModel>;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
   readonly threadId: ThreadId;
   readonly mcpSession: McpProviderSession.McpProviderSessionConfig | undefined;
@@ -319,7 +336,7 @@ export function makeCursorAgentOptions(input: {
   const policy = cursorRuntimeAgentPolicy(input.runtimePolicy, input.platform);
   const mcpServers = cursorMcpServers(input.mcpSession);
   return {
-    model: cursorSdkModelSelection(input.modelSelection, input.models),
+    model: cursorSdkModelSelection(input.modelSelection, input.models, input.sdkModels),
     name: `Par3 ${input.threadId}`,
     mode: input.runtimePolicy.interactionMode === "plan" ? "plan" : "agent",
     ...(input.apiKey === undefined ? {} : { apiKey: input.apiKey }),
@@ -980,6 +997,8 @@ interface ActiveCursorTurn {
   /** The user text this run sent, before runtime instructions; absent for /compress and resume. */
   readonly prompt: string | undefined;
   readonly message: string | SDKUserMessage;
+  readonly runtimeInstructions: string | undefined;
+  compacted: boolean;
   interrupted: boolean;
   finalized: boolean;
   /** The agent's latest turn ended and no new work has started since. */
@@ -1019,6 +1038,7 @@ export interface CursorAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
   readonly environment: NodeJS.ProcessEnv;
   readonly getModels?: () => ReadonlyArray<ServerProviderModel>;
+  readonly getSdkModels?: () => ReadonlyArray<SDKModel>;
 }
 
 export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
@@ -1057,12 +1077,18 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         });
         const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
         const liveAgent = yield* Ref.make<CursorLiveAgent | null>(null);
+        // What the native conversation's runtime instructions were last delivered as.
+        const told = yield* Ref.make<{
+          readonly agent: string;
+          readonly runtime: string | undefined;
+        } | null>(null);
         // Cursor drops a run cancelled before its first checkpoint, so the next message carries its prompt.
         const interruptedPrompt = yield* Ref.make<{
           readonly agent: string;
           readonly runId: string;
           readonly text: string;
           readonly message: string | SDKUserMessage;
+          readonly runtimeInstructions: string | undefined;
         } | null>(null);
         // A native resume's own run may stop before it checkpoints; the request is still in history.
         const resumedAgent = yield* Ref.make<string | null>(null);
@@ -2275,6 +2301,20 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               yield* completeAssistant(context);
               yield* completeReasoning(context);
               return;
+            case "summary-completed":
+              if (update.failed !== true) {
+                context.compacted = true;
+                yield* Ref.set(told, { agent: context.run.agentId, runtime: undefined });
+                yield* Ref.update(instructionStates, (states) =>
+                  new Map(states).set(context.run.agentId, NOTHING_TOLD),
+                );
+                yield* Ref.update(interruptedPrompt, (current) =>
+                  current?.agent === context.run.agentId
+                    ? { ...current, runtimeInstructions: undefined }
+                    : current,
+                );
+              }
+              return;
             case "shell-output-delta": {
               const toolCallId = update.event.toolCallId;
               const shell =
@@ -2430,6 +2470,17 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               updatedAt: completedAt,
             },
           });
+          if (input.context.runtimeInstructions !== undefined) {
+            const deliveredRuntime =
+              input.status === "completed" && !input.context.compacted
+                ? input.context.runtimeInstructions
+                : undefined;
+            yield* Ref.update(told, (current) =>
+              current?.agent === input.context.run.agentId
+                ? { ...current, runtime: deliveredRuntime }
+                : current,
+            );
+          }
           const threadDisposition = input.threadDisposition ?? "reusable";
           yield* emitProviderEvent(
             input.status === "failed"
@@ -2464,6 +2515,9 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               runId: input.context.run.runId,
               text: input.context.prompt,
               message: input.context.message,
+              runtimeInstructions: input.context.compacted
+                ? undefined
+                : input.context.runtimeInstructions,
             });
           }
           yield* Ref.update(activeTurn, (current) =>
@@ -2546,6 +2600,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             ...(apiKey === undefined ? {} : { apiKey }),
             modelSelection: openInput.modelSelection,
             models: adapterOptions.getModels?.() ?? [],
+            sdkModels: adapterOptions.getSdkModels?.() ?? [],
             runtimePolicy: openInput.runtimePolicy,
             platform,
             threadId: openInput.threadId,
@@ -2618,6 +2673,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           mcpServers: Record<string, McpServerConfig> | undefined,
           agentId: string,
           hasDeviceTools: boolean,
+          deliveredRuntime: string | undefined,
           interrupted: string | undefined,
         ) {
           const rawText = turnInput.message.text;
@@ -2627,6 +2683,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               compacts: true,
               instructionState: undefined,
               prompt: undefined,
+              runtimeInstructions: undefined,
             } as const;
           }
           const plainText = yield* providerMessageTextWithAttachmentPaths({
@@ -2643,7 +2700,9 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           const newText = t3PromptWithOrchestrationInstructions({
             prompt: plainText,
             state: instructionState,
-            previousState: (yield* Ref.get(instructionStates)).get(agentId),
+            previousState:
+              (yield* Ref.get(instructionStates)).get(agentId) ??
+              (turnInput.nativeThreadHasTurns === true ? ORCHESTRATION_TOLD : undefined),
           });
           const userText =
             interrupted === undefined
@@ -2684,12 +2743,23 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               detail: "Cursor turn requires non-empty text or attachments.",
             });
           }
-          const text = `${userText}\n\n${buildRuntimeInstructions({ harness: "Cursor", model: turnInput.modelSelection.model })}`;
+          const runtimeInstructions = buildRuntimeInstructions({
+            harness: "Cursor",
+            model: turnInput.modelSelection.model,
+          });
+          // Resend only on a new/compacted/rewound conversation or when the model changes.
+          const sendRuntimeInstructions = deliveredRuntime !== runtimeInstructions;
+          const text = sendRuntimeInstructions
+            ? userText.length === 0
+              ? runtimeInstructions
+              : `${userText}\n\n${runtimeInstructions}`
+            : userText;
           return {
             message: images.length === 0 ? text : ({ text, images } satisfies SDKUserMessage),
             compacts: false,
             instructionState: newText === plainText ? undefined : instructionState,
             prompt: userText,
+            runtimeInstructions: sendRuntimeInstructions ? runtimeInstructions : undefined,
           };
         });
 
@@ -2716,6 +2786,9 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             const mcpServers = cursorMcpServers(mcpSession);
             const hasDeviceTools =
               mcpServers !== undefined && mcpSession?.capabilities?.has("device") === true;
+            const known = yield* Ref.get(told);
+            const deliveredRuntime =
+              known?.agent === agent.nativeThreadId ? known.runtime : undefined;
             const interrupted = yield* Ref.get(interruptedPrompt);
             const runCheckpointed = (runId?: string) =>
               agent.session.runCheckpointed?.(runId) ?? Effect.succeed(false);
@@ -2744,23 +2817,34 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             }
             const resolved =
               resume === "native"
-                ? { message: "", compacts: false, instructionState: undefined, prompt: undefined }
+                ? {
+                    message: "",
+                    compacts: false,
+                    instructionState: undefined,
+                    prompt: undefined,
+                    runtimeInstructions:
+                      interrupted?.agent === agent.nativeThreadId
+                        ? interrupted.runtimeInstructions
+                        : undefined,
+                  }
                 : resume === "replay"
                   ? {
                       message: dropped!.message,
                       compacts: false,
                       instructionState: undefined,
                       prompt: dropped!.text,
+                      runtimeInstructions: dropped!.runtimeInstructions,
                     }
                   : yield* resolveUserMessage(
                       turnInput,
                       mcpServers,
                       agent.nativeThreadId,
                       hasDeviceTools,
+                      deliveredRuntime,
                       dropped?.text,
                     );
             const compacted = resolved.compacts;
-            const { message, prompt } = resolved;
+            const { message, prompt, runtimeInstructions } = resolved;
             const pendingUpdates: Array<InteractionUpdate> = [];
             let context: ActiveCursorTurn | null = null;
             // A send-time set replaces the create-time set, so the workspace servers go only here and are
@@ -2778,6 +2862,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                   model: cursorSdkModelSelection(
                     turnInput.modelSelection,
                     adapterOptions.getModels?.() ?? [],
+                    adapterOptions.getSdkModels?.() ?? [],
                   ),
                   mode: turnInput.runtimePolicy.interactionMode === "plan" ? "plan" : "agent",
                   ...(Object.keys(turnMcpServers).length === 0
@@ -2799,9 +2884,15 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               yield* Ref.update(instructionStates, (current) => {
                 const updated = new Map(current);
                 // A compressed context may have dropped the instructions, so resend them.
-                if (sentInstructionState === undefined) updated.delete(agent.nativeThreadId);
-                else updated.set(agent.nativeThreadId, sentInstructionState);
+                updated.set(agent.nativeThreadId, sentInstructionState ?? NOTHING_TOLD);
                 return updated;
+              });
+            }
+            // A resume sends no new runtime instructions, and a native one still continues the stopped request.
+            if (resume === undefined) {
+              yield* Ref.set(told, {
+                agent: agent.nativeThreadId,
+                runtime: compacted ? undefined : deliveredRuntime,
               });
             }
             // A native resume still continues the stopped request.
@@ -2837,6 +2928,8 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               },
               prompt,
               message,
+              runtimeInstructions,
+              compacted,
               interrupted: false,
               finalized: false,
               turnEnded: false,
@@ -3269,10 +3362,12 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               // The kept turns may predate a compaction, so the instructions are sent again.
               const forgetConversation = (agent: string) =>
                 Effect.all([
-                  Ref.update(instructionStates, (states) => {
-                    const updated = new Map(states);
-                    updated.delete(agent);
-                    return updated;
+                  Ref.update(instructionStates, (states) =>
+                    new Map(states).set(agent, NOTHING_TOLD),
+                  ),
+                  Ref.set(told, {
+                    agent,
+                    runtime: undefined,
                   }),
                   Ref.set(interruptedPrompt, null),
                   Ref.set(resumedAgent, null),
