@@ -66,6 +66,7 @@ vi.mock("~/state/vcs", () => ({
     status: () => state.status,
     listRefs: ({ input }: { input: { refKind: "local" | "remote" } }) =>
       input.refKind === "local" ? state.localRefs : state.remoteRefs,
+    threadRepositories: () => Atom.make(AsyncResult.success({ repositories: [] })),
   },
 }));
 vi.mock("~/state/entities", () => ({
