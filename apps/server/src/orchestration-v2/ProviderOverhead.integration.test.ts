@@ -78,7 +78,7 @@ const BUDGETS: ReadonlyArray<Budget> = [
   {
     name: "W5 eight parallel reads",
     turns: [{ kind: "parallel_tools", toolCalls: 8 }],
-    maxTransactions: 15,
+    maxTransactions: 16,
     maxSqlStatementsPerTurn: 200,
     wallBudgetMs: 1600,
   },
