@@ -29,6 +29,7 @@ import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import * as Persistence from "../platform/persistence.ts";
 import {
   request,
+  requestGuarded,
   subscribe,
   subscribeVcsBranch,
   refreshVcsBranch,
@@ -367,6 +368,8 @@ export function createVcsEnvironmentAtoms<R, E>(
     refreshLocalStatusForPicker: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:refresh-local-status-for-picker",
       tag: WS_METHODS.vcsRefreshStatus,
+      execute: (input: { readonly cwd: string }) =>
+        requestGuarded(WS_METHODS.vcsRefreshStatus, { cwd: input.cwd, localOnly: true }),
       onSettled: invalidateRefsIfChanged,
     }),
     createWorktree: createEnvironmentRpcCommand(runtime, {

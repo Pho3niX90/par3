@@ -3190,6 +3190,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const {
     onSend,
+    captureDetachedSend,
     onImplementPlanInNewThread,
     implementTimelinePlan,
     submitPlanAction: submitPlanActionStable,
@@ -4075,6 +4076,7 @@ export default function ChatView(props: ChatViewProps) {
                                 onPageScrollRelease={onComposerPageScrollReleaseStable}
                                 onCompactContext={onComposerCompactContextStable}
                                 onSend={onComposerSendStable}
+                                captureDetachedSend={captureDetachedSend}
                                 onResume={onComposerResumeStable}
                                 onInterrupt={onInterruptStable}
                                 onImplementPlanInNewThread={onImplementPlanInNewThreadStable}
