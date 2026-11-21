@@ -55,6 +55,7 @@ interface MultipleModelSendInput {
   readonly runtimeMode: RuntimeMode;
   readonly startFromOrigin: boolean;
   readonly sidekickModelSelection: ModelSelection | null;
+  readonly worktreeRepositories: ReadonlyArray<{ readonly path: string }> | undefined;
   readonly resetLocalDispatch: ReturnType<typeof useLocalDispatchState>["resetLocalDispatch"];
   readonly setThreadError: ReturnType<typeof makeThreadErrorSetter>;
 }
@@ -76,6 +77,7 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
     runtimeMode,
     startFromOrigin,
     sidekickModelSelection,
+    worktreeRepositories,
     resetLocalDispatch,
     setThreadError,
   } = input;
@@ -203,6 +205,7 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
                       baseBranch: branch,
                       requireWorktree: true,
                       ...(startFromOrigin ? { startFromOrigin: true } : {}),
+                      ...(worktreeRepositories ? { repositories: worktreeRepositories } : {}),
                     },
                     runSetupScript: true,
                   },

@@ -1604,6 +1604,7 @@ export function PullRequestDetailPanel({
         number={reference.number}
         tabs={visibleTabs}
         activeTab={tab}
+        threadRef={threadRef}
         {...(onBack ? { onBack } : {})}
         {...(onClose ? { onClose } : {})}
         actions={
@@ -1642,6 +1643,7 @@ export function PullRequestDetailPanel({
       >
         <PullRequestDetailCrumbs
           detail={detail}
+          threadRef={threadRef}
           toneClassName={statePresentation?.toneClassName ?? null}
           condensed={condensed}
           repositoryUrl={repositoryUrl}
@@ -1706,6 +1708,7 @@ export function PullRequestDetailPanel({
                 pullRequestKey={pullRequestKey}
                 detail={detail}
                 terminology={terminology}
+                threadRef={threadRef}
                 linkThreadRef={
                   threadRef ??
                   (typeof composerDraftTarget === "object" ? composerDraftTarget : null)
@@ -1780,6 +1783,7 @@ export function PullRequestDetailPanel({
                 : "translate-y-1 opacity-0 duration-100",
             )}
             inert={!condensed}
+            data-workspace-scroll-swap
           >
             {detail ? (
               <div className="col-span-2 min-w-0 px-4 pb-2 pt-1">
@@ -1869,6 +1873,7 @@ export function PullRequestDetailPanel({
                 : "translate-y-0 opacity-100 delay-50",
             )}
             inert={condensed}
+            data-workspace-scroll-swap
           >
             {detail ? (
               <PullRequestDetailHeaderBody
@@ -2212,7 +2217,9 @@ export function PullRequestDetailPanel({
             {mountedTabs.has("timeline") ? (
               <div className={cn("absolute inset-0", tab !== "timeline" && "invisible")}>
                 {activityPending ? (
-                  <PullRequestTimelineGhost />
+                  <div tabIndex={-1} data-workspace-focus-default className="h-full outline-none">
+                    <PullRequestTimelineGhost />
+                  </div>
                 ) : activityError ? (
                   <PullRequestActivityUnavailableState
                     error={activityError}
@@ -2240,12 +2247,15 @@ export function PullRequestDetailPanel({
               <div className={cn("absolute inset-0", tab !== "code" && "invisible")}>
                 <Suspense
                   fallback={
-                    <DiffPanelLoadingState
-                      label={gt(
-                        "Loading {term, select, mr {merge request} cr {change request} other {pull request}} diff...",
-                        { term: changeRequestTermKind(terminology) },
-                      )}
-                    />
+                    // Loading placeholders hold panel focus until the tab's scroller replaces them.
+                    <div tabIndex={-1} data-workspace-focus-default className="h-full outline-none">
+                      <DiffPanelLoadingState
+                        label={gt(
+                          "Loading {term, select, mr {merge request} cr {change request} other {pull request}} diff...",
+                          { term: changeRequestTermKind(terminology) },
+                        )}
+                      />
+                    </div>
                   }
                 >
                   <PullRequestCodeTab

@@ -129,8 +129,8 @@ the server. Users get back the settings they had chosen, since Par3 never writes
 ## Settings
 
 Each key under `settings` is a setting's path in the server's `settings.json`, such as
-`storageCleanup.logsAfterDays`. To find a path, change the setting in Par3 and look in
-`settings.json` under `~/.t3/userdata`.
+`storageCleanup.logsAfterDays`. Run `t3 policy settings` to list every path a policy can manage,
+with its default.
 
 - `"locked": false` sets a default. It applies wherever the user has not chosen a value of their
   own, and users can change it.

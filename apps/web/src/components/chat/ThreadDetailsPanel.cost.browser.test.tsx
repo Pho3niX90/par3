@@ -45,7 +45,6 @@ const props = (overrides: Partial<ThreadDetailsPanelProps> = {}) =>
     openInShortcutEnabled: false,
     gitCwd: null,
     isGitRepo: false,
-    childRepositories: [],
     envLocked: false,
     availableEnvironments: [],
     onEnvModeChange: () => undefined,

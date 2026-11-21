@@ -133,7 +133,7 @@ export const T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH = deviceToolInstr
 
 // ACP only: some ACP agents accept the injected MCP server but never expose
 // its tools, so they need the terminal transport other harnesses never use.
-const T3_CODE_ACP_MCP_FALLBACK_INSTRUCTIONS = `ACP fallback: if the Par3 tools are absent and \`T3_ACP_MCP_NODE\` is present, call them through the terminal: \`ELECTRON_RUN_AS_NODE=1 "$T3_ACP_MCP_NODE" \${T3_ACP_MCP_ENTRYPOINT:+"$T3_ACP_MCP_ENTRYPOINT"} acp-mcp-call orchestrator_capabilities '{}'\` (\`T3_ACP_MCP_ENTRYPOINT\` is unset for a standalone executable). Delegate with \`acp-mcp-call delegate_task '{"task":"...","target":{"providerInstanceId":"...","model":"..."},"mode":"async","clientRequestId":"..."}'\`.`;
+const T3_CODE_ACP_MCP_FALLBACK_INSTRUCTIONS = `ACP fallback: if the Par3 tools are absent and \`T3_ACP_MCP_NODE\` is present, call them through the terminal: \`ELECTRON_RUN_AS_NODE=1 "$T3_ACP_MCP_NODE" \${T3_ACP_MCP_ENTRYPOINT:+"$T3_ACP_MCP_ENTRYPOINT"} acp-mcp-call orchestrator_capabilities '{}'\` (\`T3_ACP_MCP_ENTRYPOINT\` is unset for a standalone executable). Delegate with \`acp-mcp-call delegate_task '{"task":"...","target":{"providerInstanceId":"...","model":"..."},"mode":"async","clientRequestId":"..."}'\`. On Windows, run \`T3_ACP_MCP_CALL\` instead and pipe the JSON to stdin, as in PowerShell \`'{}' | & $env:T3_ACP_MCP_CALL orchestrator_capabilities -\`, writing non-ASCII characters as \`\\uXXXX\` escapes.`;
 
 const T3_CODE_ACP_DEFAULT_MODE_INSTRUCTIONS = `## Par3 interaction mode: Default
 
@@ -200,18 +200,20 @@ const orchestrationInstructions = (hasDeviceTools: boolean) =>
 export interface T3PromptInstructionState {
   readonly hasT3Mcp: boolean;
   readonly hasDeviceTools: boolean;
+  readonly hasProviderInstructions?: boolean;
   readonly sidekick: T3SidekickLeadState | null;
 }
 
 /**
  * For providers whose only channel is the user prompt: the wrapped block to send, or null when the
  * native session has it. Orchestration goes on each native session's first prompt (or once T3 tools
- * appear), device instructions once device tools appear, the sidekick playbook whenever it
- * changes. Undefined `previousState` is a fresh context.
+ * appear), device instructions once device tools appear, provider-specific guidance once when
+ * requested, the sidekick playbook whenever it changes. Undefined `previousState` is a fresh context.
  */
 export function t3OrchestrationInstructionUpdate(
   state: T3PromptInstructionState,
   previousState: T3PromptInstructionState | undefined,
+  providerInstructions?: string,
 ): string | null {
   // The playbook drives T3 tools, so it only counts while they are available.
   const sidekickOf = (value: T3PromptInstructionState) => (value.hasT3Mcp ? value.sidekick : null);
@@ -220,12 +222,20 @@ export function t3OrchestrationInstructionUpdate(
     sidekickOf(state),
   );
   const hadDeviceTools = previousState?.hasT3Mcp === true && previousState.hasDeviceTools;
+  const hadProviderInstructions =
+    previousState?.hasT3Mcp === true && previousState.hasProviderInstructions === true;
   const instructions = [
     ...(state.hasT3Mcp && previousState?.hasT3Mcp !== true
       ? [T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim()]
       : []),
     ...(state.hasT3Mcp && state.hasDeviceTools && !hadDeviceTools
       ? [T3_CODE_DEVICE_TOOL_INSTRUCTIONS.trim()]
+      : []),
+    ...(state.hasT3Mcp &&
+    state.hasProviderInstructions === true &&
+    providerInstructions !== undefined &&
+    !hadProviderInstructions
+      ? [providerInstructions.trim()]
       : []),
     ...(sidekickUpdate === null ? [] : [sidekickUpdate]),
   ];
@@ -242,10 +252,16 @@ export function t3PromptWithOrchestrationInstructions(input: {
   readonly prompt: string;
   readonly state: T3PromptInstructionState;
   readonly previousState: T3PromptInstructionState | undefined;
+  /** Guidance for this provider's own tools, sent once when `state.hasProviderInstructions` is true. */
+  readonly providerInstructions?: string;
 }): string {
   // Native slash commands must remain at the start of the prompt.
   if (input.prompt.trimStart().startsWith("/")) return input.prompt;
-  const update = t3OrchestrationInstructionUpdate(input.state, input.previousState);
+  const update = t3OrchestrationInstructionUpdate(
+    input.state,
+    input.previousState,
+    input.providerInstructions,
+  );
   return update === null
     ? input.prompt
     : `${update}\n\n<user_request>\n${input.prompt}\n</user_request>`;

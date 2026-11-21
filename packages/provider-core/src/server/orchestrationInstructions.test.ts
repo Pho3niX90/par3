@@ -212,6 +212,28 @@ describe("T3 device instructions", () => {
       }),
       prompt,
     );
+
+    // A provider's own guidance reaches a conversation that already had the rest.
+    const providerRun = (providerInstructionsDelivered: boolean) =>
+      t3PromptWithOrchestrationInstructions({
+        prompt: "Check the login screen.",
+        state: {
+          hasT3Mcp: true,
+          hasDeviceTools: false,
+          hasProviderInstructions: true,
+          sidekick: null,
+        },
+        previousState: {
+          hasT3Mcp: true,
+          hasDeviceTools: false,
+          hasProviderInstructions: providerInstructionsDelivered,
+          sidekick: null,
+        },
+        providerInstructions: "Mark awaited shells.",
+      });
+    assert.include(providerRun(false), "Mark awaited shells.");
+    assert.notInclude(providerRun(false), T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim());
+    assert.equal(providerRun(true), "Check the login screen.");
   });
 
   it("reach ACP agents again when device access changes mid-thread", () => {

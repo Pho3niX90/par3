@@ -13,9 +13,9 @@ import {
 } from "@t3tools/client-runtime/state/subagent-display";
 import {
   formatModelSelectionEffort,
-  REASONING_EFFORT_OPTION_IDS,
+  readSelectedEffortValue,
 } from "@t3tools/client-runtime/state/thread-execution";
-import { getModelSelectionStringOptionValue, resolveSelectableModel } from "@t3tools/shared/model";
+import { resolveSelectableModel } from "@t3tools/shared/model";
 import { getTraitsSpeedDisplay, TraitsSpeedIcon } from "./TraitsSpeed";
 import { useGT, useMessages } from "gt-react";
 import type { ReactNode } from "react";
@@ -88,9 +88,7 @@ export function SubagentTooltipContent(props: {
     (matchingSelection && childModel
       ? formatModelSelectionEffort({ ...matchingSelection, model: childModel }, provider?.models)
       : null) ??
-    REASONING_EFFORT_OPTION_IDS.map((id) =>
-      getModelSelectionStringOptionValue(matchingSelection, id),
-    ).find(Boolean);
+    readSelectedEffortValue(matchingSelection, providerModel?.capabilities?.optionDescriptors);
   const speed = provider
     ? providerModel?.capabilities?.optionDescriptors
         ?.map((descriptor) => {

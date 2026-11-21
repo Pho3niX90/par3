@@ -44,7 +44,9 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import { backgroundWorkNotification } from "@t3tools/provider-core/server/notification";
 import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
@@ -129,6 +131,7 @@ export const CursorProviderCapabilitiesV2 = {
     emitsToolOutput: true,
     supportsMcpTools: true,
     supportsDynamicToolCallbacks: false,
+    supportsBackgroundWait: true,
   },
   approvals: {
     supportsCommandApproval: false,
@@ -313,6 +316,7 @@ const CURSOR_AGENT_SETTING_SOURCES = [
 const NOTHING_TOLD: T3PromptInstructionState = {
   hasT3Mcp: false,
   hasDeviceTools: false,
+  hasProviderInstructions: false,
   sidekick: null,
 };
 
@@ -320,6 +324,7 @@ const NOTHING_TOLD: T3PromptInstructionState = {
 const ORCHESTRATION_TOLD: T3PromptInstructionState = {
   hasT3Mcp: true,
   hasDeviceTools: false,
+  hasProviderInstructions: false,
   sidekick: null,
 };
 
@@ -342,6 +347,9 @@ export function makeCursorAgentOptions(input: {
     ...(input.apiKey === undefined ? {} : { apiKey: input.apiKey }),
     local: {
       ...(input.runtimePolicy.cwd === null ? {} : { cwd: input.runtimePolicy.cwd }),
+      ...(input.runtimePolicy.workspace === undefined
+        ? {}
+        : { dirs: [...input.runtimePolicy.workspace.extraRoots] }),
       autoReview: policy.autoReview,
       settingSources:
         input.runtimePolicy.runtimeMode === "full-access" &&
@@ -1010,6 +1018,26 @@ interface ActiveCursorTurn {
 
 type CursorTurnUsage = NonNullable<Extract<InteractionUpdate, { type: "turn-ended" }>["usage"]>;
 
+const CURSOR_BACKGROUND_WAIT_INSTRUCTIONS =
+  "To wait for a background shell you started (tests, a build), call `t3_background_wait` with its shell ID or pid before you end your turn. It returns at once, and T3 wakes you when the shell exits. Do not mark work you leave running, or PRs.";
+
+const BACKGROUND_SHELL_DETAIL_COMMAND_MAX_LENGTH = 200;
+
+function cursorBackgroundShellDetail(exit: {
+  readonly command: string;
+  readonly exitCode: number | undefined;
+  readonly outputPath: string | undefined;
+}): string {
+  const codePoints = [...exit.command];
+  const command =
+    codePoints.length > BACKGROUND_SHELL_DETAIL_COMMAND_MAX_LENGTH
+      ? `${codePoints.slice(0, BACKGROUND_SHELL_DETAIL_COMMAND_MAX_LENGTH).join("")}...`
+      : exit.command;
+  const exitCode = exit.exitCode === undefined ? "" : ` (exit ${exit.exitCode})`;
+  const header = `Background command completed${exitCode}: ${command}`;
+  return exit.outputPath === undefined ? header : `${header}\n\nOutput: ${exit.outputPath}`;
+}
+
 const addCursorTurnUsage = (
   total: CursorTurnUsage | undefined,
   usage: CursorTurnUsage,
@@ -1052,6 +1080,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
   const platform = yield* HostProcess.Platform;
   const host = yield* ProviderHost.ProviderHost;
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
+  const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
   const adapterOptions = options;
   const apiKey = adapterOptions.environment.CURSOR_API_KEY?.trim() || undefined;
 
@@ -1096,10 +1125,148 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         const activeTurn = yield* Ref.make<ActiveCursorTurn | null>(null);
         // Keyed by Cursor agent id: each native agent needs its own copy of T3 instructions.
         const instructionStates = yield* Ref.make(new Map<string, T3PromptInstructionState>());
+        // Background shells the agent left running, by the shell id Cursor gave it.
+        const backgroundShells = new Map<
+          string,
+          {
+            readonly providerThreadId: OrchestrationV2ProviderThread["id"];
+            readonly runId: ProviderAdapter.ProviderAdapterV2TurnInput["runId"];
+            readonly pid: number | undefined;
+            readonly command: string;
+            readonly stop: () => void;
+            awaited: boolean;
+          }
+        >();
+        // Runs a Stop ended; a shell they started that is reported only afterwards is stopped too.
+        const stoppedRuns = new Set<ProviderAdapter.ProviderAdapterV2TurnInput["runId"]>();
+        let latestRunId: ProviderAdapter.ProviderAdapterV2TurnInput["runId"] | undefined;
+        // A Stop or rollback bumps this, which drops wakes still queued behind another run.
+        let wakeGeneration = 0;
+        const publishedProviderThread = yield* Ref.make<OrchestrationV2ProviderThread | null>(null);
         const planIds = yield* Ref.make(new Map<string, OrchestrationV2PlanArtifact["id"]>());
 
         const emitProviderEvent = (event: ProviderAdapter.ProviderAdapterV2Event) =>
           Queue.offer(events, event).pipe(Effect.asVoid);
+
+        const withBackgroundShells = (
+          providerThread: OrchestrationV2ProviderThread,
+        ): OrchestrationV2ProviderThread => ({
+          ...providerThread,
+          pendingBackgroundTasks: [...backgroundShells].flatMap(([taskId, shell]) =>
+            shell.providerThreadId === providerThread.id
+              ? [
+                  {
+                    taskId,
+                    kind: "command" as const,
+                    command: shell.command,
+                    ...(shell.command.trim().length === 0
+                      ? {}
+                      : { description: shell.command.trim() }),
+                    ...(shell.awaited ? { awaited: true as const } : {}),
+                  },
+                ]
+              : [],
+          ),
+        });
+
+        const emitProviderThread = Effect.fn("CursorAdapterV2.emitProviderThread")(function* (
+          providerThread: OrchestrationV2ProviderThread,
+          sessionScoped = false,
+        ) {
+          const listed = withBackgroundShells(providerThread);
+          yield* Ref.set(publishedProviderThread, listed);
+          yield* emitProviderEvent({
+            type: "provider_thread.updated",
+            driver: CursorAgentSdk.CURSOR_PROVIDER,
+            providerThread: listed,
+            ...(sessionScoped ? { sessionScoped: true } : {}),
+          });
+        });
+
+        const publishBackgroundShells = Effect.fn("CursorAdapterV2.publishBackgroundShells")(
+          function* (providerThreadId: OrchestrationV2ProviderThread["id"]) {
+            const published = yield* Ref.get(publishedProviderThread);
+            if (published?.id !== providerThreadId) return;
+            const turn = yield* Ref.get(activeTurn);
+            // No run reads this stream between turns, so the session stores the snapshot itself.
+            yield* emitProviderThread(
+              { ...published, updatedAt: yield* DateTime.now },
+              turn === null || turn.finalized,
+            );
+          },
+        );
+
+        const onBackgroundShell = Effect.fn("CursorAdapterV2.onBackgroundShell")(function* (
+          turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
+          shell: CursorAgentSdk.CursorBackgroundShellEvent,
+        ) {
+          const providerThreadId = turnInput.providerThread.id;
+          if (shell.type === "started") {
+            if (stoppedRuns.has(turnInput.runId)) return shell.stop();
+            backgroundShells.set(shell.id, {
+              providerThreadId,
+              runId: turnInput.runId,
+              pid: shell.pid,
+              command: shell.command,
+              stop: shell.stop,
+              awaited: false,
+            });
+            return yield* publishBackgroundShells(providerThreadId);
+          }
+          const started = backgroundShells.get(shell.id);
+          if (started === undefined) return;
+          backgroundShells.delete(shell.id);
+          yield* publishBackgroundShells(providerThreadId);
+          // Nobody waits to hear about a shell the agent or a Stop killed.
+          if (shell.stopped) return;
+          // The run that started it is still working, so the agent can read the result itself.
+          const turn = yield* Ref.get(activeTurn);
+          if (
+            turn !== null &&
+            !turn.finalized &&
+            !turn.turnEnded &&
+            turn.input.runId === started.runId
+          ) {
+            return;
+          }
+          const generation = wakeGeneration;
+          yield* continuationRequests.offer({
+            threadId: turnInput.threadId,
+            providerThreadId,
+            driver: CursorAgentSdk.CURSOR_PROVIDER,
+            dispatchIfCurrent: (dispatch) =>
+              generation === wakeGeneration ? Effect.asSome(dispatch) : Effect.succeedNone,
+            // Cursor starts a new run from this text, so nothing is buffered.
+            delivery: "message_text",
+            detail: cursorBackgroundShellDetail(shell),
+            notification: {
+              ...backgroundWorkNotification([
+                {
+                  kind: "command",
+                  label: shell.command,
+                  outcome:
+                    shell.exitCode === 0
+                      ? "completed"
+                      : shell.exitCode === undefined
+                        ? "unknown"
+                        : "failed",
+                  exitCode: shell.exitCode,
+                },
+              ]),
+              detail: shell.command,
+            },
+          });
+        });
+
+        const stopBackgroundShells = (providerThreadId?: OrchestrationV2ProviderThread["id"]) =>
+          Effect.sync(() => {
+            wakeGeneration += 1;
+            for (const shell of backgroundShells.values()) {
+              if (providerThreadId === undefined || shell.providerThreadId === providerThreadId) {
+                shell.stop();
+              }
+            }
+          });
 
         const resolveItemOrdinal = (context: ActiveCursorTurn, nativeItemId: string) =>
           Effect.sync(() => {
@@ -2456,19 +2623,14 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                   }),
             }),
           });
-          yield* emitProviderEvent({
-            type: "provider_thread.updated",
-            driver: CursorAgentSdk.CURSOR_PROVIDER,
-            providerThread: {
-              ...input.context.input.providerThread,
-              providerSessionId: session.id,
-              status: "active",
-              firstRunOrdinal:
-                input.context.input.providerThread.firstRunOrdinal ??
-                input.context.input.runOrdinal,
-              lastRunOrdinal: input.context.input.runOrdinal,
-              updatedAt: completedAt,
-            },
+          yield* emitProviderThread({
+            ...input.context.input.providerThread,
+            providerSessionId: session.id,
+            status: "active",
+            firstRunOrdinal:
+              input.context.input.providerThread.firstRunOrdinal ?? input.context.input.runOrdinal,
+            lastRunOrdinal: input.context.input.runOrdinal,
+            updatedAt: completedAt,
           });
           if (input.context.runtimeInstructions !== undefined) {
             const deliveredRuntime =
@@ -2588,7 +2750,8 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           if (
             existing !== null &&
             openInput.operation === "resume" &&
-            existing.nativeThreadId === openInput.agentId
+            existing.nativeThreadId === openInput.agentId &&
+            existing.session.isAlive?.() !== false
           ) {
             return existing;
           }
@@ -2695,6 +2858,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           const instructionState = {
             hasT3Mcp: mcpServers !== undefined,
             hasDeviceTools,
+            hasProviderInstructions: mcpServers !== undefined,
             sidekick: turnInput.sidekick ?? null,
           } satisfies T3PromptInstructionState;
           const newText = t3PromptWithOrchestrationInstructions({
@@ -2703,6 +2867,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             previousState:
               (yield* Ref.get(instructionStates)).get(agentId) ??
               (turnInput.nativeThreadHasTurns === true ? ORCHESTRATION_TOLD : undefined),
+            providerInstructions: CURSOR_BACKGROUND_WAIT_INSTRUCTIONS,
           });
           const userText =
             interrupted === undefined
@@ -2746,6 +2911,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           const runtimeInstructions = buildRuntimeInstructions({
             harness: "Cursor",
             model: turnInput.modelSelection.model,
+            runtimePolicy: turnInput.runtimePolicy,
           });
           // Resend only on a new/compacted/rewound conversation or when the model changes.
           const sendRuntimeInstructions = deliveredRuntime !== runtimeInstructions;
@@ -2877,6 +3043,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                   }
                   return handleInteractionUpdate(context, update);
                 },
+                onBackgroundShell: (shell) => onBackgroundShell(turnInput, shell),
               })
               .pipe(Effect.mapError(classifyCursorModelRejection(turnInput.modelSelection)));
             const sentInstructionState = resolved.instructionState;
@@ -2937,6 +3104,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               usage: undefined,
             };
             yield* Ref.set(activeTurn, context);
+            latestRunId = turnInput.runId;
             yield* emitProviderEvent({
               type: "provider_turn.updated",
               driver: CursorAgentSdk.CURSOR_PROVIDER,
@@ -2946,15 +3114,11 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 completedAt: null,
               }),
             });
-            yield* emitProviderEvent({
-              type: "provider_thread.updated",
-              driver: CursorAgentSdk.CURSOR_PROVIDER,
-              providerThread: {
-                ...turnInput.providerThread,
-                providerSessionId: session.id,
-                status: "active",
-                updatedAt: startedAt,
-              },
+            yield* emitProviderThread({
+              ...turnInput.providerThread,
+              providerSessionId: session.id,
+              status: "active",
+              updatedAt: startedAt,
             });
             for (const update of pendingUpdates) {
               yield* handleInteractionUpdate(context, update);
@@ -3068,6 +3232,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         );
 
         const closeSession = Effect.fnUntraced(function* () {
+          yield* stopBackgroundShells();
           const existing = yield* Ref.get(liveAgent);
           if (existing !== null) {
             yield* existing.session.close.pipe(Effect.ignore);
@@ -3094,6 +3259,15 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               ? cursorContextWindowTokens(selection, adapterOptions.getModels?.() ?? [])
               : undefined,
           events: Stream.fromEffectRepeat(Queue.take(events)),
+          // closeSession stops every shell, so idle release must wait while any still runs.
+          backgroundTasksEndWithProcess: true,
+          hasPendingBackgroundWork: Effect.sync(() => backgroundShells.size > 0),
+          hasPendingBackgroundWorkForThread: (providerThread) =>
+            Effect.sync(() =>
+              [...backgroundShells.values()].some(
+                (shell) => shell.providerThreadId === providerThread.id,
+              ),
+            ),
           ensureThread: Effect.fn("CursorAdapterV2.ensureThread")(
             function* (threadInput: ProviderAdapter.ProviderAdapterV2EnsureThreadInput) {
               const opened = yield* openAgent({
@@ -3230,9 +3404,38 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 ),
               ),
           ),
+          awaitBackgroundTasks: Effect.fn("CursorAdapterV2.awaitBackgroundTasks")(function* ({
+            providerThread,
+            taskIds,
+            awaited,
+          }) {
+            // Cursor shows the agent a shell's id and its pid; either names it.
+            const matched = [...new Set(taskIds)].filter((taskId) => {
+              const shell =
+                backgroundShells.get(taskId) ??
+                [...backgroundShells.values()].find(
+                  (shell) => shell.pid !== undefined && String(shell.pid) === taskId,
+                );
+              if (shell?.providerThreadId !== providerThread.id) return false;
+              shell.awaited = awaited;
+              return true;
+            });
+            if (matched.length > 0) yield* publishBackgroundShells(providerThread.id);
+            return { matched };
+          }),
+          stopTask: ({ providerThread, taskId }) =>
+            Effect.sync(() => {
+              const shell = backgroundShells.get(taskId);
+              if (shell?.providerThreadId === providerThread.id) shell.stop();
+            }),
           interruptTurn: Effect.fn("CursorAdapterV2.interruptTurn")(
             function* (turnInput: ProviderAdapter.ProviderAdapterV2InterruptInput) {
               const context = yield* Ref.get(activeTurn);
+              // A user Stop ends what the agent left running too; a steer leaves it alone.
+              if (turnInput.requestRuntimeRestart === true) {
+                if (latestRunId !== undefined) stoppedRuns.add(latestRunId);
+                yield* stopBackgroundShells(turnInput.providerThread.id);
+              }
               if (context === null && turnInput.requestRuntimeRestart === true) return;
               if (context?.providerTurnId !== turnInput.providerTurnId) {
                 return yield* new ProviderAdapter.ProviderAdapterProtocolError({
@@ -3371,6 +3574,8 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                   }),
                   Ref.set(interruptedPrompt, null),
                   Ref.set(resumedAgent, null),
+                  // A shell the discarded runs left running must not wake the rewound thread.
+                  stopBackgroundShells(rollbackInput.providerThread.id),
                 ]);
               const now = yield* DateTime.now;
               if (target.type === "provider_turn") {

@@ -10,6 +10,7 @@
 - [Source control](./user/source-control.md)
 - [Project settings](./user/project-settings.md)
 - [Spec mode](./user/spec-mode.md)
+- [Projects with several repositories](./user/multi-repo-projects.md)
 - [Appearance and themes](./user/appearance.md)
 - [Keyboard shortcuts](./user/keybindings.md)
 - [Voice input](./user/voice-input.md)

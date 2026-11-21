@@ -420,7 +420,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
           )
         }
       />
-      <TooltipPopup side="top" variant="code">
+      <TooltipPopup side="top" variant="code" className="pointer-events-auto">
         <MarkdownFileLinkTooltip
           environmentId={environmentId}
           iconPath={iconPath}
