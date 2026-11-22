@@ -15,7 +15,6 @@ import {
   type OrchestrationV2RunAttempt,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
-  isCompactionCommandMessage,
   isDeliveredProviderTurn,
   parseGoalCommand,
   RunId,
@@ -63,7 +62,11 @@ import {
   historicalMessage,
   latestNativeContextUsage,
 } from "@t3tools/provider-core/server/handoffBudget";
-import { deliverContextHandoffs, withInlineContext } from "./ContextHandoffDelivery.ts";
+import {
+  deliverContextHandoffs,
+  isSlashCommandMessage,
+  withInlineContext,
+} from "./ContextHandoffDelivery.ts";
 import { isProviderCommand, outputInstructions } from "./runOutput.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -164,6 +167,13 @@ const refusedBeforePrompt = (error: unknown): boolean =>
     error.driver === CLAUDE_PROVIDER &&
     error.detail === CLAUDE_QUERY_ENDED_BEFORE_TURN_DETAIL) ||
   (Predicate.hasProperty(error, "cause") && refusedBeforePrompt(error.cause));
+
+// The provider may have acted on a request it never answered, so a retry could duplicate it.
+const OUTCOME_UNKNOWN_TAGS = ["CodexAppServerUnresponsiveError"] as const;
+
+const outcomeUnknown = (error: unknown): boolean =>
+  OUTCOME_UNKNOWN_TAGS.some((tag) => Predicate.isTagged(error, tag)) ||
+  (Predicate.hasProperty(error, "cause") && outcomeUnknown(error.cause));
 
 /**
  * Whether a non-truncating provider's native session lost the conversation kept before `run`.
@@ -591,11 +601,10 @@ export const layer: Layer.Layer<
                   )) ||
                   (source.status === "completed" &&
                     handoff.delivery === undefined &&
-                    // Compaction and /goal turns defer history to the next turn.
+                    // Slash command turns defer history to the next turn.
                     projection.messages.some(
                       (message) =>
-                        message.id === source.userMessageId &&
-                        (isCompactionCommandMessage(message) || parseGoalCommand(message) !== null),
+                        message.id === source.userMessageId && isSlashCommandMessage(message),
                     ))),
             )));
       const isSideChatHandoff = (handoff: OrchestrationV2ContextHandoff) =>
@@ -1067,7 +1076,9 @@ export const layer: Layer.Layer<
       ) {
         const loaded = yield* Effect.result(load);
         if (loaded._tag === "Success") return loaded.success;
-        if (input.willRetry === true) return yield* loaded.failure;
+        if (input.willRetry === true && !outcomeUnknown(loaded.failure)) {
+          return yield* loaded.failure;
+        }
         yield* settleStartFailure({
           signal: "provider-thread-load-failure",
           title: "Provider turn failed to start",
@@ -1084,7 +1095,7 @@ export const layer: Layer.Layer<
           records: providerMessage.context?.records ?? [],
         }),
       );
-      // Native goal commands go verbatim; handoff history waits a turn.
+      const slashCommand = isSlashCommandMessage(providerMessage);
       const goalDriver =
         session.driver === "codex" ||
         session.driver === "claudeAgent" ||
@@ -1105,13 +1116,7 @@ export const layer: Layer.Layer<
       let compactionMessageIdSet: ReadonlySet<string> | undefined;
       const compactionMessageIds = () =>
         (compactionMessageIdSet ??= new Set(
-          projection.messages
-            .filter(
-              (candidate) =>
-                isCompactionCommandMessage(candidate) ||
-                (goalDriver && parseGoalCommand(candidate) !== null),
-            )
-            .map((candidate) => candidate.id),
+          projection.messages.filter(isSlashCommandMessage).map((candidate) => candidate.id),
         ));
       const restartCancelledWork = pendingRestartCancelledBackgroundWork({
         runs: projection.runs,
@@ -1349,7 +1354,7 @@ export const layer: Layer.Layer<
                   }),
                 ];
           // History delivery (inline or injected) is text only, so missed images ride on prompts
-          // until a later run's is accepted. Compaction and /goal starts carry none. A missed run's
+          // until a later run's is accepted. Slash command starts carry none. A missed run's
           // own accepted attempt predates its unsent steering input, so it does not count.
           const runsById = new Map(projection.runs.map((source) => [source.id, source]));
           const messagesById = new Map(projection.messages.map((message) => [message.id, message]));
@@ -1359,12 +1364,7 @@ export const layer: Layer.Layer<
             const source = runsById.get(attempt.runId);
             if (source === undefined) continue;
             const message = messagesById.get(source.userMessageId);
-            if (
-              message !== undefined &&
-              (isCompactionCommandMessage(message) ||
-                (goalDriver && parseGoalCommand(message) !== null))
-            )
-              continue;
+            if (message !== undefined && isSlashCommandMessage(message)) continue;
             lastPromptOrdinal = Math.max(lastPromptOrdinal, source.ordinal);
           }
           const attachments = missedHistory.flatMap((item) =>
@@ -1771,7 +1771,7 @@ export const layer: Layer.Layer<
             handoffs: [...handoffs, ...resumedRetryHandoff.handoffs],
             providerThread: { ...resumed.success, id: providerThread.id },
             budget: context.budget,
-            deferInline: isCompactionCommandMessage(providerMessage) || goalCommand,
+            deferInline: slashCommand,
             alreadyDeliveredItemIds: context.deliveredItemIds,
             persist: () => Effect.void,
           }).pipe(
@@ -1798,11 +1798,12 @@ export const layer: Layer.Layer<
         resumedHandoffContext = undefined;
         resumedRetryHandoff = undefined;
         if (!(yield* isCurrentAttemptInStatus("starting"))) return undefined;
-        // Another client is still writing to the native thread. A fresh
-        // session here would silently split the conversation from it.
+        // Another client is still writing to the native thread, or the provider may have
+        // resumed it without answering. A fresh session would split the conversation.
         if (
           resumed._tag === "Failure" &&
-          resumed.failure._tag === "ProviderAdapterThreadInUseError"
+          (resumed.failure._tag === "ProviderAdapterThreadInUseError" ||
+            outcomeUnknown(resumed.failure))
         ) {
           return yield* loadFromProvider(Effect.fail(resumed.failure));
         }
@@ -2174,7 +2175,7 @@ export const layer: Layer.Layer<
         function* (turnInput: Parameters<typeof session.startTurn>[0], compact = false) {
           const delivery = yield* deliverContextHandoffs({
             handoffs: [...effectiveHandoffs, ...retryHandoff.handoffs],
-            deferInline: compact || goalCommand,
+            deferInline: compact || slashCommand,
             providerThread: runningProviderThread,
             budget,
             alreadyDeliveredItemIds: deliveredItemIds,
@@ -2199,7 +2200,7 @@ export const layer: Layer.Layer<
           const start = compact ? session.compactThread! : session.startTurn;
           // Like history, the side chat context waits for a turn that sends a prompt.
           const sideChatContext =
-            sideChatHandoff === undefined || compact || goalCommand
+            sideChatHandoff === undefined || compact || slashCommand
               ? ""
               : sideChatHandoff.summaryText;
           // Record inline handoffs before startTurn so an immediate dropped terminal can restore them.
@@ -2226,7 +2227,7 @@ export const layer: Layer.Layer<
           const { resume: _resume, ...contextInput } = startInput;
           const { message: resumeMessage, resume: _resumeIntent, ...resumeInput } = startInput;
           const missedAttachments =
-            compact || goalCommand
+            compact || slashCommand
               ? []
               : retryHandoff.attachments.filter(
                   (missed) =>
@@ -2237,7 +2238,7 @@ export const layer: Layer.Layer<
           // A resume that must be prompted still needs a request, or the agent has nothing to do.
           const requestText =
             turnInput.resume && prompted && userText === "" ? RESUME_PROMPT : userText;
-          const text = goalCommand ? userText : withInlineContext(inlineContext, requestText);
+          const text = slashCommand ? userText : withInlineContext(inlineContext, requestText);
           const operation =
             turnInput.resume && !prompted
               ? (session.resumeTurn?.({ ...resumeInput, messageId: resumeMessage.messageId }) ??
