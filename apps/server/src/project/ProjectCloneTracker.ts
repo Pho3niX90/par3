@@ -461,15 +461,20 @@ export const make = Effect.gen(function* () {
         plan.destinationPath,
         ...plan.steps.map((step) => step.destinationPath),
       ]);
-      const claimed = yield* Ref.modify(clones, (current) => {
-        const conflict = Array.from(current.values()).some(
+      const claim = yield* Ref.modify(clones, (current) => {
+        const overlapping = Array.from(current.values()).filter(
           (tracked) =>
             tracked.snapshot.projectId === input.projectId ||
             destinations.has(tracked.input.destinationPath) ||
             tracked.input.steps.some((step) => destinations.has(step.destinationPath)),
         );
-        if (conflict) return [false, current] as const;
+        // Only a running clone owns its destination; a failed or cancelled one
+        // left nothing behind, so a fresh start supersedes it.
+        if (overlapping.some((tracked) => tracked.snapshot.phase === "running")) {
+          return [null, current] as const;
+        }
         const next = new Map(current);
+        for (const stale of overlapping) next.delete(stale.snapshot.projectId);
         next.set(input.projectId, {
           snapshot,
           fiber: null,
@@ -481,13 +486,15 @@ export const make = Effect.gen(function* () {
             protocol: input.protocol ?? "auto",
           },
         });
-        return [true, next] as const;
+        return [overlapping.map((stale) => stale.snapshot.projectId), next] as const;
       });
       const alreadyInProgress = cloneStartError(
         input.provider,
         "A clone into this destination is already in progress.",
       );
-      if (!claimed) return yield* alreadyInProgress;
+      if (claim === null) return yield* alreadyInProgress;
+      // A superseded done entry's pending removal would otherwise delete the new claim.
+      yield* Effect.forEach(claim, clearRetention, { discard: true });
       // Finish or release the claim despite disconnects; a claim without a fiber cannot be cancelled or retried.
       const projectId = yield* Effect.uninterruptible(
         Effect.gen(function* () {

@@ -2904,6 +2904,7 @@
   "665abe47a0f4612b": "Kontroller misslyckas",
   "09d74034d376c535": "Kontroller väntar",
   "91e832d25ff2aba9": "{term, select, mr {Merge request} cr {Ändringsbegäran} other {Pull request}} {number}",
+  "bbb7d40a7ad7ab71": "Privat",
   "37f84b2c7830febb": "stack {position} av {size}",
   "0469747f4bb9caac": "{additions} tillägg, {deletions} borttagningar",
   "4e3cdb7e814e8962": "Dubbeltryck för att öppna. Tryck och håll för snabbåtgärder.",

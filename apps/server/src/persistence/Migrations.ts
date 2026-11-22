@@ -130,6 +130,8 @@ import Migration0104 from "./Migrations/102_ThreadItemCounts.ts";
 import Migration0105 from "./Migrations/103_IssueTrackerAdditionalScopes.ts";
 import Migration0106 from "./Migrations/104_ProjectionProjectsTrackedFolders.ts";
 import Migration0107 from "./Migrations/105_TaskFolders.ts";
+// Upstream numbers this 106; Par3 runs it as 108.
+import Migration0108 from "./Migrations/106_WorktreePathKeyIndex.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -240,6 +242,7 @@ const migrationEntries = [
   [105, "IssueTrackerAdditionalScopes", Migration0105],
   [106, "ProjectionProjectsTrackedFolders", Migration0106],
   [107, "TaskFolders", Migration0107],
+  [108, "WorktreePathKeyIndex", Migration0108],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
