@@ -1,43 +1,27 @@
 import { jiraIssueKeyPattern } from "@t3tools/shared/jira";
+import { toHtml } from "hast-util-to-html";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { MarkdownNode } from "~/vendor/mdast-find-and-replace";
-import { remarkJiraIssueLinks } from "./jiraMarkdown";
+import { wordsHast } from "~/markdown/wordsHast";
 
-describe("remarkJiraIssueLinks", () => {
+describe("Jira markdown links", () => {
   it("links keys in prose and leaves code and authored links alone", () => {
-    const authored: MarkdownNode = {
-      type: "link",
-      url: "https://x.test",
-      children: [{ type: "text", value: "IPSTMAKE-2" }],
-    };
-    const tree: MarkdownNode = {
-      type: "root",
-      children: [
-        {
-          type: "paragraph",
-          children: [
-            { type: "text", value: "Did we start ipstmake-1234? See " },
-            { type: "inlineCode", value: "IPSTMAKE-1" },
-            authored,
-          ],
-        },
-      ],
-    };
-    remarkJiraIssueLinks({
-      baseUrl: "https://company.atlassian.net",
-      pattern: jiraIssueKeyPattern(["IPSTMAKE"])!,
-    })(tree);
-    expect(tree.children![0]!.children).toEqual([
-      { type: "text", value: "Did we start " },
+    const tree = wordsHast(
+      "Did we start ipstmake-1234? See `IPSTMAKE-1` [IPSTMAKE-2](https://x.test)",
       {
-        type: "link",
-        url: "https://company.atlassian.net/browse/IPSTMAKE-1234",
-        children: [{ type: "text", value: "ipstmake-1234" }],
+        math: false,
+        breaks: false,
+        escapeHtml: false,
+        insights: false,
+        jiraLinks: {
+          baseUrl: "https://company.atlassian.net",
+          pattern: jiraIssueKeyPattern(["IPSTMAKE"])!,
+        },
+        extensions: {},
       },
-      { type: "text", value: "? See " },
-      { type: "inlineCode", value: "IPSTMAKE-1" },
-      authored,
-    ]);
+    );
+    expect(toHtml(tree)).toBe(
+      '<p dir="ltr">Did we start <span class="has-[[data-slot=context-chip-label]]:whitespace-nowrap"><a href="https://company.atlassian.net/browse/IPSTMAKE-1234">ipstmake-1234</a>?</span> See <code data-inline-code="" dir="ltr">IPSTMAKE-1</code> <a href="https://x.test">IPSTMAKE-2</a></p>',
+    );
   });
 });

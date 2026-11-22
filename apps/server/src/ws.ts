@@ -1,6 +1,7 @@
 import { GitCommandError, OrchestrationDispatchCommandError } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
 import * as NodeCrypto from "node:crypto";
+import * as FeatureFlags from "@t3tools/shared/FeatureFlags";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import * as Digest from "effect/crypto/Digest";
@@ -232,6 +233,7 @@ import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
+import { assertCheckoutIdle } from "./git/sharedCheckoutGuard.ts";
 import { refreshPushedPullRequests } from "./git/refreshPushedPullRequests.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
@@ -1432,6 +1434,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
 // instantiation depth wherever the server composes this layer, which silently
 // types the server's requirements as `any`. Typecheck flags a missing service here.
 type WsRpcServices =
+  | FeatureFlags.FeatureFlags
   | AssetSigner.AssetSigner
   | Signature.Signature
   | NpmRelease.NpmRelease
@@ -1674,6 +1677,7 @@ const makeWsRpcHandlers = (
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const nativeChildWork = yield* NativeChildWorkQuery.NativeChildWorkQuery;
       const keybindings = yield* Keybindings.Keybindings;
+      const featureFlags = yield* FeatureFlags.FeatureFlags;
       const environmentTheme = yield* EnvironmentTheme.EnvironmentThemeService;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
@@ -2063,6 +2067,10 @@ const makeWsRpcHandlers = (
           secretProviderSettings: true,
           secretReferences: true,
           secretRequestReferences: true,
+          featureFlags: {
+            secretProviders: featureFlags.secretProviders,
+            tanstackSource: featureFlags.tanstackSource,
+          },
           ...Option.match(scratchWorkspaceRoot, {
             onNone: () => ({}),
             onSome: (root) => ({ scratchWorkspaceRoot: root }),
@@ -3440,9 +3448,13 @@ const makeWsRpcHandlers = (
           ),
         [WS_METHODS.gitResolvePullRequest]: (input) => gitWorkflow.resolvePullRequest(input),
         [WS_METHODS.gitPreparePullRequestThread]: (input) =>
-          gitWorkflow
-            .preparePullRequestThread(input)
-            .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+          (input.mode === "local"
+            ? assertCheckoutIdle("GitWorkflowService.preparePullRequestThread", input.cwd)
+            : Effect.void
+          ).pipe(
+            Effect.andThen(gitWorkflow.preparePullRequestThread(input)),
+            Effect.tap(() => refreshGitStatus(input.cwd)),
+          ),
         [WS_METHODS.vcsListRefs]: (input) => gitWorkflow.listRefs(input),
         [WS_METHODS.vcsCreateWorktree]: (input) =>
           // A project that tracks repositories gets a task folder, as its new worktree threads do.
@@ -3487,19 +3499,22 @@ const makeWsRpcHandlers = (
             ),
           ),
         [WS_METHODS.vcsCreateRef]: (input) =>
-          gitWorkflow
-            .createRef(input)
-            .pipe(
-              Effect.tap(() =>
-                input.switchRef
-                  ? vcsStatusBroadcaster.refreshAfterCheckout(input.cwd)
-                  : refreshGitStatus(input.cwd),
-              ),
+          (input.switchRef
+            ? assertCheckoutIdle("GitWorkflowService.createRef", input.cwd)
+            : Effect.void
+          ).pipe(
+            Effect.andThen(gitWorkflow.createRef(input)),
+            Effect.tap(() =>
+              input.switchRef
+                ? vcsStatusBroadcaster.refreshAfterCheckout(input.cwd)
+                : refreshGitStatus(input.cwd),
             ),
+          ),
         [WS_METHODS.vcsSwitchRef]: (input) =>
-          gitWorkflow
-            .switchRef(input)
-            .pipe(Effect.tap(() => vcsStatusBroadcaster.refreshAfterCheckout(input.cwd))),
+          assertCheckoutIdle("GitWorkflowService.switchRef", input.cwd).pipe(
+            Effect.andThen(gitWorkflow.switchRef(input)),
+            Effect.tap(() => vcsStatusBroadcaster.refreshAfterCheckout(input.cwd)),
+          ),
         [WS_METHODS.vcsInit]: (input) =>
           vcsProvisioning.initRepository(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.vcsConflictsList]: (input) => mergeConflicts.list(input),
