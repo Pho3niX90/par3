@@ -883,6 +883,7 @@ function useChatMarkdownState(
     }
     const lookup = workspaceFileLookup(workspaceRelativePath, cwd);
     if (lookup === null) return null;
+    const basenameLookup = needsWorkspaceBasenameLookup(workspaceRelativePath);
     const literalPath = resolveWorkspaceFilePath(workspaceRelativePath, cwd);
     // The chip's icon already loaded this, so a link that is right as written
     // opens without waiting on the server.
@@ -902,7 +903,8 @@ function useChatMarkdownState(
       });
       return { root, entries: result._tag === "Success" ? result.value.entries : [] };
     };
-    let match = lookup.pick((await searchRoot(cwd)).entries);
+    const own = await searchRoot(cwd);
+    let match = lookup.pick(own.entries);
     if (match === null) {
       const threadProjectId = threadRef ? readThreadShell(threadRef)?.projectId : undefined;
       const otherRoots = projects.flatMap((project) =>
@@ -914,12 +916,12 @@ function useChatMarkdownState(
       );
       const agentRoots = (agentDirectories?.() ?? []).filter((root) => root !== cwd);
       if (otherRoots.length === 0 && agentRoots.length === 0) return null;
-      match = pickProjectLinkMatch(
-        workspaceRelativePath,
-        await Promise.all(otherRoots.map(searchRoot)),
-      );
+      if (otherRoots.length > 0) {
+        const projectSearches = await Promise.all(otherRoots.map(searchRoot));
+        match = pickProjectLinkMatch(workspaceRelativePath, [own, ...projectSearches]);
+      }
       if (match === null && agentRoots.length > 0) {
-        // No project has the file, so it opens where the agent last worked, as written.
+        // An unresolved project lookup falls back to the agent's working directories.
         const agentPaths = agentRoots.map((root) =>
           resolveWorkspaceFilePath(workspaceRelativePath, root),
         );
@@ -930,7 +932,7 @@ function useChatMarkdownState(
         if (agentMetadata._tag !== "Success") return null;
         match =
           agentPaths.find((_, index) => agentMetadata.value.entries[index]?.kind === "file") ??
-          (needsWorkspaceBasenameLookup(workspaceRelativePath)
+          (basenameLookup
             ? await findAgentDirectoryMatch(workspaceRelativePath, agentRoots, searchRoot)
             : null);
       }
