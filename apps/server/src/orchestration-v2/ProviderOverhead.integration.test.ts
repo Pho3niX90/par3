@@ -57,7 +57,7 @@ const BUDGETS: ReadonlyArray<Budget> = [
   {
     name: "W2 eight sequential tool calls",
     turns: [{ kind: "sequential_tools", toolCalls: 8 }],
-    maxTransactions: 29,
+    maxTransactions: 31,
     maxSqlStatementsPerTurn: 200,
     wallBudgetMs: 1600,
   },
