@@ -134,6 +134,8 @@ import Migration0107 from "./Migrations/105_TaskFolders.ts";
 import Migration0108 from "./Migrations/106_WorktreePathKeyIndex.ts";
 // Upstream numbers this 107; Par3 runs it as 109.
 import Migration0109 from "./Migrations/107_DeferredSlashCommandIndex.ts";
+// Upstream numbers this 108; Par3 runs it as 110.
+import Migration0110 from "./Migrations/108_AgentFeedback.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -246,6 +248,7 @@ const migrationEntries = [
   [107, "TaskFolders", Migration0107],
   [108, "WorktreePathKeyIndex", Migration0108],
   [109, "DeferredSlashCommandIndex", Migration0109],
+  [110, "AgentFeedback", Migration0110],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
