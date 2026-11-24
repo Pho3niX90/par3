@@ -108,6 +108,17 @@ vi.mock(import("../state/filesystem"), async (original) => {
         : actual.useFilesystemReadAccess(environmentId)) as never,
   };
 });
+const threadWorktrees = vi.hoisted(() => new Map<string, string>());
+vi.mock(import("../state/entities"), async (original) => {
+  const actual = await original();
+  return {
+    ...actual,
+    readThreadShell: ((ref: { threadId: string }) => {
+      const worktreePath = threadWorktrees.get(ref.threadId);
+      return worktreePath === undefined ? actual.readThreadShell(ref as never) : { worktreePath };
+    }) as never,
+  };
+});
 vi.mock(import("../remoteOpen"), async (original) => ({
   ...(await original()),
   useRemoteOpenResolution: () => ({ state: { mode: "local-exec" }, isResolved: true }) as never,
@@ -188,6 +199,7 @@ function setup() {
   parsedSources.length = 0;
   settingsOverrides.mathRenderingEnabled = false;
   renderDiagram.mockReset();
+  threadWorktrees.clear();
   workspaceSearch.mockReset().mockResolvedValue(AsyncResult.success({ entries: [] }));
   filesystemMetadata.mockReset().mockResolvedValue(AsyncResult.success({ entries: [null] }));
   cachedFileMetadata.mockReset().mockResolvedValue(AsyncResult.success(null));
@@ -605,6 +617,27 @@ describe("ChatMarkdown workspace file opens", () => {
       ),
     );
     expect(openFileInPreview).not.toHaveBeenCalled();
+  });
+
+  it("opens a path from markdown rendered in another checkout under that checkout", async () => {
+    setup();
+    const scratchThread = { ...threadRef, threadId: ThreadId.make("scratch-thread") };
+    threadWorktrees.set(scratchThread.threadId, "/scratch/thread");
+    filesystemMetadata.mockResolvedValue(AsyncResult.success({ entries: [{ kind: "file" }] }));
+    using openFile = vi.spyOn(useRightPanelStore.getState(), "openFile");
+    await using screen = await renderText("[State](packages/state/filesystem.ts)", {
+      cwd: "/repo-a",
+      threadRef: scratchThread,
+    });
+    await act(async () => screen.container.querySelector("a")!.click());
+
+    await vi.waitFor(() =>
+      expect(openFile).toHaveBeenCalledExactlyOnceWith(
+        scratchThread,
+        "/repo-a/packages/state/filesystem.ts",
+        undefined,
+      ),
+    );
   });
 
   it.each([
