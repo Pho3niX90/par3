@@ -1033,10 +1033,10 @@ it.layer(NodeServices.layer)("launcher lookup on PATH", (it) => {
       yield* fs.writeFileString(executable, "", { mode: 0o755 });
       const bin = path.join(root, "bin");
       yield* fs.makeDirectory(bin);
-      yield* fs.writeFileString(path.join(bin, "t3"), posixLauncherScript(executable), {
+      yield* fs.writeFileString(path.join(bin, "par3"), posixLauncherScript(executable), {
         mode: 0o755,
       });
-      const script = yield* fs.realPath(path.join(bin, "t3"));
+      const script = yield* fs.realPath(path.join(bin, "par3"));
       const missing = path.join(root, "missing");
       const lookup = (searchPath: string) =>
         findPosixLauncher({ launchedAs: executable, versionsDir }).pipe(

@@ -101,8 +101,10 @@ export function summarizePendingUserInputAnswer(
   const labelFor = (value: string) =>
     question.options.find((option) => (option.value ?? option.label) === value)?.label ?? value;
   const text = typeof answer === "string" ? labelFor(answer) : answer.map(labelFor).join(", ");
-  // An attachment-only answer resolves to an empty string.
-  return text.length > 0 ? text : resolve(msg("Attachment"));
+  if (text.length > 0) return text;
+  // An attachment-only answer resolves to an empty string; an empty multi-select array or blank
+  // optional text without attachments is unanswered.
+  return (draft?.attachmentCount ?? 0) > 0 ? resolve(msg("Attachment")) : null;
 }
 
 const DISPLACED_ANSWER_SEPARATOR = "\n\n";

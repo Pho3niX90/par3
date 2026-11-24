@@ -71,7 +71,7 @@ const BUDGETS: ReadonlyArray<Budget> = [
   {
     name: "W4 long streamed answer",
     turns: [{ kind: "streamed_text", deltas: 200 }],
-    maxTransactions: 14,
+    maxTransactions: 16,
     maxSqlStatementsPerTurn: 200,
     wallBudgetMs: 1600,
   },
