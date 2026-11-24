@@ -23,6 +23,10 @@ Yes.
 
 Par3 is free and open source (MIT). You bring your own subscription and keep paying your provider as you do now. Parity Connect, the built-in way to reach your machines remotely, links up to 3 machines per account; phones and browsers do not count. For more, pair over your network or Tailscale. [Remote access](./remote-access.md)
 
+## Can I fork or redistribute Par3?
+
+Yes, for the source code. The [MIT License](../../LICENSE) applies only to the source code, not to upstream T3 Tools, Inc.'s trademarks, branding, or trade dress. If you publish a fork or custom build, use your own branding and make it clear that your project is unofficial. See [TRADEMARK.md](../../TRADEMARK.md).
+
 ## Why is my Claude 5-hour limit draining so fast?
 
 It shouldn't anymore. Par3 drives Claude through Anthropic's Agent SDK, and Anthropic's 5-hour meter used to charge Agent SDK usage about 1.7x more than using Claude Code directly. Weekly limits were never affected. Claude in Par3 now drains your 5-hour limit at the same rate as Claude Code. Still seeing it? [Update Par3](./updating.md) on the machine that runs your agents.

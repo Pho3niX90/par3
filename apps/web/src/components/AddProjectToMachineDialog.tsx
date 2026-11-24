@@ -20,6 +20,7 @@ import {
   type CloneProtocol,
   cloneUrlForProtocol,
   cloneUrlProtocol,
+  withoutRemoteUrlCredentials,
 } from "@t3tools/shared/cloneUrl";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { ArrowRightIcon } from "lucide-react";
@@ -111,21 +112,27 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
   const [targetId, setTargetId] = useState(request.targetEnvironmentId);
   const target = targets.find((t) => t.environmentId === targetId) ?? targets[0] ?? null;
   const source = environments.find((env) => env.environmentId === request.projectRef.environmentId);
+  // An environment on an older version reports the remote URL as configured, login included.
   const members = project?.repositoryIdentity?.members ?? null;
-  const sourceUrls = members
-    ? members.map((member) => member.remoteUrl)
-    : [
-        project?.repositoryIdentity
-          ? (repositoryCloneRemoteUrl(project.repositoryIdentity) ?? "")
-          : "",
-      ];
+  const sourceUrls = (
+    members
+      ? members.map((member) => member.remoteUrl)
+      : [
+          project?.repositoryIdentity
+            ? (repositoryCloneRemoteUrl(project.repositoryIdentity) ?? "")
+            : "",
+        ]
+  ).map(withoutRemoteUrlCredentials);
   const [protocol, setProtocol] = useState<CloneProtocol | null>(() =>
     sharedCloneProtocol(sourceUrls),
   );
   const canSwitchProtocol = sourceUrls.every(
     (url) => cloneUrlForProtocol(url, "ssh") && cloneUrlForProtocol(url, "https"),
   );
-  const cloneUrl = (url: string) => (protocol ? cloneUrlForProtocol(url, protocol) : null) ?? url;
+  const cloneUrl = (url: string) => {
+    const sanitized = withoutRemoteUrlCredentials(url);
+    return (protocol ? cloneUrlForProtocol(sanitized, protocol) : null) ?? sanitized;
+  };
 
   const targetEnvironment = environments.find((env) => env.environmentId === target?.environmentId);
   const defaultPath = getCloneDestinationPath(

@@ -12,7 +12,7 @@ The clearest example is plan mode. T3 Code removed it, while most engineers we w
 
 Two features build on that. [Spec mode](docs/user/spec-mode.md) puts a requirements document that a person approves between a request and the code, and the server refuses implementation until it is approved. [Sidekick](docs/user/composer.md#sidekick) pairs a thread's model with a cheaper one: the lead plans and reviews while the sidekick does most of the work. Sidekick follows the approach of Cognition's [Devin Fusion](https://cognition.com/blog/fusion-in-devin-cli).
 
-We still merge T3 Code's improvements regularly and are grateful for the work behind it. T3 Code is MIT licensed, and so is Par3.
+We still merge T3 Code's improvements regularly and are grateful for the work behind it. T3 Code's source code is MIT licensed, and so is Par3 (see [Trademarks and forks](#trademarks-and-forks)).
 
 ## Installation
 
@@ -68,6 +68,8 @@ We are very very early in this project. Expect bugs.
 
 We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
 
+[Provider setup](./docs/user/install.md#providers) has the steps for each agent. [Install Par3](./docs/user/install.md) covers nightly builds, AppImage, WSL, and NixOS.
+
 ## Documentation
 
 Full docs live in [docs/](./docs/README.md). There's no docs site yet.
@@ -85,7 +87,7 @@ Full docs live in [docs/](./docs/README.md). There's no docs site yet.
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
 - [Run Par3 as a background service](./docs/user/background-service.md)
 
-Building from source? Follow the [development runbook](./docs/operations/development.md#first-checkout). The [architecture overview](./docs/internals/overview.md) explains how it works.
+Building from source? Follow the [development runbook](./docs/operations/00_development.md#first-checkout). The [architecture overview](./docs/internals/01_architecture.md) explains how it works.
 
 ## If you REALLY want to contribute still.... read this first
 
@@ -113,12 +115,24 @@ Checkout their getting started guide for more information: https://viteplus.dev/
 vp i
 ```
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
-
-Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
-
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+- Read [CONTRIBUTING.md](./CONTRIBUTING.md) before you report a bug or open a pull request.
+- Put feature requests in [Ideas](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
+- Build from source with the [development runbook](./docs/operations/00_development.md#first-checkout). The [architecture overview](./docs/internals/01_architecture.md) explains how it works.
+- Get help in [Discord](https://discord.gg/jn4EGJjrvv).
 
 ## License
 
-[MIT](./LICENSE)
+The source code in this repository is licensed under the [MIT License](./LICENSE).
+
+## Trademarks and forks
+
+The MIT license applies **only to the source code**. It does not grant any rights to T3 Tools, Inc.'s trademarks, branding, or trade dress, including the **T3 Code** name, wordmark, logos, and application icons.
+
+If you fork, redistribute, or build on T3 Code's source code:
+
+- **Use your own branding.** Replace the T3 Code name, wordmark, logos, and application icons in any public fork, redistributed build, website, package, or app store listing.
+- **Be explicitly clear that your project is unofficial.** Do not use the T3 Code name, wordmark, logo, or branding in your own projects without making it unmistakably clear that your project is unofficial and not affiliated with or endorsed by T3 Tools, Inc.
+
+Using our name, wordmark, logo, or branding in a way that suggests official status or affiliation is trademark infringement and unlawful. **Any project indicating or implying that it is an official version of T3 Code when it is not will be pursued to the full extent of the law.**
+
+See [TRADEMARK.md](./TRADEMARK.md) for the full trademark and branding policy.

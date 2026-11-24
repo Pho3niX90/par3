@@ -4,8 +4,8 @@ import {
   type FileContents,
   type PostRenderPhase,
 } from "@pierre/diffs";
-import type { WorkerPoolManager } from "@pierre/diffs/worker";
 import { useWorkerPool } from "@pierre/diffs/react";
+import type { WorkerPoolManager } from "@pierre/diffs/worker";
 import { useEffect, useState } from "react";
 
 function needsWorkerHighlight(workerPool: WorkerPoolManager | undefined, file: FileContents) {
@@ -22,18 +22,15 @@ function needsWorkerHighlight(workerPool: WorkerPoolManager | undefined, file: F
   return lines <= DEFAULT_TOKENIZE_MAX_LENGTH;
 }
 
-/**
- * Pierre highlights an active edit session on the main thread, so each version
- * of the file becomes editable only once it has rendered the worker's
- * highlight.
- */
+/** Enable editing only after worker highlighting renders; active edit sessions highlight on the main
+ * thread. */
 export function useEditableAfterHighlight(file: FileContents) {
   const workerPool = useWorkerPool();
   const [highlightedFile, setHighlightedFile] = useState<FileContents | null>(null);
   const needsHighlight = needsWorkerHighlight(workerPool, file);
   const ready = !needsHighlight || highlightedFile === file;
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- primes the highlighter worker pool's cache for this file
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- primes the worker pool's highlight cache for this file and falls back to plain text if it fails
   useEffect(() => {
     if (ready || workerPool === undefined) return;
     workerPool.primeFileHighlightCache(file).catch(() => setHighlightedFile(file));
@@ -41,8 +38,8 @@ export function useEditableAfterHighlight(file: FileContents) {
 
   const onPostRender = (renderedFile: FileContents | undefined, phase: PostRenderPhase) => {
     if (ready || phase === "unmount" || renderedFile?.cacheKey !== file.cacheKey) return;
-    // The pool caches a result just before the instance renders it, so a
-    // render that sees the cache has painted highlighted rows.
+    // Cache results arrive just before instance rendering; seeing the cache during render means rows are
+    // highlighted.
     if (workerPool?.getFileResultCache(file) !== undefined) setHighlightedFile(file);
   };
   return { ready, onPostRender };

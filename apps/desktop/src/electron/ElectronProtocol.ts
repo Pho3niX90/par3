@@ -31,7 +31,7 @@ export function getDesktopLinkSchemes(isDevelopment: boolean): readonly string[]
     : [DESKTOP_PRODUCTION_SCHEME, "par3"];
 }
 
-function getDesktopOrigin(isDevelopment: boolean): string {
+export function getDesktopOrigin(isDevelopment: boolean): string {
   return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}`;
 }
 

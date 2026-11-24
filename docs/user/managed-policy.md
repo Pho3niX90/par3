@@ -106,13 +106,9 @@ reopen the desktop app, or run `par3 service restart` for the
 [background service](./background-service.md). Reconnecting a phone or browser does not reload the
 policy.
 
-`providers.instances`.
-
-Variables in the environment that starts Par3 itself still reach providers, and a default
-binary path such as `claude` is looked up on that environment's `PATH`. The desktop app builds that
-environment from settings the user controls, such as their shell profile, so a user could put their
-own `claude` earlier on their `PATH`. Pin an absolute `binaryPath` in `providers.instances` for each
-provider you allow.
+To remove a policy, delete the file, remove the profile, set the Group Policy settings to
+**Not Configured**, or delete the registry value, then restart
+the server. Users get back the settings they had chosen, since Par3 never writes policy values
 into them.
 
 ## When Par3 refuses to start
@@ -122,14 +118,16 @@ policy it cannot read or parse, a setting it does not know, a value of the wrong
 version does not support, or a machine with both a native policy and a file. The error names where
 the policy came from and what is wrong.
 
-To remove a policy, delete the file, remove the profile, set the Group Policy settings to
-**Not Configured**, or delete the registry value, then restart
-the server. Users get back the settings they had chosen, since Par3 never writes policy values
+`par3 policy check` catches the same problems in a JSON file. For a profile or registry value, check
+the JSON before you convert it. For the Group Policy template, check a complete policy file that
+holds the same settings, then paste its `settings` and `limits.providers.instances` objects into the
+two JSON policies. A policy written for a newer version can use keys an older one
+cannot enforce, so upgrade Par3 before you deploy a policy that uses them.
 
 ## Settings
 
 Each key under `settings` is a setting's path in the server's `settings.json`, such as
-`storageCleanup.logsAfterDays`. Run `t3 policy settings` to list every path a policy can manage,
+`storageCleanup.logsAfterDays`. Run `par3 policy settings` to list every path a policy can manage,
 with its default.
 
 - `"locked": false` sets a default. It applies wherever the user has not chosen a value of their
@@ -200,11 +198,13 @@ config home, and the environment variables set on each provider. They come from
 [`providers.instances`](#providers) or Par3's defaults, and users cannot change them, because a
 wrapper script, a launch flag, or a variable such as `NODE_OPTIONS` could otherwise turn off the
 provider's approvals. Pin the variables your users need, such as a gateway URL, in
-`par3 policy check` catches the same problems in a JSON file. For a profile or registry value, check
-the JSON before you convert it. For the Group Policy template, check a complete policy file that
-holds the same settings, then paste its `settings` and `limits.providers.instances` objects into the
-two JSON policies. A policy written for a newer version can use keys an older one
-cannot enforce, so upgrade Par3 before you deploy a policy that uses them.
+`providers.instances`.
+
+Variables in the environment that starts Par3 itself still reach providers, and a default
+binary path such as `claude` is looked up on that environment's `PATH`. The desktop app builds that
+environment from settings the user controls, such as their shell profile, so a user could put their
+own `claude` earlier on their `PATH`. Pin an absolute `binaryPath` in `providers.instances` for each
+provider you allow.
 
 ACP agents' own mode menus have no effect under `maxRuntimeMode`, except Antigravity's, whose modes
 Par3 can place under the limit. Users still choose which ACP Registry agent runs; leave
@@ -249,6 +249,7 @@ so restart Par3 after that.
 
 - `webhookTasks: false`: scheduled tasks cannot use webhook triggers. Existing webhook tasks stay
   but do not run, and cannot be turned back on. Users can still edit or delete them.
+  Workflow webhooks are refused too.
 - `browserCookieImport: false`: users cannot import cookies from another browser into Par3's
   browser.
 - `previewTunnel: false`: other devices cannot load this machine's `localhost` pages themselves.

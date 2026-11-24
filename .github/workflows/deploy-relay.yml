@@ -18,7 +18,6 @@ on:
 permissions:
   contents: read
   id-token: none
-  statuses: write
 
 concurrency:
   # The fork's own group: the shared name was left holding a stale lock on GitHub.
@@ -32,6 +31,9 @@ jobs:
     if: (github.repository_owner == 'pingdotgg' && github.ref == 'refs/heads/main') || (github.repository_owner == 'Pho3niX90' && github.ref == 'refs/heads/fork/main')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      statuses: write
     environment:
       name: production
     env:
