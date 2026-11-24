@@ -143,9 +143,14 @@ const normalizeServerSettings = (
     ),
   );
 
+export interface SettingsClient {
+  readonly secretReferences: boolean;
+  readonly httpUsageLimitSources?: boolean;
+}
+
 export function redactServerSettingsForClient(
   settings: ServerSettings,
-  client: { readonly secretReferences: boolean },
+  client: SettingsClient,
 ): ServerSettings {
   // A `vault:NAME` reference names a secret without revealing it, so clients see it as written.
   const redacted = mapSettingsSecrets(settings, (secret) =>
@@ -160,13 +165,24 @@ export function redactServerSettingsForClient(
 /** Older clients decode secret fields as strings and fail on a reference, so they see a saved secret. */
 export function shapeSettingsForClient(
   settings: ServerSettings,
-  client: { readonly secretReferences: boolean },
+  client: SettingsClient,
 ): ServerSettings {
-  return client.secretReferences
+  const shaped = client.secretReferences
     ? settings
     : mapSettingsSecretValues(settings, (value) =>
         isSecretReference(value) ? SECRET_REDACTED : value,
       );
+  return {
+    ...shaped,
+    // Older clients decode only "cliproxy" sources and reject the whole settings payload otherwise.
+    usageLimitSources: client.httpUsageLimitSources
+      ? shaped.usageLimitSources
+      : Object.fromEntries(
+          Object.entries(shaped.usageLimitSources).filter(
+            ([, source]) => source.kind === "cliproxy",
+          ),
+        ),
+  };
 }
 
 /** A client shown a reference as a saved secret sends that marker back; it keeps the reference. */
@@ -1500,7 +1516,10 @@ const make = Effect.gen(function* () {
 
   const toClient = (settings: ServerSettings) =>
     resolveTextGenerationProvider(
-      redactServerSettingsForClient(settings, { secretReferences: true }),
+      redactServerSettingsForClient(settings, {
+        secretReferences: true,
+        httpUsageLimitSources: true,
+      }),
     );
   const clientView = ServerSettingsClientView.of({
     getSettings: getSettingsFromCache.pipe(Effect.map(toClient)),

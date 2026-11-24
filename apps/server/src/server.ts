@@ -147,6 +147,8 @@ import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFolders from "./workspace/WorkspaceFolders.ts";
+import * as LayoutCommandApprovals from "./workspace/LayoutCommandApprovals.ts";
+import * as LayoutCommandApprovalWrites from "./workspace/LayoutCommandApprovalWrites.ts";
 import * as TaskFolders from "./workspace/TaskFolders.ts";
 import * as TaskFolderStore from "./workspace/TaskFolderStore.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
@@ -645,6 +647,8 @@ const layerTaskFolders = TaskFolders.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       TaskFolderStore.layer,
+      LayoutCommandApprovals.layer,
+      ManagedPolicy.layer,
       ProjectStore.layer,
       ProjectionStoreV2.layer,
       VcsProcess.layer,
@@ -800,7 +804,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
         Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
       ),
     ),
-    Layer.provideMerge(layerTaskFolders),
+    Layer.provideMerge(Layer.merge(layerTaskFolders, LayoutCommandApprovalWrites.layer)),
     Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
     Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
     Layer.provideMerge(SecretCheck.layer),

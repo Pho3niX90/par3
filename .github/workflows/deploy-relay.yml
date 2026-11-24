@@ -107,6 +107,8 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           RELAY_DB_PASSWORD: ${{ secrets.RELAY_DB_PASSWORD }}
           RELAY_DB_ACCESS_CLIENT_SECRET: ${{ secrets.RELAY_DB_ACCESS_CLIENT_SECRET }}
+          # Unset leaves the Clerk account-deletion webhook route off.
+          CLERK_WEBHOOK_SIGNING_SECRET: ${{ secrets.CLERK_WEBHOOK_SIGNING_SECRET }}
           APNS_PRIVATE_KEY: ${{ secrets.APNS_PRIVATE_KEY }}
           FCM_SERVICE_ACCOUNT: ${{ secrets.FCM_SERVICE_ACCOUNT }}
           T3CHAT_LINK_SECRET: ${{ secrets.T3CHAT_LINK_SECRET }}

@@ -140,6 +140,11 @@ import Migration0110 from "./Migrations/108_AgentFeedback.ts";
 import Migration0111 from "./Migrations/109_IssueTrackerAccounts.ts";
 import Migration0112 from "./Migrations/110_Workflows.ts";
 import Migration0113 from "./Migrations/111_SupersededRunAttemptIndex.ts";
+// Upstream numbers these 112 to 115; Par3 runs them as 114 to 117.
+import Migration0114 from "./Migrations/112_LayoutCommandApprovals.ts";
+import Migration0115 from "./Migrations/113_WorkflowSkippedRuns.ts";
+import Migration0116 from "./Migrations/114_WorkflowRunIndexes.ts";
+import Migration0117 from "./Migrations/115_WorkflowRunTags.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -256,6 +261,10 @@ const migrationEntries = [
   [111, "IssueTrackerAccounts", Migration0111],
   [112, "Workflows", Migration0112],
   [113, "SupersededRunAttemptIndex", Migration0113],
+  [114, "LayoutCommandApprovals", Migration0114],
+  [115, "WorkflowSkippedRuns", Migration0115],
+  [116, "WorkflowRunIndexes", Migration0116],
+  [117, "WorkflowRunTags", Migration0117],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
