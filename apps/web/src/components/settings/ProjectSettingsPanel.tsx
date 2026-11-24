@@ -56,6 +56,7 @@ import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { SpecModeSettings } from "./SpecModeSettings";
 import { ProjectRepositoriesSettings } from "./ProjectRepositoriesSettings";
+import { ProjectWorktreeLayoutSettings } from "./ProjectWorktreeLayoutSettings";
 import {
   defaultProjectIcon,
   hasDefaultProjectIcon,
@@ -696,6 +697,7 @@ function ProjectDetail({
         <SpecModeSettings />
         <ProjectActionsSettings />
         <ProjectRepositoriesSettings members={group.memberProjects} />
+        <ProjectWorktreeLayoutSettings members={group.memberProjects} />
         {checkoutChoices}
         <SettingsSection title={gt("Danger")}>
           <SettingsRow
