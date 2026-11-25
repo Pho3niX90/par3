@@ -2,7 +2,17 @@
 
 Use a new thread for a separate task. Choose **New worktree** when its code changes
 need a separate branch and working directory. Threads in the same checkout share its
-branch, so T3 Code refuses a branch switch there while one of them is working.
+branch, so Par3 refuses a branch switch there while one of them is working.
+
+## Resize or hide the sidebar
+
+On web and desktop, drag the sidebar's right edge to resize it. Continue left past its minimum
+width to preview hiding it, then release to keep it hidden. Dragging back right before releasing
+shows it again and continues resizing.
+
+Move the mouse to the middle of the left window edge to find a handle. Drag it right or click
+it to show the sidebar again. Dragging back to the edge before releasing hides the preview
+and leaves it hidden. The sidebar toggle and shortcut still keep it open.
 
 ## Start a thread
 
@@ -203,7 +213,7 @@ is waiting on prevent automatic settlement. An open pull request does not preven
 settlement unless you turn on **Keep threads with a PR** in **Settings → Threads**,
 but an old closed or merged pull request does not settle work you
 resumed after it closed. Your own messages count as resuming, and so does a
-message an agent sends with `t3_thread_send` or `t3 thread send`. A turn that finished
+message an agent sends with `t3_thread_send` or `par3 thread send`. A turn that finished
 background work or a pull request watch starts on its own does not.
 
 To keep one thread out of the settled shelf no matter how long it sits idle, open its menu,
@@ -253,6 +263,8 @@ you last picked for a query ranks higher when you type that query again.
 Threads whose messages contain all your words appear below, under **In
 messages**, and open at the matching message. Message search needs at least
 one word of three or more letters, or two for Chinese, Japanese, and Korean.
+Put a search in double quotes, such as `"missing position files"`, to find only
+titles and messages that hold those words together, exactly as typed.
 On mobile, the thread list search also lists message matches and opens them at
 the matching message; on an iPad with a keyboard, `Cmd+K` opens the same
 palette.
