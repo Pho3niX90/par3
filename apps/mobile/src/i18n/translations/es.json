@@ -5573,6 +5573,8 @@
   "cd5d90cbbfae32f6": "Grabando {time}",
   "6236e2f587bc4eb4": "Transcribiendo",
   "4e430d5ea01c249b": "No se pudo enviar la respuesta",
+  "a3c43735e1a81498": "Motivo de {title}",
+  "bfad234f016cfa3f": "El porqué, en una frase. Acompaña a la respuesta que elijas.",
   "e721a8b98f44d5f7": "Preguntar antes al agente",
   "e39f89c909df4db0": "No se pudo reanudar la ejecución",
   "28c9dd162825c117": "¿Cancelar esta ejecución?",
@@ -5598,6 +5600,14 @@
       "k": "_gt_value_1",
       "v": "v"
     }
+  ],
+  "e114d37b32ab0dc7": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " necesita un motivo."
   ],
   "9de4e24c9273b496": "Esta conexión puede leer ejecuciones, pero no responderlas.",
   "6dac41769b114edf": [
@@ -5637,6 +5647,39 @@
   "89102905bf09b0e8": "Ver en directo",
   "eea0013efc9e4339": "Transcripción",
   "ba8337dca3232880": "Abrir ejecución",
+  "235902a19e95833b": [
+    "por ti,",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "3759768c5d342c22": [
+    "respondida",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "8afa4fbe16f95bcf": [
+    "por ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ",",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
   "cab70ed0237438ef": "Cargando el paso…",
   "30a5be40eb956663": "trabajando",
   "edc8f6e9720f4eda": "en espera",
@@ -5644,6 +5687,8 @@
   "063173aa16052cb9": "en curso",
   "3ba4cf953dd20f22": "falló",
   "e777db2880f53a46": "nadie respondió",
+  "0f93532dd76391fc": "Respondiste {choice}",
+  "7e1fd2eb570a372b": "{who} respondió {choice}",
   "34f59bbbead0b97f": "{names} y {count} más",
   "ac1556f6ce89a5ea": "{count} en paralelo",
   "e197c4963bacc746": "{count} en curso",
