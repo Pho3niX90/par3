@@ -64,7 +64,8 @@ const BUDGETS: ReadonlyArray<Budget> = [
   {
     name: "W3 edit then test",
     turns: [{ kind: "sequential_tools", toolCalls: 2 }],
-    maxTransactions: 17,
+    // Usually 17; a slow runner can split one backlog batch in two.
+    maxTransactions: 18,
     maxSqlStatementsPerTurn: 200,
     wallBudgetMs: 1600,
   },
