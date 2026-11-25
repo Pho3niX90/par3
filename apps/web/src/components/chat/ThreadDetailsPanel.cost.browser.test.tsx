@@ -27,7 +27,9 @@ vi.mock("./ThreadAutomationsPanel", () => ({ ThreadAutomationsPanel: () => null 
 vi.mock("./ThreadRelationshipsControl", () => ({ ThreadRelationshipsPanel: () => null }));
 vi.mock("../BranchToolbar", () => ({ BranchToolbar: () => null }));
 vi.mock("../GitActionsControl", () => ({ default: () => null, GitActionsControl: () => null }));
-vi.mock("../../hooks/useT3ProjectFileScripts", () => ({ useT3ProjectFileScripts: () => [] }));
+vi.mock("../../hooks/useT3ProjectFileScripts", () => ({
+  useT3ProjectFileState: () => ({ status: "missing", file: null, scripts: [], refresh: () => {} }),
+}));
 
 const props = (overrides: Partial<ThreadDetailsPanelProps> = {}) =>
   ({
