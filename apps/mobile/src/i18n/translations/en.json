@@ -897,6 +897,10 @@
   "05b16c85cb1e18bd": "No repositories",
   "04ea9e0e663983fd": "All repositories",
   "c07bd24ff49e85d9": "{count, plural, one {{count} repository} other {{count} repositories}}",
+  "1b799ebfa94c2408": "Push hooks approval",
+  "81d703184fe5112e": "Run this repository's push hooks?",
+  "027b0d65c7a67af6": "Hook file",
+  "ade585910165bb52": "Configured hook",
   "e94aa66471dae6aa": "Why am I being asked this?",
   "228a325b5708e675": "Full access skips approvals, but an ask rule in the agent's own settings matches this action, so it still asks. Remove or narrow that rule to stop these prompts.",
   "118c20226fabff45": "Full access skips approvals, but the agent still stops for a few safety checks of its own that no setting can skip, such as a delete whose path it can't verify. Par3 can't turn these off, so check the request and approve it if it's what you expect.",
@@ -1332,7 +1336,7 @@
   "0fdf303b060c2739": "This thread",
   "d1759149072b58a0": "Sub-agents",
   "3d17df748eb77e93": "{count, plural, one {{count} sub-agent} other {{count} sub-agents}}",
-  "612170d804b03320": "{count, plural, one {{count} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.} other {{count} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.}}",
+  "69150fe436b3a0c2": "{count, plural, one {{count} malformed or inconsistent usage record was skipped; usage may be incomplete.} other {{count} malformed or inconsistent usage records were skipped; usage may be incomplete.}}",
   "ee448ceb6820ce2f": "{environment} runs an older server version and is excluded from totals.",
   "732708950237004e": "This client is older than the server on {environment}; its usage is excluded from totals.",
   "9758c2ede06aa19b": "{hour} today",
@@ -5637,6 +5641,7 @@
       "v": "v"
     }
   ],
+  "46d614fa7b4bf1e5": "Workflow runs",
   "0ea123396f2fe288": "Needs you",
   "ee0570072b52c093": "Running",
   "ad3971dc19e6903e": "All",

@@ -11,12 +11,9 @@ import {
   type ServerProviderUsageLimits,
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
-import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
-import * as FiberHandle from "effect/FiberHandle";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Result from "effect/Result";
@@ -41,7 +38,6 @@ import {
   isCommandMissingCause,
   type ServerProviderDraft,
 } from "@t3tools/provider-core/server/snapshotProbe";
-import { resolveUsageLimitsAfterProbe } from "@t3tools/provider-core/server/usageLimits";
 
 import { antigravityThinkingConfig } from "./acp/AntigravityAcpSupport.ts";
 
@@ -51,10 +47,6 @@ const HEALTH_CHECK_TIMEOUT_MS = 90_000;
 const SIGN_IN_MESSAGE = "Sign in with Google to use Antigravity.";
 const AUTH_UNCHECKED_MESSAGE =
   "Antigravity is installed. Google account access is not checked yet.";
-// Set while a finished quota read republishes, so that health check does not read again.
-const PublishingUsage = Context.Reference<boolean>("t3/provider/AntigravityPublishingUsage", {
-  defaultValue: () => false,
-});
 
 type SessionSetupResult = Pick<
   AcpSessionRuntime.AcpSessionRuntimeStartResult["sessionSetupResult"],
@@ -205,8 +197,8 @@ interface AntigravityProviderOptions {
     EffectAcpErrors.AcpError | ProviderSetupError
   >;
   readonly supportsTextGeneration: Effect.Effect<boolean>;
-  readonly probeUsage?: Effect.Effect<ServerProviderUsageLimits>;
-  readonly clearUsage?: Effect.Effect<void>;
+  readonly readUsageLimits?: Effect.Effect<ServerProviderUsageLimits | undefined>;
+  readonly clearUsageLimits?: Effect.Effect<void>;
   readonly maintenanceCapabilities?: ProviderMaintenanceCapabilities;
   readonly auth?: { readonly type: string; readonly label: string };
   /** Modes the last session advertised, saved because initialize alone does not report them. */
@@ -273,8 +265,10 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     draft: initialDraft,
     authRevision: 0,
   });
-  // Preserve disk-discovered skills when callbacks replace workspace commands; the registry will not rescan them.
+  // Skills from the registry's last scan of each folder. A folder without them stays pending so it is scanned.
   const discoveredSkills = new Map<string, ServerProvider["skills"]>();
+  // Commands of folders whose draft entry a skill scan dropped, so later scans still report them.
+  const workspaceCommands = new Map<string, ServerProvider["slashCommands"]>();
   const thinkingLevels = new Map<string, ThinkingConfig | null>();
   let defaultModelSlug: string | undefined;
   const observeThinkingLevels = (
@@ -307,47 +301,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     Effect.flatMap((state) => options.stampIdentity(state.draft)),
   );
 
-  // The quota read can take 30 seconds, so it never blocks readiness or a session start.
-  // One read runs at a time; sign-in and sign-out interrupt it so a stale account never lands.
-  const usageRead = yield* FiberHandle.make();
-  const republish = yield* Deferred.make<Effect.Effect<ServerProvider>>();
-  const scope = yield* Effect.scope;
-  const refreshUsage = Effect.fn("AntigravityProvider.refreshUsage")(function* () {
-    if (!options.probeUsage || (yield* PublishingUsage)) return;
-    yield* FiberHandle.run(
-      usageRead,
-      options.probeUsage.pipe(
-        Effect.flatMap((probed) =>
-          SubscriptionRef.update(metadata, (state) => ({
-            ...state,
-            draft: {
-              ...state.draft,
-              usageLimits: resolveUsageLimitsAfterProbe({
-                published: state.draft.usageLimits,
-                probed,
-              }),
-            },
-          })),
-        ),
-        // Enrichment cannot change published limits; a health check publishes them.
-        Effect.andThen(
-          Deferred.await(republish).pipe(
-            Effect.flatten,
-            Effect.provideService(PublishingUsage, true),
-            Effect.ignoreCause({ log: true }),
-            Effect.forkIn(scope),
-          ),
-        ),
-      ),
-      // Store the fiber before it runs, so a sign-out during the read can interrupt it.
-      { onlyIfMissing: true, startImmediately: false },
-    );
-  });
-  const resetUsage = Effect.gen(function* () {
-    yield* FiberHandle.clear(usageRead);
-    if (options.clearUsage) yield* options.clearUsage;
-  });
-
   const checkProvider = Effect.fn("checkAntigravityProvider")(function* () {
     if (!settings.enabled) return yield* getSnapshot;
     const before = yield* SubscriptionRef.get(metadata);
@@ -374,10 +327,14 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
               : `Antigravity did not respond to its local health check within ${timeoutMs / 1_000} seconds.`;
     const supportsTextGeneration =
       initialized !== undefined ? yield* options.supportsTextGeneration : false;
+    const usageLimits =
+      initialized !== undefined && options.readUsageLimits !== undefined
+        ? yield* options.readUsageLimits
+        : undefined;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
     const applyCheck = (state: AntigravityProviderState) => {
       if (state.authRevision !== before.authRevision) return state;
-      const { message: _previousMessage, ...draft } = state.draft;
+      const { message: _previousMessage, usageLimits: previousUsageLimits, ...draft } = state.draft;
       const authenticated = draft.auth.status === "authenticated";
       const message =
         errorMessage ??
@@ -386,6 +343,12 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           : draft.auth.status === "unauthenticated"
             ? signInMessage
             : authUncheckedMessage);
+      const nextUsageLimits =
+        missingInstallation || draft.auth.status === "unauthenticated"
+          ? undefined
+          : initialized !== undefined
+            ? usageLimits
+            : previousUsageLimits;
       return {
         ...state,
         draft: {
@@ -395,7 +358,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           version: version === "unknown" ? draft.version : version || draft.version,
           status: errorMessage ? "error" : authenticated ? "ready" : "warning",
           checkedAt: updatedAt,
-          usageLimits: missingInstallation ? undefined : draft.usageLimits,
           ...(missingInstallation
             ? {
                 models: [],
@@ -411,6 +373,7 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
                   supportsTextGeneration && draft.auth.status !== "unauthenticated",
               }
             : {}),
+          ...(nextUsageLimits ? { usageLimits: nextUsageLimits } : {}),
           ...(message ? { message } : {}),
         },
       } satisfies AntigravityProviderState;
@@ -422,7 +385,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
       const stored = deferFailure && state.draft.status === "ready" ? state : checked;
       return [checked, stored === state ? Option.none() : Option.some(stored)];
     });
-    if (initialized !== undefined) yield* refreshUsage();
     return yield* options.stampIdentity(next.draft);
   });
 
@@ -446,7 +408,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
         ),
       ),
   });
-  yield* Deferred.succeed(republish, managed.refresh);
 
   const onSessionStarted = Effect.fn("AntigravityProvider.onSessionStarted")(function* (
     started: AcpSessionRuntime.AcpSessionRuntimeStartResult,
@@ -474,6 +435,7 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
       const { message: _previousMessage, ...draft } = state.draft;
       const workspaces = draft.workspaceSnapshots ?? [];
       const workspace = cwd ? workspaces.find((entry) => entry.cwd === cwd) : undefined;
+      const skills = cwd ? discoveredSkills.get(cwd) : undefined;
       const next = {
         authRevision: state.authRevision + 1,
         draft: {
@@ -500,8 +462,10 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
                   {
                     cwd,
                     checkedAt: updatedAt,
-                    slashCommands: workspace?.slashCommands ?? draft.slashCommands,
-                    skills: workspace?.skills ?? discoveredSkills.get(cwd) ?? [],
+                    slashCommands:
+                      workspace?.slashCommands ?? workspaceCommands.get(cwd) ?? draft.slashCommands,
+                    skills: skills ?? workspace?.skills ?? [],
+                    ...(skills ? {} : { slashCommandsPending: true }),
                   },
                 ].slice(-MAX_WORKSPACE_SNAPSHOTS),
               }
@@ -511,7 +475,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
       return [draft.supportedRuntimeModes, next] as const;
     });
     yield* rememberRuntimeModes(previousModes, supportedRuntimeModes);
-    if (!before.draft.usageLimits || before.draft.usageLimits.unavailable) yield* refreshUsage();
   });
 
   const onConfigOptionsUpdated = Effect.fn("AntigravityProvider.onConfigOptionsUpdated")(function* (
@@ -540,6 +503,7 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     if (!settings.enabled) return;
     const slashCommands = nativeCommands(commands);
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
+    const skills = cwd ? discoveredSkills.get(cwd) : undefined;
     yield* SubscriptionRef.update(metadata, (state) => {
       if (state.draft.auth.status === "unauthenticated") return state;
       return {
@@ -556,9 +520,10 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
                     checkedAt: updatedAt,
                     slashCommands,
                     skills:
+                      skills ??
                       state.draft.workspaceSnapshots?.find((entry) => entry.cwd === cwd)?.skills ??
-                      discoveredSkills.get(cwd) ??
                       [],
+                    ...(skills ? {} : { slashCommandsPending: true }),
                   },
                 ].slice(-MAX_WORKSPACE_SNAPSHOTS),
               }
@@ -568,64 +533,126 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     });
   });
 
+  const refreshUsage = Effect.fn("AntigravityProvider.refreshUsage")(function* () {
+    if (!settings.enabled || !options.readUsageLimits) return;
+    const before = yield* SubscriptionRef.get(metadata);
+    if (before.draft.auth.status === "unauthenticated") return;
+    const usageLimits = yield* options.readUsageLimits;
+    const { hadUsageLimits, updated } = yield* SubscriptionRef.modify(
+      metadata,
+      (
+        state,
+      ): readonly [
+        { readonly hadUsageLimits: boolean; readonly updated: boolean },
+        AntigravityProviderState,
+      ] => {
+        if (
+          state.authRevision !== before.authRevision ||
+          state.draft.auth.status === "unauthenticated"
+        ) {
+          return [{ hadUsageLimits: false, updated: false }, state];
+        }
+        const { usageLimits: previous, ...draft } = state.draft;
+        return [
+          { hadUsageLimits: previous !== undefined, updated: true },
+          {
+            ...state,
+            draft: usageLimits ? { ...draft, usageLimits } : draft,
+          },
+        ];
+      },
+    );
+    if (!updated) return;
+    if (usageLimits) {
+      yield* managed.applyUsageLimits({
+        checkedAt: usageLimits.checkedAt,
+        windows: usageLimits.windows,
+        complete: true,
+      });
+    } else if (hadUsageLimits) {
+      yield* managed.refresh;
+    }
+  });
+
+  // The new sign-in may be another account; drop any limit reported for the previous one.
+  const onSignedIn = Effect.fn("AntigravityProvider.onSignedIn")(function* () {
+    if (options.clearUsageLimits) yield* options.clearUsageLimits;
+    const hadUsageLimits = yield* SubscriptionRef.modify(metadata, (state) => {
+      const { usageLimits: previous, ...draft } = state.draft;
+      return [previous !== undefined, { ...state, draft }] as const;
+    });
+    if (hadUsageLimits) {
+      yield* managed.refresh;
+    }
+  });
+
   const clearAccountMetadata = Effect.fn("AntigravityProvider.clearAccountMetadata")(function* () {
-    yield* resetUsage;
+    if (options.clearUsageLimits) yield* options.clearUsageLimits;
     if (!settings.enabled) return;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
-    const previousModes = yield* SubscriptionRef.modify(metadata, (state) => [
-      state.draft.supportedRuntimeModes,
-      {
-        authRevision: state.authRevision + 1,
-        draft: {
-          ...state.draft,
-          auth: {
-            status: "unauthenticated",
-            ...(usesCredentials ? options.auth : {}),
+    const [previousModes, hadUsageLimits] = yield* SubscriptionRef.modify(metadata, (state) => {
+      const { usageLimits: previous, ...draft } = state.draft;
+      return [
+        [draft.supportedRuntimeModes, previous !== undefined] as const,
+        {
+          authRevision: state.authRevision + 1,
+          draft: {
+            ...draft,
+            auth: {
+              status: "unauthenticated",
+              ...(usesCredentials ? options.auth : {}),
+            },
+            status: "warning",
+            message: signInMessage,
+            checkedAt: updatedAt,
+            models: [],
+            slashCommands: [],
+            skills: [],
+            workspaceSnapshots: [],
+            supportedRuntimeModes: RUNTIME_MODES_WITHOUT_AUTO,
+            supportsTextGeneration: false,
           },
-          status: "warning",
-          message: signInMessage,
-          checkedAt: updatedAt,
-          models: [],
-          slashCommands: [],
-          skills: [],
-          workspaceSnapshots: [],
-          supportedRuntimeModes: RUNTIME_MODES_WITHOUT_AUTO,
-          supportsTextGeneration: false,
-          usageLimits: undefined,
-        },
-      } satisfies AntigravityProviderState,
-    ]);
+        } satisfies AntigravityProviderState,
+      ] as const;
+    });
     yield* rememberRuntimeModes(previousModes, RUNTIME_MODES_WITHOUT_AUTO);
     discoveredSkills.clear();
+    workspaceCommands.clear();
     thinkingLevels.clear();
     defaultModelSlug = undefined;
+    if (hadUsageLimits) {
+      yield* managed.refresh;
+    }
   });
 
   const snapshotForCwd = Effect.fn("AntigravityProvider.snapshotForCwd")(function* (
     cwd: string,
     skills?: ServerProvider["skills"],
   ) {
+    const snapshot = yield* getSnapshot;
+    const workspace = snapshot.workspaceSnapshots?.find((entry) => entry.cwd === cwd);
     if (skills) {
       discoveredSkills.set(cwd, skills);
-      yield* SubscriptionRef.update(metadata, (state) =>
+      if (workspace) workspaceCommands.set(cwd, workspace.slashCommands);
+      // The registry keeps the folder it scans. Changing the entry mid-scan would discard the scan.
+      yield* SubscriptionRef.updateSome(metadata, (state) =>
         state.draft.workspaceSnapshots?.some((entry) => entry.cwd === cwd)
-          ? {
+          ? Option.some({
               ...state,
               draft: {
                 ...state.draft,
-                workspaceSnapshots: state.draft.workspaceSnapshots.map((entry) =>
-                  entry.cwd === cwd ? { ...entry, skills } : entry,
+                workspaceSnapshots: state.draft.workspaceSnapshots.filter(
+                  (entry) => entry.cwd !== cwd,
                 ),
               },
-            }
-          : state,
+            })
+          : Option.none(),
       );
     }
-    const snapshot = yield* getSnapshot;
-    const workspace = snapshot.workspaceSnapshots?.find((entry) => entry.cwd === cwd);
     const resolvedSkills = skills ?? workspace?.skills ?? discoveredSkills.get(cwd) ?? [];
-    return workspace
-      ? { ...snapshot, slashCommands: workspace.slashCommands, skills: resolvedSkills }
+    const slashCommands = workspace?.slashCommands ?? workspaceCommands.get(cwd);
+    return slashCommands
+      ? { ...snapshot, slashCommands, skills: resolvedSkills }
       : { ...snapshot, skills: resolvedSkills };
   });
 
@@ -635,23 +662,7 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     onConfigOptionsUpdated,
     onAvailableCommands,
     refreshUsage: refreshUsage(),
-    // The new sign-in may be another account. Clear and republish its limits so a failed read
-    // cannot fall back to them; the session start then reads the new account's limits.
-    onSignedIn: resetUsage.pipe(
-      Effect.andThen(
-        SubscriptionRef.update(metadata, (state) => {
-          const { usageLimits: _previousAccount, ...draft } = state.draft;
-          return { ...state, draft };
-        }),
-      ),
-      Effect.andThen(
-        Deferred.await(republish).pipe(
-          Effect.flatten,
-          Effect.provideService(PublishingUsage, true),
-        ),
-      ),
-      Effect.asVoid,
-    ),
+    onSignedIn: onSignedIn(),
     onSignedOut: clearAccountMetadata(),
     onAuthRequired: clearAccountMetadata(),
     snapshotForCwd,

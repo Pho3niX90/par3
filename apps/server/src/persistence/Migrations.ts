@@ -154,6 +154,8 @@ import Migration0118 from "./Migrations/116_ForkHistoryMembership.ts";
 import Migration0119 from "./Migrations/117_WorkflowMailSender.ts";
 // Upstream numbers this 118; Par3 runs it as 120.
 import Migration0120 from "./Migrations/118_WorkflowPools.ts";
+// Upstream numbers this 119; Par3 runs it as 121.
+import Migration0121 from "./Migrations/119_WorkflowRunSubject.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -277,6 +279,7 @@ const migrationEntries = [
   [118, "ForkHistoryMembership", Migration0118],
   [119, "WorkflowMailSender", Migration0119],
   [120, "WorkflowPools", Migration0120],
+  [121, "WorkflowRunSubject", Migration0121],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
