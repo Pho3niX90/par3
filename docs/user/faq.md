@@ -63,7 +63,7 @@ No. Par3 runs coding-agent providers and does not run models itself.
 
 ## Does my code go to Parity Labs' servers?
 
-No. Your code and prompts go from your machine to your provider (Anthropic, OpenAI, etc.), not to us. With Parity Connect, traffic rides a Cloudflare tunnel (`cloudflared` on your machine). The relay sets up the link. It does not proxy your HTTP or WebSocket sessions. Par3 does send basic product usage events (provider, model, token totals, and similar). No prompts, no file contents. That is the same on Tailscale, LAN, or Parity Connect. Set `T3CODE_TELEMETRY_ENABLED=false` to turn it off. [Product usage data](./telemetry.md)
+No. Your code and prompts go from your machine to your provider (Anthropic, OpenAI, etc.), not to us. With Parity Connect, traffic rides a Cloudflare tunnel (`cloudflared` on your machine). The relay sets up the link. It does not proxy your HTTP or WebSocket sessions. Par3 does send basic product usage events (provider, model, token totals, and similar). No prompts, no file contents. That is the same on Tailscale, LAN, or Parity Connect. Set `T3CODE_TELEMETRY_ENABLED=false` or `DO_NOT_TRACK=1` to turn it off. [Product usage data](./telemetry.md)
 
 ## Worktrees are eating my disk. How do I clean them up?
 

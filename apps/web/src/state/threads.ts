@@ -38,6 +38,7 @@ const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRunti
   listedAtom: (environmentId, threadId) =>
     environmentThreadShells.threadListedAtom({ environmentId, threadId }),
 });
+export const environmentThreadStateAtom = environmentThreads.stateAtom;
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
   environmentThreads.stateAtom,
 );
