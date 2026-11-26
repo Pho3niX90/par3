@@ -1,7 +1,7 @@
 # Environment authentication
 
 The environment issues its own sessions and enforces their capabilities. Cloud identity and relay
-credentials belong to a separate trust boundary, described in [T3 Connect](./06_t3-connect.md). A relay
+credentials belong to a separate trust boundary, described in [Parity Connect](./06_t3-connect.md). A relay
 token is never an environment login. See [SECURITY.md](../../SECURITY.md) for the overall threat
 model.
 
@@ -13,9 +13,9 @@ model.
   returns a credential to the caller requires `access:write` and every scope that credential
   carries: a pairing link, an MCP sign-in approval, a link code from a linked environment, and a
   guest link (which reads a thread). Revoking is not capped by the caller's scopes. Admitting a
-  T3 Connect device is not delegation; see [T3 Connect](./06_t3-connect.md).
+  Parity Connect device is not delegation; see [Parity Connect](./06_t3-connect.md).
 - **Why the default grant includes management scopes.** `terminal:operate` and
-  `orchestration:operate` already grant OS-user execution (which can invoke `t3 auth session issue`),
+  `orchestration:operate` already grant OS-user execution (which can invoke `par3 auth session issue`),
   so withholding access or relay management from the default grant would not be a real boundary.
   Narrower clients receive explicit scopes.
 - **No recoverable secrets in read models.** Only the creation response returns a raw pairing
@@ -23,7 +23,7 @@ model.
 - **DPoP binding.** Browser cookies, bearer tokens, and DPoP tokens share the scoped session model.
   DPoP binds tokens to a client proof key; an invalid proof must fail rather than fall back to
   bearer auth. Plain paired DPoP sessions renew in place so live sockets and Sharing & access rows
-  stay stable; T3 Connect, CLI, and desktop sessions never self-renew so revoking/unlinking cuts
+  stay stable; Parity Connect, CLI, and desktop sessions never self-renew so revoking/unlinking cuts
   them off.
 - **WebSocket tickets and per-RPC authorization.** Bearer and DPoP clients mint short-lived tickets
   over authenticated HTTP so long-lived tokens never appear in socket URLs. DPoP RPC tickets stay
@@ -46,7 +46,7 @@ model.
 - **Guest links are not sessions.** [GuestShareService](../../apps/server/src/guest/GuestShareService.ts)
   issues HMAC tokens bound to one share in the thread projection—never `SessionStore` rows—so no
   RPC, WebSocket, or MCP route can accept one. Closing, replacing, or archiving the share revokes
-  every token. Guest routes also require T3 Connect to still serve the link's hostname (never rely
+  every token. Guest routes also require Parity Connect to still serve the link's hostname (never rely
   on the request `Host` header alone).
 - **MCP clients (`mcp-client`) are a separate audience.** Outside agents authenticate on `/mcp` via
   PKCE OAuth ([McpOAuth](../../apps/server/src/auth/McpOAuth.ts)), with stateless client
@@ -110,7 +110,7 @@ model.
   (`McpClientInput.answered`): a decline pushes nothing, whatever the hooks are by then. A call
   asks at most three times; the request's state carries the count, so it holds across a
   sessionless client's calls. A client that cannot be asked gets the push with hooks off.
-  The Claude and Codex adapters never answer a request T3 Code's own tool made, whatever the
+  The Claude and Codex adapters never answer a request Par3's own tool made, whatever the
   turn's runtime mode and whatever was allowed for the session: it always reaches the person.
   In those threads the approval is the person's answer in the app, not the client's reply. The
   request is kept with the thread's MCP session under an id of its own and the state it was
@@ -119,15 +119,15 @@ model.
   request the reply names (by the id in its state) holds an approval for that state. That reads
   the request once and ends it. A reply of "accept" for a request the person did not approve,
   or one that is gone because the server restarted or the thread's session was replaced, pushes
-  nothing: the tool fails saying T3 Code has no approval from the person, and the next call
+  nothing: the tool fails saying Par3 has no approval from the person, and the next call
   asks again. A decline or cancel in the reply pushes nothing whatever the app recorded.
-  For a client T3 Code shows no request for (an outside MCP client that declared elicitation,
+  For a client Par3 shows no request for (an outside MCP client that declared elicitation,
   or a provider whose adapter does not pass on the person's answer), the client's reply is all
   there is and is taken as the person's answer.
   What those files go on to run, such as a package script or a file they source, is not part of
   the digest, so an approval is for the named files and not for everything the push executes.
 - **Peer-link client pairing.** Only a full-access peer link may mint a one-time client pairing on
-  the linked environment (since full-access agents can already run `t3 auth pairing create`). The
+  the linked environment (since full-access agents can already run `par3 auth pairing create`). The
   linked side enforces this itself, and the operation stays a human-triggered RPC/HTTP route rather
   than an MCP tool. The same route mints a code that links another environment at a chosen access
   level, and the linking side's RPC requires the caller to hold that level's scopes.
@@ -151,8 +151,11 @@ relative paths and writes remain constrained by
 
 Signed asset URLs are bearer credentials for a single canonical file, rechecked by device/inode
 identity on serve ([`AssetAccess.ts`](../../apps/server/src/assets/AssetAccess.ts)). They never
-grant access to sibling files, and because `filesystem:read` is checked only at mint time, an issued
-URL remains valid until it expires even if the session or grant is revoked.
+grant access to sibling files, with one exception: the URL of an HTML page opened from a workspace
+also serves the files that page loads (styles, scripts, images, media, fonts and other pages) from
+the page's own folder and the folders below it. It serves no hidden file, and no file that a link
+in that folder points to outside it. Because `filesystem:read` is checked only at mint time, an
+issued URL remains valid until it expires even if the session or grant is revoked.
 
 ## The vault key is an owner capability
 
