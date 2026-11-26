@@ -340,7 +340,7 @@ function AgentFeedbackSection() {
       })}
       <Text className="px-2 text-sm text-foreground-muted">
         <T>
-          Reports go to the T3 team. A report you ask for is shown to you first in a card, with an
+          Reports go to the Par3 team. A report you ask for is shown to you first in a card, with an
           outline of recent turns. Turn on Include the conversation there to add the messages of the
           turns the report is about.
         </T>

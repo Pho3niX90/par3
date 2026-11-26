@@ -1,8 +1,8 @@
 # Product analytics
 
 The server owns analytics delivery, opt-out, and identity for every connected client. Clients never
-load the PostHog browser SDK, PostHog person profiles stay disabled, and visiting hosted web without
-an authenticated connection does not count as product use.
+load an analytics browser SDK, and visiting hosted web without an authenticated connection does not
+count as product use.
 
 ## Identity
 
@@ -42,7 +42,8 @@ an authenticated connection does not count as product use.
 - Delivery ([`AnalyticsService.ts`](../../apps/server/src/telemetry/AnalyticsService.ts)) sends
   batches straight to Par3's own PostHog project (`https://us.i.posthog.com` by default). Upstream
   routes events through T3 Code's `ingest.t3.codes` endpoint instead; keep Par3's default host when
-  merging, or Par3 usage lands on T3 Code's infrastructure. Delivery attaches a UUID per event,
+  merging, or Par3 usage lands on T3 Code's infrastructure. `T3CODE_TELEMETRY_KEY` and
+  `T3CODE_TELEMETRY_HOST` override the defaults; the older `T3CODE_POSTHOG_*` names still work. Delivery attaches a UUID per event,
   backs off on failure, and drops batches after bounded retries so a stuck batch cannot loop
   forever.
 - Dev-runner servers and servers on CI runners disable telemetry (and relay tracing) by default so

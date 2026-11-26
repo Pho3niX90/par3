@@ -10,7 +10,7 @@ import type {
 import { createModelSelection } from "@t3tools/shared/model";
 import { BotIcon, PencilRulerIcon } from "lucide-react";
 import { T, useGT, useMessages } from "gt-react";
-import { type ComponentProps, memo, useId, useRef, useState } from "react";
+import { type ComponentProps, memo, use, useId, useRef, useState } from "react";
 
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -23,6 +23,10 @@ import { ProviderModelPicker } from "./ProviderModelPicker";
 import { resolveRuntimeModeOption, runtimeModeConfig } from "./runtimeModeConfig";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { ThreadSpecModeControl } from "../../specs/ThreadSpecControl";
+import {
+  RuntimeModeLimitsTargetContext,
+  useProviderRuntimeModeLimits,
+} from "../../state/runtimeModeLimits";
 
 export type RuntimeModeOption = {
   mode: RuntimeMode;
@@ -201,6 +205,8 @@ export function ComposerPermissionsSection(props: {
     props.runtimeModeOptions.find((option) => option.mode === shownMode) ??
     resolveRuntimeModeOption("approval-required", messages);
   const descriptionId = useId();
+  // Mounted only while a picker is open, so this asks the server again each time one opens.
+  useProviderRuntimeModeLimits(use(RuntimeModeLimitsTargetContext), "picker");
   return (
     <div data-composer-permissions className="grid w-72 gap-1.5 px-2 py-1.5">
       <div className="font-medium text-muted-foreground text-xs">

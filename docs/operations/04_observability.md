@@ -21,6 +21,8 @@ Logs emitted inside an active span (`Effect.log*`) attach as span events unless 
 
 Event-loop stalls (>2 s) write `server.eventLoop.stall` spans and append to `event-loop-stalls.ndjson` beside the trace file. SQLite spans carry `db.connection` (`writer`/`reader`) and `db.lock_wait_ms` (queue wait off the event loop—subtract it before blaming query speed). Metrics live only in-process unless OTLP export is enabled.
 
+At trace level Info or above (the default), with timing enabled, the local server file samples routine spans: SQLite, workflow runs (step code, retry schedules, cleanup and the agent threads a run starts are excluded; spans an author adds in the workflow body itself are sampled), and spans marked with `routineSpan` from `@t3tools/shared/observability` (high-volume lookups and sweeps). A routine span that succeeds in under 10 ms without events is kept only when its own span ID ends in `00` (about one in 256). The key is per span, not per trace or parent, because background fibers share the server's boot trace and recurring ticks reuse one parent span. Counts and averages for these spans in the local file and Settings → Diagnostics are therefore a biased sample. `T3CODE_TRACE_MIN_LEVEL=Debug` keeps everything. This sampling does not apply to OTLP export.
+
 ## Local OTLP stack (Grafana LGTM)
 
 ```sh
@@ -39,7 +41,7 @@ vp run dev
 
 ## OTLP configuration and kill switches
 
-- **Endpoints:** `T3CODE_OTLP_{TRACES,METRICS,LOGS}_URL` outrank standard `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT` and `OTEL_EXPORTER_OTLP_ENDPOINT`. `T3CODE_OTLP_HEADERS` / `T3CODE_OTLP_PROTOCOL` (`http/json` default) apply only to `T3CODE_OTLP_*` endpoints; `OTEL_EXPORTER_OTLP_*` endpoints read `OTEL_EXPORTER_OTLP_*` headers/protocol (`http/protobuf` default). See [user telemetry](../user/telemetry.md#export-diagnostics-to-your-own-receiver) for Settings precedence.
+- **Endpoints:** `T3CODE_OTLP_{TRACES,METRICS,LOGS}_URL` outrank standard `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT` and `OTEL_EXPORTER_OTLP_ENDPOINT`. `T3CODE_OTLP_HEADERS` / `T3CODE_OTLP_PROTOCOL` (`http/json` default) apply only to `T3CODE_OTLP_*` endpoints; `OTEL_EXPORTER_OTLP_*` endpoints read `OTEL_EXPORTER_OTLP_*` headers/protocol (`http/protobuf` default). See [user telemetry](../user/telemetry.md#export-diagnostics-to-your-own-opentelemetry-receiver) for Settings precedence.
 - **Service names are fixed:** `t3code-server` (backend), `t3code-desktop` (Electron main, traces/logs only), and `t3code-web` (UI). `OTEL_SERVICE_NAME` is ignored—distinguish installs with `OTEL_RESOURCE_ATTRIBUTES` (e.g. `deployment.environment.name=staging`).
 - **Kill switches:** `T3CODE_OTEL_SDK_DISABLED` (outranks `OTEL_SDK_DISABLED`, accepts standard boolean spellings; `OTEL_SDK_DISABLED` only accepts `true`) disables all OTLP export in server and desktop while keeping local traces and stdout intact. `OTEL_{TRACES,METRICS,LOGS}_EXPORTER=none` disables a single signal unless overridden by `T3CODE_OTLP_*_URL`.
 - **Trace tuning:** `T3CODE_TRACE_FILE`, `T3CODE_TRACE_MAX_BYTES`, `T3CODE_TRACE_MAX_FILES`, `T3CODE_TRACE_MIN_LEVEL`, `T3CODE_TRACE_TIMING_ENABLED`.

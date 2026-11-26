@@ -1,4 +1,4 @@
-// T3 ingest retains events and forwards to PostHog; UUIDs deduplicate retries there.
+// Events go straight to Par3's own PostHog project; UUIDs deduplicate retries there.
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { isCiEnvironment, isDoNotTrackSet } from "@t3tools/shared/otelEnvironment";
 import type { ClientOs } from "@t3tools/contracts";
@@ -68,10 +68,13 @@ function retryDelayMs(failures: number, random: number): number {
 }
 
 const TelemetryEnvConfig = Config.all({
-  posthogKey: Config.String("T3CODE_POSTHOG_KEY").pipe(
+  // The old PostHog-named variables still work, so existing deployments keep their project.
+  ingestKey: Config.String("T3CODE_TELEMETRY_KEY").pipe(
+    Config.orElse(() => Config.String("T3CODE_POSTHOG_KEY")),
     Config.withDefault("phc_mELxmk8y4bgKWVS7Le7oYYTc4H5pQDGDxVAo6HJuSnct"),
   ),
-  posthogHost: Config.String("T3CODE_POSTHOG_HOST").pipe(
+  ingestHost: Config.String("T3CODE_TELEMETRY_HOST").pipe(
+    Config.orElse(() => Config.String("T3CODE_POSTHOG_HOST")),
     Config.withDefault("https://us.i.posthog.com"),
   ),
   enabled: Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(Config.option),
@@ -212,7 +215,7 @@ export const make = Effect.gen(function* () {
     if (!(yield* telemetryEnabled) || !distinctId) return;
 
     const payload = {
-      api_key: telemetryConfig.posthogKey,
+      api_key: telemetryConfig.ingestKey,
       batch: events.map((event) => ({
         uuid: event.uuid,
         event: event.event,
@@ -244,7 +247,7 @@ export const make = Effect.gen(function* () {
       })),
     };
 
-    yield* HttpClientRequest.post(`${telemetryConfig.posthogHost}/batch/`).pipe(
+    yield* HttpClientRequest.post(`${telemetryConfig.ingestHost}/batch/`).pipe(
       HttpClientRequest.bodyJson(payload),
       Effect.flatMap(httpClient.execute),
       Effect.flatMap(HttpClientResponse.filterStatusOk),

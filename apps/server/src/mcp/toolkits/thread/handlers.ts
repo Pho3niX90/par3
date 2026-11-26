@@ -20,6 +20,8 @@ import {
   readThread,
   unavailable,
 } from "../../threadAccess.ts";
+import { providerOptionDescriptors, refuseAgentModePick } from "../../delegatedTaskModes.ts";
+import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import type * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
@@ -241,7 +243,24 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         const lead = input.modelSelection ?? thread.modelSelection;
         const sidekick = input.sidekickModelSelection;
         // Check both before dispatching either, so a bad sidekick leaves the lead unchanged too.
-        if (sidekick != null)
+        const callerRuntimeMode = (yield* readCaller()).limits.runtimeMode;
+        const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
+        const refuseModePick = (
+          picked: typeof lead,
+          held: typeof thread.sidekickModelSelection | undefined,
+        ) =>
+          refuseAgentModePick({
+            callerRuntimeMode,
+            picked: picked.options,
+            descriptors: providerOptionDescriptors(
+              providers.find((provider) => provider.instanceId === picked.instanceId),
+            ),
+            held: held?.instanceId === picked.instanceId ? held.options : undefined,
+          });
+        if (input.modelSelection !== undefined)
+          yield* refuseModePick(input.modelSelection, thread.modelSelection);
+        if (sidekick != null) {
+          yield* refuseModePick(sidekick, thread.sidekickModelSelection);
           yield* ThreadSidekick.ThreadSidekick.pipe(
             Effect.flatMap((sidekicks) =>
               sidekicks.validate({ projectId: thread.projectId, lead, sidekick }),
@@ -251,6 +270,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
                 new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
             ),
           );
+        }
         let sequence = 0;
         if (input.modelSelection !== undefined) {
           const modelSelection = input.modelSelection;

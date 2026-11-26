@@ -23,6 +23,10 @@
       "types": "./src/server/copilotAcp.ts",
       "import": "./src/server/copilotAcp.ts"
     },
+    "./server/elicitationForm": {
+      "types": "./src/server/elicitationForm.ts",
+      "import": "./src/server/elicitationForm.ts"
+    },
     "./server/mcpOverAcpBridge": {
       "types": "./src/server/mcpOverAcpBridge.ts",
       "import": "./src/server/mcpOverAcpBridge.ts"

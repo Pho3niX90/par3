@@ -714,7 +714,7 @@ function itemSummary(
     case "secret_request":
       return item.label;
     case "feedback_request":
-      return resolve(msg("Feedback for the T3 team"));
+      return resolve(msg("Feedback for the Par3 team"));
     case "link_request":
       return resolve(msg("Link {target}", { target: linkRequestTargetName(item, resolve) }));
     case "dynamic_tool": {
@@ -2526,7 +2526,7 @@ export function buildThreadFeed(
     /** Keys the caches; text comes from `resolve`. */
     readonly locale?: string;
   },
-): ThreadFeedEntry[] {
+): ReadonlyArray<ThreadFeedEntry> {
   const anchoredMessages = options?.anchoredMessages ?? [];
   const resolve = options?.resolve ?? m;
   const locale = options?.locale;
@@ -2583,6 +2583,8 @@ export function buildThreadFeed(
       restartIndex -= 1;
     }
   }
+  // Unchanged rows rebuild the same feed; returning it keeps the screen's props equal.
+  if (restartIndex !== -1 && previous!.rows === visibleTurnItems) return previous!.feed;
   const restart = restartIndex === -1 ? null : previous!.restarts[restartIndex]!;
   const prefix = restart === null ? [] : previous!.feed.slice(0, restart.feedLength);
   const restarts = restart === null ? [] : previous!.restarts.slice(0, restartIndex + 1);
