@@ -2,12 +2,14 @@
 // Launches a packaged desktop app against a seeded T3 home, opens a thread, and checks its
 // messages render. Release jobs run it so a build whose backend or bundle cannot start fails
 // before it is published.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeReadline from "node:readline";
 import * as NodeTimersPromises from "node:timers/promises";
 import * as NodeUtil from "node:util";
-import { _electron, type ElectronApplication } from "playwright-core";
+import { chromium, type Browser } from "playwright-core";
 
 // A snapshot from an older build on purpose: the packaged server must migrate it forward, as it
 // does for every upgrading user. It holds one project and two threads, nothing else.
@@ -37,28 +39,62 @@ NodeFS.mkdirSync(NodePath.join(t3Home, "userdata"), { recursive: true });
 NodeFS.copyFileSync(FIXTURE_DB, NodePath.join(t3Home, "userdata/statev2.sqlite"));
 
 let step = "launching the app";
-let app: ElectronApplication | undefined;
+let app: NodeChildProcess.ChildProcess | undefined;
+let browser: Browser | undefined;
+const appOutput: string[] = [];
 try {
-  app = await _electron.launch({
-    executablePath: executable,
-    // Linux CI runners do not allow the Chromium sandbox's user namespaces.
-    args: [...(values.app ? [NodePath.resolve(values.app)] : []), "--no-sandbox"],
-    // HOME stays real: on macOS a fake HOME has no login keychain, and safeStorage blocks the
-    // main process on a keychain dialog. macOS keeps its Electron profile in the runner's HOME.
-    env: {
-      ...process.env,
-      XDG_CONFIG_HOME: NodePath.join(home, ".config"),
-      XDG_DATA_HOME: NodePath.join(home, ".local/share"),
-      T3CODE_HOME: t3Home,
-      T3CODE_TELEMETRY_ENABLED: "false",
-      T3CODE_DISABLE_AUTO_UPDATE: "true",
+  // Packaged builds turn off Electron's inspector fuse, which Playwright's `_electron.launch`
+  // needs, so attach to the window over Chromium's remote debugging port instead.
+  const child = NodeChildProcess.spawn(
+    executable,
+    [
+      ...(values.app ? [NodePath.resolve(values.app)] : []),
+      // Linux CI runners do not allow the Chromium sandbox's user namespaces.
+      "--no-sandbox",
+      "--remote-debugging-port=0",
+    ],
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+      // HOME stays real: on macOS a fake HOME has no login keychain, and safeStorage blocks the
+      // main process on a keychain dialog. macOS keeps its Electron profile in the runner's HOME.
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: NodePath.join(home, ".config"),
+        XDG_DATA_HOME: NodePath.join(home, ".local/share"),
+        T3CODE_HOME: t3Home,
+        T3CODE_TELEMETRY_ENABLED: "false",
+        T3CODE_DISABLE_AUTO_UPDATE: "true",
+      },
     },
-    timeout: STEP_TIMEOUT_MS,
+  );
+  app = child;
+  const listening = new Promise<string>((resolve, reject) => {
+    // Keeps reading after the endpoint arrives, so a full pipe cannot stall the app.
+    NodeReadline.createInterface({ input: child.stderr }).on("line", (line) => {
+      appOutput.push(line);
+      if (appOutput.length > 20) appOutput.shift();
+      const match = /DevTools listening on (ws:\/\/\S+)/.exec(line);
+      if (match?.[1]) resolve(match[1]);
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) =>
+      reject(new Error(`The app exited early (${signal ?? code}).`)),
+    );
   });
+  const endpoint = await Promise.race([
+    listening,
+    NodeTimersPromises.setTimeout(STEP_TIMEOUT_MS, undefined, { ref: false }).then(() => {
+      throw new Error(`No debugging endpoint after ${STEP_TIMEOUT_MS}ms.`);
+    }),
+  ]);
+  browser = await chromium.connectOverCDP(endpoint, { timeout: STEP_TIMEOUT_MS });
   // A backend that never starts leaves no window, or only the "could not start" window, so the
   // thread wait below fails either way and its screenshot shows the startup error.
   step = "waiting for the first window";
-  const page = await app.firstWindow({ timeout: STEP_TIMEOUT_MS });
+  const context = browser.contexts()[0];
+  if (!context) throw new Error("The app has no browser context.");
+  const page =
+    context.pages()[0] ?? (await context.waitForEvent("page", { timeout: STEP_TIMEOUT_MS }));
   try {
     step = `finding "${THREAD_TITLE}" in the sidebar`;
     const thread = page.locator("li[data-thread-item]", { hasText: THREAD_TITLE });
@@ -78,6 +114,10 @@ try {
   console.error(`Desktop launch check failed while ${step}.`);
   NodeFS.mkdirSync(artifactsDir, { recursive: true });
   console.error(error instanceof Error ? error.message : error);
+  if (appOutput.length > 0) {
+    console.error("\nLast app output (stderr):");
+    console.error(appOutput.join("\n"));
+  }
   const logs = NodePath.join(t3Home, "userdata/logs");
   if (NodeFS.existsSync(logs)) {
     NodeFS.cpSync(logs, NodePath.join(artifactsDir, "logs"), { recursive: true });
@@ -89,13 +129,16 @@ try {
   }
   process.exitCode = 1;
 } finally {
-  if (app) {
+  // Only disconnects; the app itself is stopped below.
+  await browser?.close().catch(() => {});
+  if (app && app.exitCode === null && app.signalCode === null) {
+    const exited = new Promise((resolve) => app?.once("exit", resolve));
+    app.kill("SIGTERM");
     // A hung app never finishes closing; kill it so the job does not wait for its timeout.
-    // Playwright drops the process handle once the app closes, so read it first.
-    const child = app.process();
-    const closed = app.close().catch(() => {});
-    await Promise.race([closed, NodeTimersPromises.setTimeout(10_000, undefined, { ref: false })]);
-    child.kill("SIGKILL");
+    await Promise.race([exited, NodeTimersPromises.setTimeout(10_000, undefined, { ref: false })]);
+    app.kill("SIGKILL");
   }
+  // A leftover child of the app can hold the pipe open and keep this script running.
+  app?.stderr?.destroy();
   NodeFS.rmSync(home, { recursive: true, force: true, maxRetries: 5 });
 }
