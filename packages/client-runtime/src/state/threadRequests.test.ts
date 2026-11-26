@@ -943,10 +943,13 @@ describe("splits a megabyte of approval text the same way as a short one", () =>
     expect(count(fill("\u{1F469}\u{1F3FD}\u200D\u{1F4BB}"))).toEqual([1, 0]);
   });
 
-  it("with nothing but joiners, selectors or carriage returns, as one run", () => {
-    expect(count(fill("\u200D"))).toEqual([1, 1]);
-    expect(count(fill("\uFE0F"))).toEqual([1, 1]);
-    expect(count(fill("\r"))).toEqual([1, 1]);
+  // One test per filler: all three together can pass the 5s limit on a CI runner.
+  it.each([
+    ["joiners", "\u200D"],
+    ["selectors", "\uFE0F"],
+    ["carriage returns", "\r"],
+  ])("with nothing but %s, as one run", (_name, unit) => {
+    expect(count(fill(unit))).toEqual([1, 1]);
   });
 
   it("with every other character named, as one run each", () => {
