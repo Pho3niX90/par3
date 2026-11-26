@@ -17,6 +17,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+import { routineSpan } from "@t3tools/shared/observability";
 
 const hasAvailableCapacity = (limits: ServerProviderUsageLimits) =>
   limits.unavailable === undefined &&
@@ -145,7 +146,7 @@ const makeSweep = Effect.gen(function* () {
   );
   yield* forkParked(Stream.runForEach(settings.streamChanges, () => due.invalidate));
   let lastCapacity = "";
-  return Effect.fn("UsageLimitRecoveryWorker.sweep")(function* () {
+  return Effect.fn("UsageLimitRecoveryWorker.sweep", { attributes: routineSpan })(function* () {
     const now = yield* DateTime.now;
     const nowMs = DateTime.toEpochMillis(now);
     const availableLimits = new Map(
