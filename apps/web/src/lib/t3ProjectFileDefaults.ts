@@ -28,12 +28,13 @@ function toT3ProjectFile(
 export async function readT3ProjectFile(
   environmentId: EnvironmentId,
   workspaceRoot: string,
+  signal?: AbortSignal,
 ): Promise<T3ProjectFile | null> {
   for (const fileName of PROJECT_FILE_NAMES) {
     const result = await executeAtomQuery(
       appAtomRegistry,
       getProjectFileQueryAtom(environmentId, workspaceRoot, fileName),
-      { reportDefect: false, reportFailure: false },
+      { reportDefect: false, reportFailure: false, signal },
     );
     const parsed = toT3ProjectFile(
       environmentId,

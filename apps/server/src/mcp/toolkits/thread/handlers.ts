@@ -28,6 +28,7 @@ import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import * as ThreadSidekick from "../../../orchestration-v2/ThreadSidekick.ts";
+import { rejectionText } from "../../../orchestration-v2/runOutput.ts";
 import { ThreadToolkit } from "./tools.ts";
 
 function queueEntry(
@@ -354,10 +355,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
               ? new OrchestratorMcpFailure({
                   code: "invalid_request",
                   // The agent wrote the value, so it is told what in it did not fit.
-                  message:
-                    error.cause instanceof Error
-                      ? `${error.message}\n${error.cause.message.slice(0, 2000)}`
-                      : error.message,
+                  message: rejectionText(error),
                 })
               : unavailable(),
           ),

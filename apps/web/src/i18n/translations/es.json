@@ -5129,6 +5129,7 @@
   "13cf3cd978eef92a": "Mantener los adjuntos en esta máquina",
   "a4ca7da61227002d": "Quita los adjuntos antes de elegir el enrutamiento automático y adjúntalos en la máquina seleccionada.",
   "512d8afab852df1a": "No se pudo cambiar de máquina",
+  "ee3ea4351c88e7d7": "Este proyecto ya no está disponible.",
   "32e421d1e2dfdaff": "Comprobando máquinas…",
   "0db14066bd4ce117": "Equilibrio automático no disponible",
   "55b562c00e37321b": "No se pudo forzar la detención del agente",
@@ -5618,6 +5619,7 @@
   "c928303400ccaf24": "No se pudo iniciar el device hub.",
   "4cb21672153c1f18": "No se encontraron simuladores ni emuladores en este entorno.",
   "c82410197256eb53": "Simuladores de iOS",
+  "31a71fec6b5f2bf3": "Dispositivos Android",
   "ac18a5e35195a258": "Emuladores de Android",
   "94215375ea2558b8": "En ejecución",
   "f8a65d4d662389b0": "Detenido",
@@ -7271,8 +7273,6 @@
   "0e3eede94227c151": "Preparando el checkout de la {term, select, mr {merge request} cr {solicitud de cambios} other {pull request}}...",
   "f5fd3733da6e3556": "No se pudo abrir un hilo para el checkout",
   "09f38e303898401f": "No se pudo preparar el checkout de la {term, select, mr {merge request} cr {solicitud de cambios} other {pull request}}",
-  "853a77d42f86c918": "Checkout hecho, pero el hilo se quedó donde estaba",
-  "0746dfa692f895cc": "El checkout está listo en `{branch}`. Apunta un hilo a él desde el selector de ramas y vuelve a preguntar.",
   "88db70a96177d202": "Checkout hecho aquí",
   "baa66fde3613022b": "Checkout hecho",
   "10feb68552356a08": "Este repositorio está en la rama de la {term, select, mr {merge request} cr {solicitud de cambios} other {pull request}}, con un hilo abierto en ella.",
@@ -7360,6 +7360,19 @@
   "20b4665c78f801c3": "Abrir en {host}",
   "258d16c1554b734c": "Copiar enlace",
   "c3d96c942dc3125d": "No se pudo copiar el enlace",
+  "4affc3da49f673c2": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    {
+      "t": "span",
+      "i": 2,
+      "c": "comentó"
+    }
+  ],
   "05cf59d40e17ba63": "Revisión solicitada",
   "e369d7ce5ff36689": "Creadas por mí",
   "87d943aa8f91b9a2": "Otras",
@@ -7394,6 +7407,7 @@
   "7074711ac6cc6f5c": "Fallidas",
   "75b2bb15e4624860": "No disponible",
   "ff6b088c383bf910": "Buscar autores",
+  "a766a8ac2670096c": "{count, plural, one {{count} fusión cargada} other {{count} fusiones cargadas}}",
   "d6179a157948c07c": "No se encontraron autores",
   "353773803bf92ad4": "No se pudieron buscar autores en el host",
   "e3e2d073449a0289": "Cualquiera",
@@ -7718,19 +7732,6 @@
       "t": "span",
       "i": 2,
       "c": "revisó"
-    }
-  ],
-  "4affc3da49f673c2": [
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    {
-      "t": "span",
-      "i": 2,
-      "c": "comentó"
     }
   ],
   "04ea50285b00dcdd": "General",
@@ -9790,7 +9791,6 @@
   "b76e857a764ea02a": "Regla de agrupación de {path} en {environment}",
   "e6e55f343639ae71": "Predeterminado ({mode})",
   "87158e7b8e714bc6": "Añade un proyecto desde la barra lateral para configurarlo aquí.",
-  "ee3ea4351c88e7d7": "Este proyecto ya no está disponible.",
   "062d19d24615e108": "El título del proyecto no puede estar vacío",
   "303af9de2741db90": "No se pudo renombrar el proyecto",
   "f578154800d7af01": "No se pudo actualizar el icono del proyecto",
@@ -10225,6 +10225,7 @@
   "9bc60e1d0ef816cf": "Bytes de almacenamiento",
   "85de927f664ee3cb": "Bytes lógicos",
   "ec1f81bc9b395fb9": "Todos los bytes de E/S",
+  "9fd31461cee8ff82": "{count, plural, one {{count} proceso} other {{count} procesos}}",
   "7905928d59208450": "Lectura",
   "637254a20a8e24a5": "Escritura",
   "ab9f29f78275f7bd": "Disponible cuando esta página se ejecuta dentro de la app de escritorio.",

@@ -5130,6 +5130,7 @@
   "13cf3cd978eef92a": "Garder les pièces jointes sur cette machine",
   "a4ca7da61227002d": "Retirez les pièces jointes avant de choisir le routage automatique, puis joignez-les sur la machine sélectionnée.",
   "512d8afab852df1a": "Impossible de changer de machine",
+  "ee3ea4351c88e7d7": "Ce projet n’est plus disponible.",
   "32e421d1e2dfdaff": "Vérification des machines…",
   "0db14066bd4ce117": "Répartition automatique indisponible",
   "55b562c00e37321b": "Impossible de forcer l’arrêt de l’agent",
@@ -5619,6 +5620,7 @@
   "c928303400ccaf24": "Le hub d’appareils n’a pas pu démarrer.",
   "4cb21672153c1f18": "Aucun simulateur ni émulateur trouvé dans cet environnement.",
   "c82410197256eb53": "Simulateurs iOS",
+  "31a71fec6b5f2bf3": "Appareils Android",
   "ac18a5e35195a258": "Émulateurs Android",
   "94215375ea2558b8": "En cours",
   "f8a65d4d662389b0": "Arrêté",
@@ -7272,8 +7274,6 @@
   "0e3eede94227c151": "Préparation de l’extraction de la {term, select, mr {merge request} cr {demande de modification} other {pull request}}...",
   "f5fd3733da6e3556": "Impossible d’ouvrir un fil pour le checkout",
   "09f38e303898401f": "Impossible de préparer l’extraction de la {term, select, mr {merge request} cr {demande de modification} other {pull request}}",
-  "853a77d42f86c918": "Récupérée, mais le fil est resté où il était",
-  "0746dfa692f895cc": "Le checkout est prêt sur `{branch}`. Pointez un fil dessus depuis le sélecteur de branche, puis reposez la question.",
   "88db70a96177d202": "Récupérée ici",
   "baa66fde3613022b": "Récupérée",
   "10feb68552356a08": "Ce dépôt est sur la branche de la {term, select, mr {merge request} cr {demande de modification} other {pull request}}, avec un fil ouvert dessus.",
@@ -7361,6 +7361,19 @@
   "20b4665c78f801c3": "Ouvrir sur {host}",
   "258d16c1554b734c": "Copier le lien",
   "c3d96c942dc3125d": "Impossible de copier le lien",
+  "4affc3da49f673c2": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    {
+      "t": "span",
+      "i": 2,
+      "c": "a commenté"
+    }
+  ],
   "05cf59d40e17ba63": "Revue demandée",
   "e369d7ce5ff36689": "Créées par moi",
   "87d943aa8f91b9a2": "Autres",
@@ -7395,6 +7408,7 @@
   "7074711ac6cc6f5c": "En échec",
   "75b2bb15e4624860": "Indisponible",
   "ff6b088c383bf910": "Rechercher des auteurs",
+  "a766a8ac2670096c": "{count, plural, one {{count} fusion chargée} other {{count} fusions chargées}}",
   "d6179a157948c07c": "Aucun auteur trouvé",
   "353773803bf92ad4": "Impossible de rechercher des auteurs sur l’hôte",
   "e3e2d073449a0289": "Tout le monde",
@@ -7719,19 +7733,6 @@
       "t": "span",
       "i": 2,
       "c": "a fait une revue"
-    }
-  ],
-  "4affc3da49f673c2": [
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    {
-      "t": "span",
-      "i": 2,
-      "c": "a commenté"
     }
   ],
   "04ea50285b00dcdd": "Vue d’ensemble",
@@ -9792,7 +9793,6 @@
   "b76e857a764ea02a": "Règle de regroupement de {path} sur {environment}",
   "e6e55f343639ae71": "Par défaut ({mode})",
   "87158e7b8e714bc6": "Ajoutez un projet depuis la barre latérale pour le configurer ici.",
-  "ee3ea4351c88e7d7": "Ce projet n’est plus disponible.",
   "062d19d24615e108": "Le titre du projet ne peut pas être vide",
   "303af9de2741db90": "Échec du renommage du projet",
   "f578154800d7af01": "Échec de la mise à jour de l’icône du projet",
@@ -10227,6 +10227,7 @@
   "9bc60e1d0ef816cf": "Octets de stockage",
   "85de927f664ee3cb": "Octets logiques",
   "ec1f81bc9b395fb9": "Tous les octets d’E/S",
+  "9fd31461cee8ff82": "{count, plural, one {{count} processus} other {{count} processus}}",
   "7905928d59208450": "Lecture",
   "637254a20a8e24a5": "Écriture",
   "ab9f29f78275f7bd": "Disponible quand cette page s’exécute dans l’app de bureau.",

@@ -44,6 +44,7 @@ import { seedDraftModelSelection } from "../lib/seedDraftModelSelection";
 import { newProjectId } from "../lib/utils";
 import { readProject, subscribeProject, useProject } from "../state/entities";
 import { useEnvironments } from "../state/environments";
+import { holdProjectCloneToasts, silenceProjectCloneToasts } from "../state/projectClones";
 import { projectEnvironment } from "../state/projects";
 import { formatEnvironmentQueryError } from "../state/query";
 import { useDebouncedValue } from "../state/queries";
@@ -249,11 +250,16 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
     }
     setSubmitting(true);
     setError(null);
+    const requestedId = newProjectId();
+    // The clone list can arrive before the start reply.
+    const releaseToastHold = holdProjectCloneToasts(
+      scopeProjectRef(target.environmentId, requestedId),
+    );
     try {
       const projectId = await addProjectToMachine({
         sourceEnvironmentId: project.environmentId,
         target: { environmentId: target.environmentId, label: target.label },
-        projectId: newProjectId(),
+        projectId: requestedId,
         title: project.title,
         clone: members
           ? {
@@ -266,12 +272,17 @@ function AddProjectToMachineDialog({ request }: { request: AddProjectToMachineRe
         destinationPath: destinationPath.trim(),
         files: [...selectedFiles.values()],
       });
-      close();
-      openClonedProject(scopeProjectRef(target.environmentId, projectId));
+      if (useRequest.getState().request === request) {
+        const targetRef = scopeProjectRef(target.environmentId, projectId);
+        silenceProjectCloneToasts(targetRef);
+        close();
+        openClonedProject(targetRef);
+      }
     } catch (cause) {
       setError(thrownErrorMessage(cause, m) ?? gt("Could not start the clone."));
       setSubmitting(false);
     }
+    releaseToastHold();
   };
 
   return (

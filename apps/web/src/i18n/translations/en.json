@@ -5133,6 +5133,7 @@
   "13cf3cd978eef92a": "Keep attachments on this machine",
   "a4ca7da61227002d": "Remove attachments before choosing automatic routing, then attach them on the selected machine.",
   "512d8afab852df1a": "Could not switch machine",
+  "ee3ea4351c88e7d7": "This project is no longer available.",
   "32e421d1e2dfdaff": "Checking machines…",
   "0db14066bd4ce117": "Auto balance unavailable",
   "55b562c00e37321b": "Could not force stop the agent",
@@ -5623,6 +5624,7 @@
   "c928303400ccaf24": "The device hub failed to start.",
   "4cb21672153c1f18": "No simulators or emulators were found on this environment.",
   "c82410197256eb53": "iOS Simulators",
+  "31a71fec6b5f2bf3": "Android Devices",
   "ac18a5e35195a258": "Android Emulators",
   "94215375ea2558b8": "Running",
   "f8a65d4d662389b0": "Stopped",
@@ -7282,8 +7284,6 @@
   "0e3eede94227c151": "Preparing the {term, select, mr {merge request} cr {change request} other {pull request}} checkout...",
   "f5fd3733da6e3556": "Could not open a thread for the checkout",
   "09f38e303898401f": "Could not prepare the {term, select, mr {merge request} cr {change request} other {pull request}} checkout",
-  "853a77d42f86c918": "Checked out, but the thread stayed where it was",
-  "0746dfa692f895cc": "The checkout is ready on `{branch}`. Point a thread at it from the branch picker, then ask again.",
   "88db70a96177d202": "Checked out here",
   "baa66fde3613022b": "Checked out",
   "10feb68552356a08": "This repository is on the {term, select, mr {merge request} cr {change request} other {pull request}}'s branch, with a thread open on it.",
@@ -7371,6 +7371,19 @@
   "20b4665c78f801c3": "Open on {host}",
   "258d16c1554b734c": "Copy link",
   "c3d96c942dc3125d": "Could not copy the link",
+  "4affc3da49f673c2": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    {
+      "t": "span",
+      "i": 2,
+      "c": "commented"
+    }
+  ],
   "05cf59d40e17ba63": "Review requested",
   "e369d7ce5ff36689": "Authored",
   "87d943aa8f91b9a2": "Others",
@@ -7405,6 +7418,7 @@
   "7074711ac6cc6f5c": "Failing",
   "75b2bb15e4624860": "Unavailable",
   "ff6b088c383bf910": "Search authors",
+  "a766a8ac2670096c": "{count, plural, one {{count} merge loaded} other {{count} merges loaded}}",
   "d6179a157948c07c": "No authors found",
   "353773803bf92ad4": "Couldn't search authors on the host",
   "e3e2d073449a0289": "Anyone",
@@ -7729,19 +7743,6 @@
       "t": "span",
       "i": 2,
       "c": "reviewed"
-    }
-  ],
-  "4affc3da49f673c2": [
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    {
-      "t": "span",
-      "i": 2,
-      "c": "commented"
     }
   ],
   "04ea50285b00dcdd": "Overview",
@@ -9808,7 +9809,6 @@
   "b76e857a764ea02a": "Grouping rule for {path} on {environment}",
   "e6e55f343639ae71": "Default ({mode})",
   "87158e7b8e714bc6": "Add a project from the sidebar to configure it here.",
-  "ee3ea4351c88e7d7": "This project is no longer available.",
   "062d19d24615e108": "Project title cannot be empty",
   "303af9de2741db90": "Failed to rename project",
   "f578154800d7af01": "Failed to update project icon",
@@ -10243,6 +10243,7 @@
   "9bc60e1d0ef816cf": "Storage bytes",
   "85de927f664ee3cb": "Logical bytes",
   "ec1f81bc9b395fb9": "All I/O bytes",
+  "9fd31461cee8ff82": "{count, plural, one {{count} process} other {{count} processes}}",
   "7905928d59208450": "Read",
   "637254a20a8e24a5": "Write",
   "ab9f29f78275f7bd": "Available when this page runs inside the desktop app.",

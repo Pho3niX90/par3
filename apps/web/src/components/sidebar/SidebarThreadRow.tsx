@@ -1502,6 +1502,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   )
                 ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
                   <SharedTooltipTrigger
+                    side="right"
                     render={
                       <button
                         type="button"
@@ -1524,6 +1525,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   </SharedTooltipTrigger>
                 ) : (
                   <SharedTooltipTrigger
+                    side="right"
                     render={
                       <button
                         type="button"
@@ -1733,6 +1735,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     ) : null}
                     {props.settlementSupported ? (
                       <SharedTooltipTrigger
+                        side="right"
                         render={
                           <button
                             type="button"

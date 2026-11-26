@@ -1,10 +1,17 @@
-import { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, type ProjectCloneSnapshot } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../test/render";
+
+const snapshots = vi.hoisted(() => vi.fn<() => ReadonlyArray<ProjectCloneSnapshot>>());
+
+vi.mock(import("../state/projectClones"), async (original) => ({
+  ...(await original()),
+  useEnvironmentProjectClones: snapshots,
+}));
 
 const project = vi.hoisted(() => {
   let value: unknown = null;
@@ -39,7 +46,9 @@ const machines = vi.hoisted(() => {
     targets: () => targets,
   };
 });
-const addProjectToMachine = vi.hoisted(() => vi.fn(async () => undefined));
+const addProjectToMachine = vi.hoisted(() =>
+  vi.fn<(input: { projectId: ProjectId }) => Promise<unknown>>(async () => undefined),
+);
 
 vi.mock(import("../state/entities"), async (original) => {
   const { useSyncExternalStore } = await import("react");
@@ -97,9 +106,12 @@ import {
   AddProjectToMachineDialogHost,
   openAddProjectToMachine,
 } from "./AddProjectToMachineDialog";
+import { ProjectCloneToastCoordinator } from "./ProjectCloneToastCoordinator";
+import { ToastProvider } from "./ui/toast";
 
 const environmentId = EnvironmentId.make("environment-1");
 const projectRef = scopeProjectRef(environmentId, ProjectId.make("project-1"));
+const nextProjectRef = scopeProjectRef(environmentId, ProjectId.make("project-2"));
 const PROJECT = {
   environmentId,
   id: projectRef.projectId,
@@ -130,6 +142,10 @@ const WORKSPACE_PROJECT = {
     ],
   },
 };
+const REMOTE_MACHINE = {
+  environments: [{ environmentId: targetEnvironmentId }],
+  targets: [{ environmentId: targetEnvironmentId, label: "Remote machine", machine: "linux" }],
+};
 const MACHINES = {
   environments: [
     {
@@ -152,7 +168,65 @@ const MACHINES = {
   targets: [{ environmentId: targetEnvironmentId, label: "Server", machine: "server" }],
 };
 
+function CloneDialogWithToasts() {
+  return (
+    <ToastProvider>
+      <ProjectCloneToastCoordinator />
+      <AddProjectToMachineDialogHost />
+    </ToastProvider>
+  );
+}
+
 describe("AddProjectToMachineDialog", () => {
+  it("keeps the replacement open after the dismissed clone finishes starting", async () => {
+    project.setup(PROJECT);
+    machines.setup(REMOTE_MACHINE);
+    const reply = Promise.withResolvers<ProjectId>();
+    const requested = Promise.withResolvers<ProjectId>();
+    addProjectToMachine.mockImplementationOnce(({ projectId }: { projectId: ProjectId }) => {
+      requested.resolve(projectId);
+      return reply.promise;
+    });
+    snapshots.mockReturnValue([]);
+    await using screen = await render(<CloneDialogWithToasts />);
+
+    await act(() => openAddProjectToMachine({ projectRef, targetEnvironmentId: null }));
+    const folder = screen.getByRole("textbox", { name: /^Folder on/ });
+    await folder.fill("/checkout");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("button", { name: "Starting…" })).toBeDisabled();
+    const projectId = await requested.promise;
+    snapshots.mockReturnValue([
+      {
+        projectId,
+        remoteUrl: "https://example.com/repo.git",
+        destinationPath: "/checkout",
+        repository: null,
+        phase: "running",
+        stage: "connecting",
+        percent: null,
+        detail: null,
+        error: null,
+        startedAt: "2026-01-01T00:00:00.000Z",
+        endedAt: null,
+        sequence: 1,
+      },
+    ]);
+    await screen.rerender(<CloneDialogWithToasts />);
+    await userEvent.keyboard("{Escape}");
+
+    await act(() => {
+      project.set({ ...PROJECT, id: nextProjectRef.projectId, title: "Next repo" });
+      openAddProjectToMachine({ projectRef: nextProjectRef, targetEnvironmentId: null });
+    });
+    await expect.element(screen.getByText(/Clone Next repo/)).toBeVisible();
+    const progress = page.getByText("Cloning checkout", { exact: true });
+    await expect.element(progress).not.toBeInTheDocument();
+    reply.resolve(projectId);
+    await expect.element(progress).toBeVisible();
+    await expect.element(screen.getByText(/Clone Next repo/)).toBeVisible();
+  });
+
   it("clones every workspace member over the chosen protocol and copies files per member", async () => {
     project.setup(WORKSPACE_PROJECT);
     machines.setup(MACHINES);
