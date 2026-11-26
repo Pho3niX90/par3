@@ -13174,6 +13174,7 @@ describe("AcpAdapterV2", () => {
         const sessionId = providerThread.nativeThreadRef?.nativeId;
         if (sessionId == null) return assert.fail("expected native session id");
         let ordinal = 0;
+        const noteSetAt = "2026-11-23T14:02:17.000Z";
         const runTurn = (input: {
           readonly text: string;
           readonly note: string;
@@ -13194,7 +13195,7 @@ describe("AcpAdapterV2", () => {
                 ordinal,
                 messageText: input.text,
               }),
-              appContext: [{ key: "mcp_app_item-1", text: input.note }],
+              appContext: [{ key: "mcp_app_item-1", text: input.note, updatedAt: noteSetAt }],
             });
             const events = Array.from(
               yield* runtime.events.pipe(
@@ -13209,7 +13210,9 @@ describe("AcpAdapterV2", () => {
             };
           });
 
-        const tag = (note: string) => `<external_mcp_app_item-1>${note}</external_mcp_app_item-1>`;
+        // Every send, a resend included, says when the app set the note.
+        const tag = (note: string) =>
+          `<external_mcp_app_item-1 updated_at="${noteSetAt}">${note}</external_mcp_app_item-1>`;
 
         // An unsuccessful stop reason must not mark appContext delivered.
         const refusedTurn = yield* runTurn({
@@ -13240,7 +13243,9 @@ describe("AcpAdapterV2", () => {
             ordinal: interruptedOrdinal,
             messageText: "Interrupted attempt",
           }),
-          appContext: [{ key: "mcp_app_item-1", text: "Created Jira issue PROJ-42" }],
+          appContext: [
+            { key: "mcp_app_item-1", text: "Created Jira issue PROJ-42", updatedAt: noteSetAt },
+          ],
         });
         yield* Deferred.await(interruptedStarted);
         assert.include(prompts.at(-1) ?? "", tag("Created Jira issue PROJ-42"));
@@ -13340,7 +13345,9 @@ describe("AcpAdapterV2", () => {
             ordinal: restartOrdinal,
             messageText: "Trigger restart",
           }),
-          appContext: [{ key: "mcp_app_item-1", text: "Updated Jira issue PROJ-43" }],
+          appContext: [
+            { key: "mcp_app_item-1", text: "Updated Jira issue PROJ-43", updatedAt: noteSetAt },
+          ],
         });
         yield* Deferred.await(restartStarted);
         const restartInterruptFiber = yield* runtime
