@@ -25,6 +25,10 @@ const MAX_ERROR_PAYLOAD_BYTES = 16_384;
 const API_ERROR =
   /Error (\d{3}), Message: ((?:(?!, Status: |Error \d{3}, Message: ).)+), Status: ([A-Z_]+|\d{3}[^,\n]*)/s;
 // Antigravity 1.5 with a Google account writes "STATUS (code NNN): message".
+// When a protobuf string field is 65-90 or 95 bytes long, its varint length byte falls in [A-Z_],
+// immediately after a control-byte field tag (e.g. \x12K before "UNAUTHENTICATED (code 401): ...").
+const GRPC_STATUS_ERROR =
+  /(?:(?<=[\x00-\x1f][A-Z_])|(?<![A-Z_]))(CANCELLED|UNKNOWN|INVALID_ARGUMENT|DEADLINE_EXCEEDED|NOT_FOUND|ALREADY_EXISTS|PERMISSION_DENIED|RESOURCE_EXHAUSTED|FAILED_PRECONDITION|ABORTED|OUT_OF_RANGE|UNIMPLEMENTED|INTERNAL|UNAVAILABLE|DATA_LOSS|UNAUTHENTICATED) \(code (\d{3})\): (\P{Cc}+)/u;
 const STATUS_ERROR = /(?<![A-Z_])([A-Z_]+) \(code (\d{3})\): (\P{Cc}+)/u;
 // Newer Antigravity builds attach the HTTP JSON body (pretty-printed or compact) to the error step.
 const ERROR_JSON_START = /\{\s*"error"\s*:/g;
@@ -54,6 +58,10 @@ const QUOTA_EXHAUSTED = /\breason:QUOTA_EXHAUSTED\b/;
 // history, so every later prompt to that session fails the same way.
 const INVALID_THINKING_SIGNATURE =
   /\bmessages\.\d+\.content\.\d+(?:\.thinking\.signature: Field required|: Invalid `signature` in `thinking` block)/;
+// Antigravity's Go harness aborts a silent model stream with "stream idle timeout (10m0s)".
+const STREAM_IDLE_TIMEOUT =
+  /\bstream idle timeout(?:\s*\(((?:\d+(?:\.\d+)?(?:ns|us|µs|μs|ms|h|m|s))+)\))?/i;
+const UTF8_DECODER = new TextDecoder();
 const RESET_TIMESTAMP = /\bquotaResetTimeStamp:([^\s\]]+)/;
 const RESET_DELAY = /\bquotaResetDelay:((?:\d+(?:\.\d+)?(?:ns|us|µs|μs|ms|h|m|s))+)(?=[\s\]])/;
 // google.rpc.RetryInfo, which plain rate limits carry instead of a quota reset.
@@ -77,7 +85,11 @@ interface LastStep {
   readonly type: number;
   readonly payload: Uint8Array | null;
   readonly reachedModel: boolean;
+  readonly repeatedStreamIdleTimeout: boolean;
 }
+
+const isStreamIdleTimeout = (payload: unknown): boolean =>
+  payload instanceof Uint8Array && STREAM_IDLE_TIMEOUT.test(UTF8_DECODER.decode(payload));
 
 class AntigravitySessionLogError extends Schema.TaggedError<AntigravitySessionLogError>()(
   "AntigravitySessionLogError",
@@ -123,14 +135,32 @@ const lastStepAfter =
       )
       .get(MAX_ERROR_PAYLOAD_BYTES, index);
     if (typeof row?.type !== "number") return undefined;
+    const payload = row.payload instanceof Uint8Array ? row.payload : null;
     const reachedModel =
       database
         .prepare("SELECT 1 FROM steps WHERE idx > ? AND step_type = ? LIMIT 1")
         .get(index, PLANNER_RESPONSE_STEP_TYPE) !== undefined;
+    let repeatedStreamIdleTimeout = false;
+    if (
+      index >= 0 &&
+      row.type === ERROR_STEP_TYPE &&
+      !reachedModel &&
+      isStreamIdleTimeout(payload)
+    ) {
+      const previous = database
+        .prepare(
+          `SELECT step_type AS type, substr(step_payload, 1, ?) AS payload
+           FROM steps WHERE idx <= ? AND step_type IN (?, ?) ORDER BY idx DESC LIMIT 1`,
+        )
+        .get(MAX_ERROR_PAYLOAD_BYTES, index, ERROR_STEP_TYPE, PLANNER_RESPONSE_STEP_TYPE);
+      repeatedStreamIdleTimeout =
+        previous?.type === ERROR_STEP_TYPE && isStreamIdleTimeout(previous.payload);
+    }
     return {
       type: row.type,
-      payload: row.payload instanceof Uint8Array ? row.payload : null,
+      payload,
       reachedModel,
+      repeatedStreamIdleTimeout,
     };
   };
 
@@ -150,7 +180,7 @@ function resetAtFrom(text: string, now: DateTime.Utc | undefined): string | unde
 
 // Reorders STATUS_ERROR's groups to API_ERROR's: HTTP status, message, status name.
 function statusError(text: string) {
-  const match = STATUS_ERROR.exec(text);
+  const match = GRPC_STATUS_ERROR.exec(text) ?? STATUS_ERROR.exec(text);
   return match === null ? null : ([match[0], match[2], match[3], match[1]] as const);
 }
 
@@ -209,7 +239,7 @@ function turnFailure(
   | undefined {
   const errorText =
     step?.type === ERROR_STEP_TYPE
-      ? new TextDecoder().decode(step.payload ?? new Uint8Array())
+      ? UTF8_DECODER.decode(step.payload ?? new Uint8Array())
       : undefined;
   // The agent maps only the SDK's QUOTA_EXHAUSTED stop reason to `refusal`.
   if (errorText === undefined && stopReason !== "refusal") return undefined;
@@ -252,6 +282,29 @@ function turnFailure(
       }),
     );
   }
+  const streamIdleTimeout = STREAM_IDLE_TIMEOUT.exec(text);
+  if (streamIdleTimeout !== null) {
+    const duration = streamIdleTimeout[1];
+    if (step?.repeatedStreamIdleTimeout === true) {
+      return {
+        failure: makeProviderFailure({
+          class: "provider_error",
+          message: `Antigravity's model stream timed out repeatedly${duration !== undefined ? ` (${duration})` : ""}, likely because this saved conversation is too large. The next message starts a fresh Antigravity session with this thread's context.`,
+          code: "STREAM_IDLE_TIMEOUT",
+          retryable: true,
+        }),
+        threadDisposition: "broken",
+      };
+    }
+    return reusable(
+      makeProviderFailure({
+        class: "provider_error",
+        message: `Antigravity's model stream timed out${duration !== undefined ? ` after ${duration}` : ""} without a response. Retry the turn, or start a fresh session if this thread has large files or media.`,
+        code: "STREAM_IDLE_TIMEOUT",
+        retryable: true,
+      }),
+    );
+  }
   if (apiError === null) {
     return reusable(
       makeProviderFailure({
@@ -262,16 +315,18 @@ function turnFailure(
   }
   const [, httpStatus, message, status] = apiError;
   const rateLimited = httpStatus === "429" || status === "RESOURCE_EXHAUSTED";
-  // A 404 before the model answered is an unknown or unentitled model; after, a transient edge error.
-  const transientNotFound = httpStatus === "404" && step?.reachedModel === true;
+  // Before the model answered, a 404 is an unknown model and a 401 a signed-out session. After,
+  // they are a transient edge error and an OAuth token refresh race.
+  const transientMidTurn =
+    (httpStatus === "404" || httpStatus === "401") && step?.reachedModel === true;
   const failure = makeProviderFailure({
     class: rateLimited ? "usage_limit" : "provider_error",
     message: message!.trim(),
     code: status ?? null,
-    retryable: rateLimited || transientNotFound || Number(httpStatus) >= 500,
+    retryable: rateLimited || transientMidTurn || Number(httpStatus) >= 500,
     resetAt: resetAtFrom(text, now) ?? null,
   });
-  return transientNotFound
+  return transientMidTurn
     ? { failure, threadDisposition: "reusable", resumeWith: "continue" }
     : reusable(failure);
 }
