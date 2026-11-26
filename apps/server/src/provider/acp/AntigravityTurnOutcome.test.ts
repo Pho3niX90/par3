@@ -86,6 +86,25 @@ const STATUS_NOT_FOUND_ERROR = Buffer.concat([
     'NOT_FOUND (code 404): Requested entity was not found.\u001a\u0080\u0001HTTP 404 Not Found\n\n{"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}',
   ),
 ]);
+const UNAUTHENTICATED_ERROR = errorPayload(
+  "Error 401, Message: Request had invalid authentication credentials., Status: UNAUTHENTICATED, Details: []",
+);
+const STATUS_UNAUTHENTICATED_ERROR = Buffer.concat([
+  Buffer.from([0x12, 0x4b]),
+  Buffer.from(
+    'UNAUTHENTICATED (code 401): Request had invalid authentication credentials.\u001aHTTP 401 Unauthorized\n\n{"error":{"code":401,"message":"Request had invalid authentication credentials.","status":"UNAUTHENTICATED"}}',
+  ),
+]);
+const STREAM_IDLE_TIMEOUT_ERROR = errorPayload(
+  "request failed: stream idle timeout (10m0s): context deadline exceeded",
+);
+const STREAM_IDLE_TIMEOUT_NO_DURATION_ERROR = errorPayload(
+  "request failed: stream idle timeout: context deadline exceeded",
+);
+const STREAM_IDLE_TIMEOUT_INVALID_DURATION_ERROR = errorPayload(
+  "request failed: stream idle timeout (unexpected detail): context deadline exceeded",
+);
+const GENERIC_HARNESS_ERROR = errorPayload("unexpected internal failure without status code");
 // Antigravity 1.5 states the quota reset only as a Go duration in its message.
 const STATUS_QUOTA_ERROR = Buffer.concat([
   Buffer.from([0x12, 0x6e]),
@@ -261,6 +280,158 @@ describe("watchAntigravityPromptOutcome", () => {
           [ERROR_MESSAGE, STATUS_NOT_FOUND_ERROR],
         ]))?.failure.retryable,
         false,
+      );
+      // A 401 after the turn already reached the model is an OAuth token refresh race.
+      for (const error of [UNAUTHENTICATED_ERROR, STATUS_UNAUTHENTICATED_ERROR]) {
+        assert.deepEqual(
+          yield* turn([
+            [USER_INPUT, input],
+            [PLANNER_RESPONSE, reply],
+            [TOOL, reply],
+            [ERROR_MESSAGE, error],
+          ]),
+          {
+            ...reusable({
+              class: "provider_error",
+              message: "Request had invalid authentication credentials.",
+              code: "UNAUTHENTICATED",
+              retryable: true,
+            }),
+            resumeWith: "continue",
+          },
+        );
+      }
+      // A 401 before the model answered is a signed-out session.
+      const signedOut = yield* turn([
+        [USER_INPUT, input],
+        [ERROR_MESSAGE, STATUS_UNAUTHENTICATED_ERROR],
+      ]);
+      assert.equal(signedOut?.failure.retryable, false);
+      assert.isUndefined(signedOut?.resumeWith);
+      // An unrecognized harness error still falls back to the generic message.
+      assert.deepEqual(
+        yield* turn([
+          [USER_INPUT, input],
+          [ERROR_MESSAGE, GENERIC_HARNESS_ERROR],
+        ]),
+        reusable({
+          class: "provider_error",
+          message: "Antigravity stopped this turn because of an error.",
+          code: null,
+          retryable: null,
+        }),
+      );
+      // A planner response quoting a stream idle timeout is not an error.
+      assert.isUndefined(
+        yield* turn([
+          [USER_INPUT, input],
+          [PLANNER_RESPONSE, STREAM_IDLE_TIMEOUT_ERROR],
+        ]),
+      );
+      // First stream idle timeout surfaces the timeout and keeps the session reusable.
+      assert.deepEqual(
+        yield* turn(
+          [
+            [USER_INPUT, input],
+            [PLANNER_RESPONSE, reply],
+            [TOOL, reply],
+            [ERROR_MESSAGE, STREAM_IDLE_TIMEOUT_ERROR],
+          ],
+          undefined,
+          { retired: true },
+        ),
+        reusable({
+          class: "provider_error",
+          message:
+            "Antigravity's model stream timed out after 10m0s without a response. Retry the turn, or start a fresh session if this thread has large files or media.",
+          code: "STREAM_IDLE_TIMEOUT",
+          retryable: true,
+        }),
+      );
+      // A retry that also reaches the model before timing out is not wedged.
+      assert.equal(
+        (yield* turn([
+          [USER_INPUT, input],
+          [PLANNER_RESPONSE, reply],
+          [TOOL, reply],
+          [ERROR_MESSAGE, STREAM_IDLE_TIMEOUT_ERROR],
+        ]))?.threadDisposition,
+        "reusable",
+      );
+      // A back-to-back stream idle timeout before reaching the model marks the session broken.
+      assert.deepEqual(
+        yield* turn(
+          [
+            [USER_INPUT, input],
+            [ERROR_MESSAGE, STREAM_IDLE_TIMEOUT_ERROR],
+          ],
+          undefined,
+          { retired: true },
+        ),
+        {
+          failure: {
+            class: "provider_error",
+            message:
+              "Antigravity's model stream timed out repeatedly (10m0s), likely because this saved conversation is too large. The next message starts a fresh Antigravity session with this thread's context.",
+            code: "STREAM_IDLE_TIMEOUT",
+            retryable: true,
+          },
+          threadDisposition: "broken",
+        },
+      );
+      // A successful turn resets repeated-timeout detection.
+      assert.isUndefined(
+        yield* turn([
+          [USER_INPUT, input],
+          [PLANNER_RESPONSE, reply],
+        ]),
+      );
+      // Omitting or rejecting non-duration parentheses never echoes arbitrary text.
+      assert.deepEqual(
+        yield* turn([
+          [USER_INPUT, input],
+          [ERROR_MESSAGE, STREAM_IDLE_TIMEOUT_NO_DURATION_ERROR],
+        ]),
+        reusable({
+          class: "provider_error",
+          message:
+            "Antigravity's model stream timed out without a response. Retry the turn, or start a fresh session if this thread has large files or media.",
+          code: "STREAM_IDLE_TIMEOUT",
+          retryable: true,
+        }),
+      );
+      // An intervening cancelled retry without a planner response still counts as repeated.
+      assert.isUndefined(yield* turn([[USER_INPUT, input]]));
+      assert.deepEqual(
+        yield* turn([
+          [USER_INPUT, input],
+          [ERROR_MESSAGE, STREAM_IDLE_TIMEOUT_INVALID_DURATION_ERROR],
+        ]),
+        {
+          failure: {
+            class: "provider_error",
+            message:
+              "Antigravity's model stream timed out repeatedly, likely because this saved conversation is too large. The next message starts a fresh Antigravity session with this thread's context.",
+            code: "STREAM_IDLE_TIMEOUT",
+            retryable: true,
+          },
+          threadDisposition: "broken",
+        },
+      );
+      // A different preceding error followed by a stream idle timeout stays reusable.
+      assert.equal(
+        (yield* turn([
+          [USER_INPUT, input],
+          [ERROR_MESSAGE, QUOTA_ERROR],
+        ]))?.failure.class,
+        "usage_limit",
+      );
+      assert.equal(
+        (yield* turn([
+          [USER_INPUT, input],
+          [ERROR_MESSAGE, STREAM_IDLE_TIMEOUT_ERROR],
+        ]))?.threadDisposition,
+        "reusable",
       );
       // Google account verification errors surface the verified continuation link on both
       // pretty-printed and compact HTTP bodies, while rejecting untrusted or malformed URLs.
