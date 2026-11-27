@@ -10,7 +10,7 @@ import { CLAUDE_SYNTHETIC_MODEL } from "../provider/Drivers/claudeUsage.ts";
 import { mergeUsageCopies } from "./usageAggregation.ts";
 import { GUARD_LENGTH, type TranscriptParsePosition } from "./usageTranscriptReader.ts";
 
-const USAGE_SCAN_CACHE_VERSION = 18 as const;
+const USAGE_SCAN_CACHE_VERSION = 19 as const;
 const SPEED_COMPATIBLE_SINCE_VERSION = 4;
 
 /**
@@ -18,8 +18,9 @@ const SPEED_COMPATIBLE_SINCE_VERSION = 4;
  * replace it, dropping saved usage for deleted transcripts. Separate files keep
  * the newer one; older files are removed once it is saved.
  */
-export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v18.json";
+export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v19.json";
 export const LEGACY_SCAN_CACHE_FILE_NAMES = [
+  "usage-scan-cache-v18.json",
   "usage-scan-cache-v17.json",
   "usage-scan-cache-v16.json",
   "usage-scan-cache-v15.json",
@@ -69,6 +70,7 @@ type SerializedRecord = readonly [
   nativeSubagentIndex?: number | null,
   parentSessionIndex?: number | null,
   cacheCreation1hTokens?: number,
+  modelCalls?: number,
 ];
 
 interface SerializedFile {
@@ -142,15 +144,23 @@ function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile 
     // Optional fields are written only up to the last one present.
     return [
       ...required,
-      ...(record.cacheCreation1hTokens !== undefined
-        ? ([turnId, subagent, parent, record.cacheCreation1hTokens] as const)
-        : parent !== null
-          ? ([turnId, subagent, parent] as const)
-          : subagent !== null
-            ? ([turnId, subagent] as const)
-            : turnId !== null
-              ? ([turnId] as const)
-              : ([] as const)),
+      ...(record.modelCalls !== undefined && record.modelCalls > 1
+        ? ([
+            turnId,
+            subagent,
+            parent,
+            record.cacheCreation1hTokens ?? 0,
+            record.modelCalls,
+          ] as const)
+        : record.cacheCreation1hTokens !== undefined
+          ? ([turnId, subagent, parent, record.cacheCreation1hTokens] as const)
+          : parent !== null
+            ? ([turnId, subagent, parent] as const)
+            : subagent !== null
+              ? ([turnId, subagent] as const)
+              : turnId !== null
+                ? ([turnId] as const)
+                : ([] as const)),
     ];
   };
   return {
@@ -246,6 +256,7 @@ export function decodeScanCache(
         nativeSubagentIndex,
         parentSessionIndex,
         cacheCreation1h = 0,
+        modelCalls = 1,
       ] = row as SerializedRecord;
       const speed = typeof speedIndex === "number" ? SPEEDS[speedIndex] : undefined;
 
@@ -263,6 +274,9 @@ export function decodeScanCache(
         (nativeSubagentIndex != null && nativeSubagentId === undefined) ||
         (parentSessionIndex != null && parentSessionId === undefined) ||
         !Number.isFinite(cacheCreation1h) ||
+        typeof modelCalls !== "number" ||
+        !Number.isFinite(modelCalls) ||
+        modelCalls < 0 ||
         (rateModelIndex != null && rateModel === undefined) ||
         !Number.isFinite(uncached) ||
         !Number.isFinite(cached) ||
@@ -278,6 +292,7 @@ export function decodeScanCache(
       // parser cannot remove their previously saved local placeholders.
       if (provider === "claude" && model === CLAUDE_SYNTHETIC_MODEL) continue;
 
+      const calls = Math.trunc(modelCalls);
       records.push({
         provider,
         timestampMs,
@@ -296,6 +311,7 @@ export function decodeScanCache(
         ...(cacheCreation1h > 0 ? { cacheCreation1hTokens: cacheCreation1h } : {}),
         reportedCostUsd: typeof reportedCostUsd === "number" ? reportedCostUsd : null,
         speed,
+        ...(calls > 1 ? { modelCalls: calls } : {}),
         ...(version >= 7 && unresolvedServiceTierTurnId != null
           ? { unresolvedServiceTierTurnId }
           : {}),
@@ -354,10 +370,11 @@ export function decodeScanCache(
     }
     // Keep history for deleted rollouts, but re-parse incompatible reducer state. Par3's
     // versions run ahead of upstream's: Claude below v16, Codex below v17 (upstream's v16
-    // snapshot time) and Grok below v18 (upstream's v17 time-keyed turns) re-parse.
+    // snapshot time) and Grok below v19 (upstream's v17 time-keyed turns and v18 modelCalls
+    // for per-call context tiers) re-parse.
     const legacy =
       (entry.p === "claude" && version < 16) ||
-      (entry.p === "grok" && version < 18) ||
+      (entry.p === "grok" && version < 19) ||
       (format.state !== undefined && (version < 6 || (entry.p === "codex" && version < 17)));
     // A corrupt state disqualifies the entry: resuming with it would attach
     // appended usage to the wrong model or replay fork-copied history.

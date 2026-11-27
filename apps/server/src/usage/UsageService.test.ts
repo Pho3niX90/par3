@@ -3732,7 +3732,7 @@ describe("UsageService", () => {
             stillScoped.sources.find((source) => source.fingerprint.provider === "codex")?.status,
             "partial",
           );
-          assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v18.json");
+          assert.strictEqual(SCAN_CACHE_FILE_NAME, "usage-scan-cache-v19.json");
           assert.deepStrictEqual(
             (yield* Effect.promise(() => NodeFSP.readdir(stateDir)))
               .filter((name) => name.startsWith("usage-scan-cache"))

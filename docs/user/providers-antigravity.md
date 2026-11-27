@@ -10,7 +10,7 @@ Par3 runs Google's official Antigravity ACP agent on your selected environment, 
 
 - **Remote sign-in**: Paste the temporary code (or full URL) from Google's completion page into Par3's code field.
 - **Manual binary**: Install [Antigravity CLI](https://antigravity.google/docs/getting-started) and set **Binary path** to `agy`. Leave blank to use the managed runtime (or `PATH`).
-- **Updates**: Click **Update Antigravity** in provider settings. Par3 requires Antigravity **1.5+** (1.5.12+ recommended); running threads finish on their original runtime.
+- **Updates**: Click **Update Antigravity** in provider settings. Par3 requires Antigravity **1.5.1+** (1.5.12+ recommended); running threads finish on their original runtime.
 
 ### Sign-in methods
 
@@ -52,6 +52,6 @@ Add a separate Antigravity instance in **Settings → Providers** for each Googl
 
 ## Usage and troubleshooting
 
-- Check 5-hour and weekly Gemini / shared Claude & GPT quotas under **Usage → Limits**.
+- Par3 does not read your Google account's Antigravity allowances. When Antigravity says a usage limit was reached, **Usage → Limits** shows when it resets; **Usage** also shows tokens and cost from Antigravity's local history.
 - Use **Refresh provider status** (web/desktop) or **Refresh models** (mobile) to reload models and access.
 - For `SUBSCRIPTION_REQUIRED` or account restriction errors, see [Google's account plans](https://antigravity.google/docs/plans).

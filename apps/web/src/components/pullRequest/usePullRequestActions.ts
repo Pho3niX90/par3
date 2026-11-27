@@ -12,6 +12,7 @@ import type {
   PullRequestMergeMethod,
   PullRequestRef,
   PullRequestSummary,
+  ScopedProjectRef,
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { msg } from "gt-react";
@@ -352,6 +353,7 @@ export function writeHandoffToComposer(
 type PreparedCheckout = Awaited<
   ReturnType<ReturnType<typeof usePreparePullRequestThreadAction>["run"]>
 >;
+type DraftCheckoutResult = PreparedCheckout | { readonly _tag: "Cancelled" };
 
 /**
  * Moves the draft opened for a checkout onto it once it is ready, keeping whatever the user
@@ -359,11 +361,13 @@ type PreparedCheckout = Awaited<
  */
 export function prepareDraftCheckout(
   draftId: DraftId,
+  projectRef: ScopedProjectRef,
   checkout: Promise<PreparedCheckout>,
   isCancelled: () => boolean = () => false,
-): Promise<PreparedCheckout> {
-  const pointed = checkout.then((prepared) => {
-    if (isCancelled() || prepared._tag === "Failure") return prepared;
+): Promise<DraftCheckoutResult> {
+  const result = checkout.then((prepared): DraftCheckoutResult => {
+    if (!isCurrent() || isCancelled()) return { _tag: "Cancelled" };
+    if (prepared._tag === "Failure") return prepared;
     const { branch, worktreePath, pullRequest } = prepared.value;
     // A waiting send resumes right after this and must render the checkout first.
     flushSync(() =>
@@ -378,8 +382,12 @@ export function prepareDraftCheckout(
     );
     return prepared;
   });
-  trackPendingDraftCheckout(draftId, pointed);
-  return pointed;
+  const isCurrent = trackPendingDraftCheckout(
+    draftId,
+    projectRef,
+    result.then((prepared) => prepared._tag === "Success"),
+  );
+  return result;
 }
 
 export type PullRequestHandoffDetail = Pick<
@@ -505,6 +513,7 @@ export function usePullRequestHandoffs({
     }
     const prepared = await prepareDraftCheckout(
       opened.draftId,
+      projectRef,
       prepareThread.run({
         reference: detail.url,
         mode,
@@ -512,12 +521,12 @@ export function usePullRequestHandoffs({
       }),
       () => cancelled,
     );
-    if (cancelled) {
-      setHandoff(null);
+    setHandoff(null);
+    if (cancelled || prepared._tag === "Cancelled") {
+      if (!cancelled) toastManager.close(toastId);
       return null;
     }
     if (prepared._tag === "Failure") {
-      setHandoff(null);
       toastManager.update(toastId, {
         type: "error",
         title: m(
@@ -532,7 +541,6 @@ export function usePullRequestHandoffs({
       });
       return null;
     }
-    setHandoff(null);
     const checkout: PreparedPullRequestCheckout = {
       threadRef: scopeThreadRef(environmentId, opened.threadId),
       cwd: prepared.value.worktreePath ?? detail.workspaceRoot,

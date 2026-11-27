@@ -471,6 +471,8 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "terminal.splitVertical": msg("Terminal: Split Vertical"),
   "terminal.new": msg("Terminal: New"),
   "terminal.close": msg("Terminal: Close"),
+  "terminal.previous": msg("Terminal: Previous"),
+  "terminal.next": msg("Terminal: Next"),
   "rightPanel.toggle": msg("Right Panel: Toggle"),
   "rightPanel.new": msg("Right Panel: New"),
   "threadPanel.toggle": msg("Thread Panel: Toggle"),
@@ -535,6 +537,14 @@ const LATE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "view.reopenClosed": msg("Reopen Closed Tab"),
   "preview.focusUrl": msg("Preview: Focus URL"),
   "preview.find": msg("Preview: Find on Page"),
+  "merge.open": msg("Merge: Resolve Conflicts"),
+  "merge.nextConflict": msg("Merge: Next Conflict"),
+  "merge.prevConflict": msg("Merge: Previous Conflict"),
+  "merge.acceptOurs": msg("Merge: Accept Ours"),
+  "merge.acceptTheirs": msg("Merge: Accept Theirs"),
+  "composer.togglePlanMode": msg("Composer: Toggle Plan Mode"),
+  "composer.sidekick": msg("Composer: Sidekick"),
+  "composer.toggleSpecMode": msg("Composer: Toggle Spec Mode"),
 };
 
 export function commandLabel(command: KeybindingCommand, resolve: MessageResolver = m): string {

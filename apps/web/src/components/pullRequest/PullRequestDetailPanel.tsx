@@ -1155,14 +1155,19 @@ export function PullRequestDetailPanel({
     }
     const prepared = await prepareDraftCheckout(
       opened.draftId,
+      projectRef,
       prepareThread.run({
         reference: handoffSummary.url,
         mode,
         threadId: opened.threadId,
       }),
     );
+    setHandoff(null);
+    if (prepared._tag === "Cancelled") {
+      toastManager.close(toastId);
+      return null;
+    }
     if (prepared._tag === "Failure") {
-      setHandoff(null);
       toastManager.update(toastId, {
         type: "error",
         title: m(
@@ -1177,7 +1182,6 @@ export function PullRequestDetailPanel({
       });
       return null;
     }
-    setHandoff(null);
     const checkout: PreparedPullRequestCheckout = {
       threadRef: scopeThreadRef(actingEnvironmentId, opened.threadId),
       cwd: prepared.value.worktreePath ?? checkoutRoot,
