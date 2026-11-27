@@ -153,11 +153,20 @@ export function applyServerConfigProjection(
     case "settingsUpdated":
       return Option.map(current, (projection) => {
         const settings = reuseUnchanged(projection.config.settings, event.payload.settings);
+        const observability =
+          event.payload.relayTracingAllowed === undefined ||
+          projection.config.observability.relayTracingAllowed === event.payload.relayTracingAllowed
+            ? projection.config.observability
+            : {
+                ...projection.config.observability,
+                relayTracingAllowed: event.payload.relayTracingAllowed,
+              };
         return {
           config:
-            settings === projection.config.settings
+            settings === projection.config.settings &&
+            observability === projection.config.observability
               ? projection.config
-              : { ...projection.config, settings },
+              : { ...projection.config, settings, observability },
           latestEvent: event,
           source: "live",
         };

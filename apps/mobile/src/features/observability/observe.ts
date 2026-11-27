@@ -23,39 +23,49 @@ if (!__DEV__) {
   });
 }
 
-let latestConfiguration = 0;
-
-// While sending is off, a dispatch pass drops what it finds, so one runs before turning it back on.
-// Best effort: Observe skips the pass while it is backing off from a failed send.
-export async function setCrashReportsEnabled(enabled: boolean) {
-  const configuration = ++latestConfiguration;
-  const dispatchingEnabled = crashReportingAvailable && enabled;
-  if (dispatchingEnabled) {
-    await Observe.dispatchEvents();
-    if (configuration !== latestConfiguration) return;
-  }
+const configureObserve = (dispatchingEnabled: boolean) => {
   Observe.configure({
     dispatchingEnabled,
     ...(typeof appVariant === "string" ? { environment: appVariant } : {}),
   });
+};
+
+let latestConfiguration = 0;
+
+// While sending is off, a dispatch pass drops what it finds, so one runs before turning it back on.
+// Best effort: Observe skips the pass while it is backing off from a failed send.
+async function applyCrashReportsEnabled(enabled: boolean, options?: { readonly purge?: boolean }) {
+  const configuration = ++latestConfiguration;
+  const dispatchingEnabled = crashReportingAvailable && enabled;
+  if (dispatchingEnabled && options?.purge !== false) {
+    await Observe.dispatchEvents();
+    if (configuration !== latestConfiguration) return;
+  }
+  configureObserve(dispatchingEnabled);
 }
 
-if (!crashReportingAvailable) {
-  void setCrashReportsEnabled(false);
-} else {
-  // Observe keeps its last configuration across launches; configuring it off while the setting
-  // loads would drop the last session's native crash. Imported lazily so the persistence graph
-  // never runs ahead of the imports `index.ts` orders first.
+export function setCrashReportsEnabled(enabled: boolean) {
+  return applyCrashReportsEnabled(enabled);
+}
+
+// Observe sends by default and keeps its last configuration across launches, so sending stays off
+// until the saved choice loads as on.
+configureObserve(false);
+
+if (crashReportingAvailable) {
+  // Turning it on here skips the purge, so an opted-in user's last native crash survives.
+  // Imported lazily so the persistence graph never runs ahead of the imports `index.ts` orders first.
   const changedSinceLoad = () => latestConfiguration !== 0;
   void import("../../persistence/imperative")
     .then(({ loadPreferences }) => loadPreferences())
     .then(
       (preferences) =>
-        changedSinceLoad()
+        changedSinceLoad() || preferences.crashReportsEnabled !== true
           ? undefined
-          : setCrashReportsEnabled(preferences.crashReportsEnabled !== false),
-      // Observe keeps the last choice it was given, which stands in for the unreadable one.
-      (error: unknown) => console.warn("[observe] could not read the crash report setting", error),
+          : applyCrashReportsEnabled(true, { purge: false }),
+      (error: unknown) => {
+        console.warn("[observe] could not read the crash report setting", error);
+      },
     )
     .catch((error: unknown) => {
       console.warn("[observe] could not apply the crash report setting", error);

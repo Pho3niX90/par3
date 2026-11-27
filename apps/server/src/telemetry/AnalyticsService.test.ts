@@ -24,8 +24,10 @@ import type { ManagedPolicyDocument } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import { getTelemetryIdentity } from "./Identify.ts";
 import * as AnalyticsService from "./AnalyticsService.ts";
+import * as TelemetryConsent from "./TelemetryConsent.ts";
 
 interface RecordedBatchRequest {
   readonly path: string;
@@ -124,29 +126,41 @@ const analyticsLayerWith = (
   telemetryEnv: { readonly T3CODE_TELEMETRY_ENABLED?: boolean } = {
     T3CODE_TELEMETRY_ENABLED: true,
   },
-) =>
-  AnalyticsService.layer.pipe(
+  telemetryEnabledSetting = false,
+) => {
+  const layerSettings = ServerSettings.ServerSettingsService.layerTest({
+    telemetryEnabled: telemetryEnabledSetting,
+  });
+  const layerPolicy = ManagedPolicy.layerTest(policy);
+  const layerConfig = ConfigProvider.layer(
+    ConfigProvider.fromUnknown({
+      ...telemetryEnv,
+      T3CODE_TELEMETRY_KEY: "phc_test_key",
+      T3CODE_TELEMETRY_HOST: "http://localhost",
+    }),
+  );
+  const layerConsent = TelemetryConsent.layer.pipe(
+    Layer.provide(layerSettings),
+    Layer.provide(layerPolicy),
+    Layer.provide(layerConfig),
+  );
+  return AnalyticsService.layer.pipe(
+    Layer.provideMerge(layerSettings),
     Layer.provideMerge(
       ServerConfig.ServerConfig.layerTest(process.cwd(), { prefix: "t3-telemetry-retry-" }),
     ),
-    Layer.provide(
-      ConfigProvider.layer(
-        ConfigProvider.fromUnknown({
-          ...telemetryEnv,
-          T3CODE_TELEMETRY_KEY: "phc_test_key",
-          T3CODE_TELEMETRY_HOST: "http://localhost",
-        }),
-      ),
-    ),
+    Layer.provide(layerConsent),
+    Layer.provide(layerConfig),
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(HostProcess.Platform, "win32"),
         Layer.succeed(HostProcess.Architecture, "x64"),
         Layer.succeed(HttpClient.HttpClient, client),
-        ManagedPolicy.layerTest(policy),
+        layerPolicy,
       ),
     ),
   );
+};
 
 /**
  * Runs `record` (20 events by default), then lets `minutes` of background
@@ -159,10 +173,13 @@ const sendFor = (
   record: Effect.Effect<
     void,
     never,
-    AnalyticsService.AnalyticsService | Effect.Services<typeof getTelemetryIdentity>
+    | AnalyticsService.AnalyticsService
+    | ServerSettings.ServerSettingsService
+    | Effect.Services<typeof getTelemetryIdentity>
   > = recordTwentyEvents,
   policy?: ManagedPolicyDocument,
   telemetryEnv?: Parameters<typeof analyticsLayerWith>[2],
+  telemetryEnabledSetting = false,
 ) =>
   Effect.gen(function* () {
     const batches: Array<ReadonlyArray<SentEvent>> = [];
@@ -177,7 +194,7 @@ const sendFor = (
         return yield* respond(request);
       }),
     );
-    const runtimeLayer = analyticsLayerWith(client, policy, telemetryEnv);
+    const runtimeLayer = analyticsLayerWith(client, policy, telemetryEnv, telemetryEnabledSetting);
 
     yield* Effect.gen(function* () {
       yield* record;
@@ -328,6 +345,172 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
       }),
   );
 
+  it.effect(
+    "sends nothing by default, honors settings opt-in, env overrides, and drops buffers on opt-out",
+    () =>
+      Effect.gen(function* () {
+        const env: NodeJS.ProcessEnv = {};
+        assert.deepEqual(
+          yield* sendFor(1, respondWithStatus(204), recordTwentyEvents, undefined, {}, false).pipe(
+            Effect.provideService(HostProcess.Environment, env),
+          ),
+          [],
+        );
+        assert.equal(
+          (yield* sendFor(1, respondWithStatus(204), recordTwentyEvents, undefined, {}, true).pipe(
+            Effect.provideService(HostProcess.Environment, env),
+          )).length,
+          1,
+        );
+        assert.deepEqual(
+          yield* sendFor(
+            1,
+            respondWithStatus(204),
+            recordTwentyEvents,
+            undefined,
+            { T3CODE_TELEMETRY_ENABLED: false },
+            true,
+          ).pipe(Effect.provideService(HostProcess.Environment, env)),
+          [],
+        );
+        assert.deepEqual(
+          yield* sendFor(1, respondWithStatus(204), recordTwentyEvents, undefined, {}, true).pipe(
+            Effect.provideService(HostProcess.Environment, { GITHUB_ACTIONS: "true" }),
+          ),
+          [],
+        );
+
+        let status = 503;
+        const liveBatches = yield* sendFor(
+          0,
+          (request) => respondWithStatus(status)(request),
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsService.AnalyticsService;
+            const settings = yield* ServerSettings.ServerSettingsService;
+            assert.isTrue(yield* analytics.record("test.failed-batch"));
+            yield* analytics.flush;
+            assert.isTrue(yield* analytics.record("test.buffered"));
+            yield* settings.updateSettings({ telemetryEnabled: false }).pipe(Effect.orDie);
+            assert.isFalse(yield* analytics.record("test.while-off"));
+            status = 204;
+            yield* analytics.flush;
+            yield* settings.updateSettings({ telemetryEnabled: true }).pipe(Effect.orDie);
+            yield* analytics.flush;
+            assert.isTrue(yield* analytics.record("test.after-reopt-in"));
+            yield* analytics.flush;
+          }),
+          undefined,
+          {},
+          true,
+        ).pipe(Effect.provideService(HostProcess.Environment, env));
+        // Only the initial 503 attempt and the fresh post-re-opt-in event hit the endpoint;
+        // the failed batch and buffered event were cleared when turned off.
+        assert.deepEqual(
+          liveBatches.flat().map((event) => event.event),
+          ["test.failed-batch", "test.after-reopt-in"],
+        );
+      }),
+  );
+
+  it.effect(
+    "drops buffered events and retained failed batches across an opt-out and quick opt-back-in",
+    () =>
+      Effect.gen(function* () {
+        const env: NodeJS.ProcessEnv = {};
+        const bufferedBatches = yield* sendFor(
+          0,
+          respondWithStatus(204),
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsService.AnalyticsService;
+            const settings = yield* ServerSettings.ServerSettingsService;
+            assert.isTrue(yield* analytics.record("test.before-opt-out"));
+            yield* settings.updateSettings({ telemetryEnabled: false }).pipe(Effect.orDie);
+            yield* settings.updateSettings({ telemetryEnabled: true }).pipe(Effect.orDie);
+            yield* Effect.yieldNow;
+            yield* analytics.flush;
+            assert.isTrue(yield* analytics.record("test.after-reopt-in"));
+            yield* analytics.flush;
+          }),
+          undefined,
+          {},
+          true,
+        ).pipe(Effect.provideService(HostProcess.Environment, env));
+        assert.deepEqual(
+          bufferedBatches.flat().map((event) => event.event),
+          ["test.after-reopt-in"],
+        );
+
+        let status = 503;
+        const sentOn204: Array<string> = [];
+        yield* sendFor(
+          0,
+          (request) =>
+            Effect.gen(function* () {
+              if (status === 204 && request.body._tag === "Uint8Array") {
+                const body = yield* decodeSentBatch(
+                  new TextDecoder().decode(request.body.body),
+                ).pipe(Effect.orDie);
+                sentOn204.push(...body.batch.map((event) => event.event));
+              }
+              return yield* respondWithStatus(status)(request);
+            }),
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsService.AnalyticsService;
+            const settings = yield* ServerSettings.ServerSettingsService;
+            assert.isTrue(yield* analytics.record("test.failed-before-opt-out"));
+            // Push retryAt well past the 10-second background tick so flushWhenDue must wake on withdrawal.
+            for (let attempt = 0; attempt < 5; attempt += 1) {
+              yield* analytics.flush;
+            }
+            status = 204;
+            yield* settings.updateSettings({ telemetryEnabled: false }).pipe(Effect.orDie);
+            yield* settings.updateSettings({ telemetryEnabled: true }).pipe(Effect.orDie);
+            yield* Effect.yieldNow;
+            yield* TestClock.adjust("10 seconds");
+            assert.isTrue(yield* analytics.record("test.after-failed-reopt-in"));
+            yield* analytics.flush;
+          }),
+          undefined,
+          {},
+          true,
+        ).pipe(Effect.provideService(HostProcess.Environment, env));
+        assert.deepEqual(sentOn204, ["test.after-failed-reopt-in"]);
+      }),
+  );
+
+  it.effect(
+    "records an owner after opt-in even if it was first observed while telemetry was off",
+    () =>
+      Effect.gen(function* () {
+        const owner = { source: "connect" as const, ownerId: "b".repeat(64) };
+        const batches = yield* sendFor(
+          0,
+          respondWithStatus(204),
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsService.AnalyticsService;
+            const settings = yield* ServerSettings.ServerSettingsService;
+            yield* analytics.recordOwners([owner], "server");
+            yield* analytics.flush;
+
+            yield* settings.updateSettings({ telemetryEnabled: true }).pipe(Effect.orDie);
+            yield* Effect.yieldNow;
+            yield* analytics.recordOwners([owner], "server");
+            yield* analytics.recordOwners([owner], "server");
+            yield* analytics.flush;
+          }),
+          undefined,
+          {},
+          false,
+        ).pipe(Effect.provideService(HostProcess.Environment, {}));
+
+        const events = batches.flat();
+        assert.deepEqual(
+          events.map((event) => event.event),
+          ["install.owner_observed"],
+        );
+      }),
+  );
+
   it.effect("sends nothing on a CI runner unless the environment opts in", () =>
     Effect.gen(function* () {
       const onCi = (telemetryEnv: Parameters<typeof analyticsLayerWith>[2]) =>
@@ -368,7 +551,15 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
         prefix: "t3-telemetry-base-",
       });
 
-      const layerTelemetry = AnalyticsService.layer.pipe(Layer.provideMerge(layerServerConfig));
+      const layerTelemetry = AnalyticsService.layer.pipe(
+        Layer.provide(
+          TelemetryConsent.layer.pipe(
+            Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+            Layer.provide(ManagedPolicy.layerTest()),
+          ),
+        ),
+        Layer.provideMerge(layerServerConfig),
+      );
       const layerConfig = ConfigProvider.layer(
         ConfigProvider.fromUnknown({
           T3CODE_TELEMETRY_ENABLED: true,
@@ -475,7 +666,15 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
       const layerServerConfig = ServerConfig.ServerConfig.layerTest(process.cwd(), {
         prefix: "t3-telemetry-disabled-",
       });
-      const layerTelemetry = AnalyticsService.layer.pipe(Layer.provideMerge(layerServerConfig));
+      const layerTelemetry = AnalyticsService.layer.pipe(
+        Layer.provide(
+          TelemetryConsent.layer.pipe(
+            Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+            Layer.provide(ManagedPolicy.layerTest()),
+          ),
+        ),
+        Layer.provideMerge(layerServerConfig),
+      );
       const layerConfig = ConfigProvider.layer(
         ConfigProvider.fromUnknown({
           T3CODE_TELEMETRY_ENABLED: false,

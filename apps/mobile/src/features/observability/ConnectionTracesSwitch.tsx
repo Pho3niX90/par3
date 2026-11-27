@@ -9,7 +9,7 @@ import { SettingsSwitchRow } from "../settings/components/SettingsSwitchRow";
 import { setConnectionTracesEnabled } from "./diagnosticsSetting";
 import { resolveTracingConfig } from "./tracing";
 
-/** False in builds without relay tracing configured, where there is nothing to turn off. */
+/** False in builds without relay tracing configured, where there is nothing to send. */
 export const connectionTracesAvailable = resolveTracingConfig() !== null;
 
 // Shared by every switch, so a save that finishes after a newer change cannot turn sending back on.
@@ -41,8 +41,8 @@ export function ConnectionTracesSwitch() {
   const gt = useGT();
   const ready = AsyncResult.isSuccess(preferences) && !preferences.waiting;
   const enabled = AsyncResult.isSuccess(preferences)
-    ? preferences.value.connectionTracesEnabled !== false
-    : true;
+    ? preferences.value.connectionTracesEnabled === true
+    : false;
 
   const change = (value: boolean) => {
     setSaving(true);

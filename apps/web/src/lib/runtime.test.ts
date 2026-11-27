@@ -21,22 +21,37 @@ describe("web runtime relay telemetry policy", () => {
     {
       surface: "desktop opt-out",
       desktopBridge: { getRelayTelemetryEnabled: () => false },
+      server: true,
       exports: false,
     },
     {
-      surface: "desktop enabled",
+      surface: "desktop before primary server answers",
       desktopBridge: { getRelayTelemetryEnabled: () => true },
+      exports: false,
+    },
+    {
+      surface: "desktop whose primary server has telemetry off",
+      desktopBridge: { getRelayTelemetryEnabled: () => true },
+      server: false,
+      exports: false,
+    },
+    {
+      surface: "desktop enabled when both host and primary server allow it",
+      desktopBridge: { getRelayTelemetryEnabled: () => true },
+      server: true,
       exports: true,
     },
     {
       // The desktop host reads the login shell after the renderer has started.
-      surface: "desktop enabled once the login shell is read",
+      surface: "desktop enabled once the login shell is read and server allows it",
       desktopBridge: { getRelayTelemetryEnabled: answers(null, true) },
+      server: true,
       exports: true,
     },
     {
       surface: "desktop opt-out found in the login shell",
       desktopBridge: { getRelayTelemetryEnabled: answers(null, false, true) },
+      server: true,
       exports: false,
     },
     {
@@ -57,10 +72,16 @@ describe("web runtime relay telemetry policy", () => {
       exports: true,
     },
     {
-      // The hosted app is served by no T3 server, so nothing can answer for it.
-      surface: "hosted app",
+      surface: "hosted app defaults off",
       desktopBridge: undefined,
       location: new URL("https://app.example.test/"),
+      exports: false,
+    },
+    {
+      surface: "hosted app opted in via client setting",
+      desktopBridge: undefined,
+      location: new URL("https://app.example.test/"),
+      hostedOptIn: true,
       exports: true,
     },
   ])("applies $surface before the first relay span", async (surface) => {
@@ -82,8 +103,12 @@ describe("web runtime relay telemetry policy", () => {
     // Re-import after setting runtime policy: static initialization creates the exporter layer.
     const { runtime: freshRuntime } = await import("./runtime");
     const { setDelegate } = await import("../observability/clientTracer");
+    const publicConfig = await import("../cloud/publicConfig");
     if ("server" in surface) {
-      (await import("../cloud/publicConfig")).setServerRelayTelemetry(surface.server);
+      publicConfig.setServerRelayTelemetry(surface.server);
+    }
+    if ("hostedOptIn" in surface) {
+      publicConfig.setHostedRelayDiagnosticsEnabled(surface.hostedOptIn);
     }
     const userSpans: Array<string> = [];
 
@@ -121,5 +146,43 @@ describe("web runtime relay telemetry policy", () => {
     } else {
       expect(fetchFn).not.toHaveBeenCalled();
     }
+  });
+
+  it("stops exporting immediately when hosted diagnostics or server permission turns off live", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_RELAY_OTLP_TRACES_URL", "https://telemetry.example.test/v1/traces");
+    vi.stubEnv("VITE_RELAY_OTLP_TRACES_DATASET", "relay-test");
+    vi.stubEnv("VITE_RELAY_OTLP_TRACES_TOKEN", "test-token");
+    vi.stubEnv("VITE_HOSTED_APP_URL", "https://app.example.test");
+    vi.stubGlobal("window", {
+      desktopBridge: undefined,
+      location: new URL("https://app.example.test/"),
+    });
+    const fetchFn = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchFn);
+
+    const { runtime: freshRuntime } = await import("./runtime");
+    const publicConfig = await import("../cloud/publicConfig");
+    try {
+      expect(publicConfig.relayTelemetryEnabled()).toBe(false);
+      await freshRuntime.runPromise(
+        Effect.void.pipe(Effect.withSpan("relay.before-opt-in"), withRelayClientTracing),
+      );
+      publicConfig.setHostedRelayDiagnosticsEnabled(true);
+      expect(publicConfig.relayTelemetryEnabled()).toBe(true);
+      await freshRuntime.runPromise(
+        Effect.void.pipe(Effect.withSpan("relay.while-opted-in"), withRelayClientTracing),
+      );
+      publicConfig.setHostedRelayDiagnosticsEnabled(false);
+      expect(publicConfig.relayTelemetryEnabled()).toBe(false);
+      await freshRuntime.runPromise(
+        Effect.void.pipe(Effect.withSpan("relay.after-opt-out"), withRelayClientTracing),
+      );
+    } finally {
+      await freshRuntime.dispose();
+    }
+
+    // Disposing while opted out drops queued spans too (layerSendWhile).
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });

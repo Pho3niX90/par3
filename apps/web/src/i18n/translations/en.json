@@ -6641,12 +6641,19 @@
   ],
   "216ab7514aea1d61": "Start without an agent",
   "501ce2d99da8bfd1": "Set up one agent to start.",
-  "cd780e929cef08ab": [
-    "Par3 collects anonymous usage data to improve the app. To opt out, see the",
+  "da3e1e2af1c22b11": [
+    "Par3 does not send usage data unless you turn it on in",
+    " ",
+    {
+      "t": "Link",
+      "i": 1,
+      "c": "Settings"
+    },
+    ". See the",
     " ",
     {
       "t": "a",
-      "i": 1,
+      "i": 2,
       "c": "privacy policy"
     },
     "."
@@ -10976,7 +10983,7 @@
   "c424bee294b9f778": "This environment is managed by {organization}. Some settings and features follow its policy.",
   "82d9538af590f58c": "See your agents, import projects, and set up your phone.",
   "6a48fd0a37e725a1": "Legal",
-  "4672b04da5e494f1": "How we handle your data, including the anonymous usage data Par3 collects.",
+  "b9510e73f85da509": "How we handle your data, including optional usage data if you turn it on in Settings.",
   "e741b1ab9396053a": "How we handle your data. {telemetryOff}",
   "3fec97d866946baf": "Notices for dependencies, assets, and optional tools used by Par3.",
   "e39a57514be028e9": "Review",
@@ -11208,6 +11215,7 @@
   "4c70e3e7b3e6c493": "Secrets",
   "79b768229c9ef672": "Maintenance",
   "54b188d65247e42f": "Labs",
+  "e0315c1971520881": "Telemetry",
   "af4b7734da1d5ce7": "Voice",
   "4ec62c39ca3192bf": "Source control & issues",
   "f2bf529f85e05494": "Sharing & access",
@@ -11353,7 +11361,9 @@
   "6310b97b04ef239f": "Welcome page",
   "df9fa3a9cb004b9b": "onboarding setup first run getting started agents import projects",
   "3188bc3b3c4508bc": "Privacy policy",
-  "901a823214edc8c4": "telemetry analytics usage data tracking legal opt out",
+  "0eb2482f1e689569": "telemetry analytics usage data tracking legal",
+  "7065ed3cb54fd318": "Usage data",
+  "717e06534d439f61": "telemetry usage data analytics privacy diagnostics",
   "523b72ed9d712100": "OpenTelemetry export",
   "82136480255a5106": "OTel OTLP telemetry export endpoints logs traces metrics Grafana",
   "659d081051faf7ff": "logs traces processes resource history failures spans cpu memory",
@@ -12579,6 +12589,29 @@
       "i": 1,
       "k": "_gt_value_1",
       "v": "v"
+    }
+  ],
+  "4640376a031d41b9": "Control what anonymous usage data and connection diagnostics Par3 sends. Everything here is off until you turn it on.",
+  "442b84129e654705": "Connect an environment to configure its usage data setting.",
+  "8ce3039333e2ceb4": "Send usage data",
+  "4c67804f0dcd6eb6": "Send usage data: anonymous product usage events and connection diagnostics from this server and the apps opened from it. Never includes prompts, responses, or file contents.",
+  "2738abce5768eefb": "Send anonymous product usage events and connection diagnostics from this server and the apps opened from it. Never includes prompts, responses, or file contents.",
+  "c36085c370b6eb93": "Reconnect to change this setting.",
+  "de730ae0490ca71b": "Update this server to change usage data settings here.",
+  "0827283dc0af8b94": "Send usage data on {environment}",
+  "b6a9f7bea6485881": "Send connection diagnostics from this device",
+  "fcbd51c25765a420": "Send connection timing traces from this browser to help diagnose Parity Connect issues.",
+  "cdd67eda57489a27": [
+    "Set by environment ·",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
     }
   ],
   "39f64d971ba424b5": "No usage sources configured.",

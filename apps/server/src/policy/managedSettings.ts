@@ -34,7 +34,10 @@ const UNMANAGEABLE_KEYS: ReadonlySet<string> = new Set([
  * loads, and the user's OTLP environment variables outrank them, so a managed value would look
  * enforced without being.
  */
-const ENVIRONMENT_OVERRIDDEN_KEYS: ReadonlySet<string> = new Set(["observability"]);
+const ENVIRONMENT_OVERRIDDEN_KEYS: ReadonlySet<string> = new Set([
+  "observability",
+  "telemetryEnabled",
+]);
 
 /** Legacy settings the server derives from another on every write; manage that one instead. */
 const DERIVED_FROM: ReadonlyMap<string, string> = new Map([

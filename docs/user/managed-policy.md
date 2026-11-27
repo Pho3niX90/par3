@@ -61,7 +61,7 @@ Run `par3 policy settings` to list every manageable path from `settings.json` an
 Key constraints:
 
 - Lock `worktreeCleanup` together with `storageCleanup` worktree rules.
-- `observability` (OTLP endpoints) cannot be managed by policy.
+- `observability` (OTLP endpoints) and `telemetryEnabled` cannot be managed under `settings`. To keep usage data off, use [`limits.telemetry`](#other-capabilities).
 - Manage `idleCompaction` (not legacy `compactIdleThreads`).
 - Lock `providerInstances.<id>` as a whole, or pin per-driver fields under [`limits.providers.instances`](#providers).
 
@@ -113,7 +113,7 @@ When `maxRuntimeMode` is set, users cannot modify provider launch settings (`bin
 - `browserCookieImport: false`: Disables importing cookies from other browsers.
 - `previewTunnel: false`: Disables remote `localhost` tunneling and port forwarding (streams tabs instead).
 - `worktreeLayoutCommands: false`: Disables `par3.json` `worktreeLayout` `create`/`remove` commands.
-- `telemetry: false`: Disables product usage data and relay tracing for the server, desktop app, and server-opened browsers (does not control `app.paritylabs.co.za` or mobile).
+- `telemetry: false`: Keeps product usage data and relay tracing off for the server, desktop app, and server-opened browsers, whatever users choose in Settings. A policy cannot turn them on, and it does not control `app.paritylabs.co.za` or mobile, which have their own opt-in switches.
 
 ### Providers
 

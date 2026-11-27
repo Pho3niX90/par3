@@ -23,6 +23,7 @@ import {
   resolveModelPreferences,
   isModelSelectionProviderEnabled,
   parsePersistedServerObservabilitySettings,
+  parsePersistedServerTelemetryEnabled,
   resolveReviewGuideModelSelection,
   resolveSourceControlWriterModelSelection,
   resolveSpeechPostProcessingModelSelection,
@@ -102,6 +103,21 @@ describe("fallbackTextGenerationModelSelection", () => {
 });
 
 describe("serverSettings helpers", () => {
+  it("defaults telemetryEnabled to false, patches it, and parses persisted values", () => {
+    expect(DEFAULT_SERVER_SETTINGS.telemetryEnabled).toBe(false);
+    expect(decodeServerSettings({}).telemetryEnabled).toBe(false);
+    expect(
+      applyServerSettingsPatch(
+        DEFAULT_SERVER_SETTINGS,
+        decodeServerSettingsPatch({ telemetryEnabled: true }),
+      ).telemetryEnabled,
+    ).toBe(true);
+    expect(parsePersistedServerTelemetryEnabled("{}")).toBe(false);
+    expect(parsePersistedServerTelemetryEnabled('{"telemetryEnabled":true}')).toBe(true);
+    expect(parsePersistedServerTelemetryEnabled('{"telemetryEnabled":false}')).toBe(false);
+    expect(parsePersistedServerTelemetryEnabled("not json")).toBe(false);
+  });
+
   it("translates a shipped client's idle compaction switch into a mode", () => {
     const off = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, { idleCompaction: "off" });
     expect([off.idleCompaction, off.compactIdleThreads]).toEqual(["off", false]);

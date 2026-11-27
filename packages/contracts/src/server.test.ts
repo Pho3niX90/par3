@@ -7,6 +7,7 @@ import {
   OtlpEndpointCheckInput,
   resolveEnvironmentMachineKind,
   ServerConfigProviderStatusDeltasPayload,
+  ServerConfigSettingsUpdatedPayload,
   ServerObservability,
   ServerProvider,
   serverProviderDeltas,
@@ -16,6 +17,7 @@ import { ServerSettings } from "./settings.ts";
 
 const decodeServerProvider = Schema.decodeUnknownSync(ServerProvider);
 const decodeServerProviders = Schema.decodeUnknownSync(ServerProviders);
+const decodeSettingsUpdatedPayload = Schema.decodeSync(ServerConfigSettingsUpdatedPayload);
 
 const baseProviderSnapshot = {
   instanceId: "codex",
@@ -122,6 +124,29 @@ describe("ServerObservability", () => {
         otlpMetricsEnabled: false,
       }),
     ).toThrow();
+  });
+
+  it("decodes telemetry source override metadata and settings update relayTracingAllowed", () => {
+    const decoded = decodeServerObservability({
+      logsDirectoryPath: "/tmp/t3/logs",
+      localTracingEnabled: true,
+      otlpTracesEnabled: false,
+      otlpMetricsEnabled: false,
+      relayTracingAllowed: false,
+      telemetrySource: "environment",
+      telemetryVariable: "DO_NOT_TRACK",
+      telemetryEnabled: false,
+    });
+    expect(decoded.telemetrySource).toBe("environment");
+    expect(decoded.telemetryVariable).toBe("DO_NOT_TRACK");
+    expect(decoded.telemetryEnabled).toBe(false);
+    expect(decoded.relayTracingAllowed).toBe(false);
+
+    const updated = decodeSettingsUpdatedPayload({
+      settings: {},
+      relayTracingAllowed: true,
+    });
+    expect(updated.relayTracingAllowed).toBe(true);
   });
 });
 

@@ -14,12 +14,15 @@ import {
   presentConnectionState,
   type EnvironmentPresentation,
 } from "@t3tools/client-runtime/connection";
-import { createServerEnvironmentAtoms } from "@t3tools/client-runtime/state/server";
+import {
+  createServerEnvironmentAtoms,
+  type ServerConfigProjection,
+} from "@t3tools/client-runtime/state/server";
 import { createOutdatedServerUpdateCommand } from "@t3tools/client-runtime/state/outdatedServerUpdate";
 import { createEnvironmentServerConfigsAtom } from "@t3tools/client-runtime/state/shell";
 import { mergeWithDefaultKeybindings } from "@t3tools/shared/keybindings";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/reactivity";
+import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 
 import { isConnectedWithConfig } from "../components/settings/scopedSettings";
 import { environmentCatalog } from "../connection/catalog";
@@ -86,12 +89,46 @@ export const primaryServerConfigAtom = Atom.make(
   (get): ServerConfig | null => get(primaryServerStateAtom).config,
 ).pipe(Atom.withLabel("web-primary-server-config"));
 
-// The config cache can outlive the session and predate an opt-out.
+interface PrimaryRelayTracingSession {
+  readonly environmentId: EnvironmentId | null;
+  readonly initialConfig: ServerConfig | null;
+  readonly projectionBeforeSession: ServerConfigProjection | null;
+}
+
+const primaryRelayTracingSessions = new WeakMap<
+  AtomRegistry.AtomRegistry,
+  PrimaryRelayTracingSession
+>();
+
+// The config cache and a prior session's live projection can outlive a disconnect, so keep
+// reading the active session's initial config until a newer live projection arrives.
 export const primaryRelayTracingAllowedAtom = Atom.make((get): boolean | null => {
   const environmentId = get(primaryEnvironmentIdAtom);
+  if (environmentId === null) {
+    primaryRelayTracingSessions.delete(get.registry);
+    return null;
+  }
+  const initialConfig = get(environmentSession.initialConfigValueAtom(environmentId));
+  const projection = AsyncResult.getOrElse(
+    get(serverEnvironment.configProjection({ environmentId, input: {} })),
+    () => null,
+  );
+  const previous = primaryRelayTracingSessions.get(get.registry);
+  const session =
+    previous?.environmentId === environmentId && previous.initialConfig === initialConfig
+      ? previous
+      : { environmentId, initialConfig, projectionBeforeSession: projection };
+  if (session !== previous) {
+    primaryRelayTracingSessions.set(get.registry, session);
+  }
+  if (initialConfig === null) return null;
   const config =
-    environmentId === null ? null : get(environmentSession.initialConfigValueAtom(environmentId));
-  return config === null ? null : config.observability.relayTracingAllowed !== false;
+    projection !== null &&
+    projection.source === "live" &&
+    projection !== session.projectionBeforeSession
+      ? projection.config
+      : initialConfig;
+  return config.observability.relayTracingAllowed !== false;
 }).pipe(Atom.withLabel("web-primary-relay-tracing-allowed"));
 
 export const primaryServerConfigEventAtom = Atom.make(

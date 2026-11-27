@@ -55,12 +55,20 @@ it.effect("derives direct Clerk OAuth endpoints from statically injected public 
   }),
 );
 
-it("product opt-out disables relay tracing with either built-in or runtime credentials", () => {
+it("product opt-out disables relay tracing while unset env keeps credentials for live opt-in", () => {
   const fallback = {
     tracesUrl: "https://embedded.example.test/v1/traces",
     tracesDataset: "embedded-dataset",
     tracesToken: "embedded-token",
   };
+  assert.deepEqual(resolveRelayClientTracingConfig({}, fallback), fallback);
+  assert.equal(resolveRelayClientTracingConfig({ DO_NOT_TRACK: "1" }, fallback), null);
+  assert.equal(resolveRelayClientTracingConfig({ CI: "true" }, fallback), null);
+  assert.deepEqual(
+    resolveRelayClientTracingConfig({ CI: "true", T3CODE_TELEMETRY_ENABLED: "true" }, fallback),
+    fallback,
+  );
+
   const env = {
     T3CODE_TELEMETRY_ENABLED: "false",
     T3CODE_OTEL_SDK_DISABLED: "false",

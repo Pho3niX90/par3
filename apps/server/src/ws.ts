@@ -200,7 +200,6 @@ import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
 import * as ProviderInstallation from "./provider/providerInstallation.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as NpmRelease from "./cloud/npmRelease.ts";
-import * as RelayTracing from "./cloud/relayTracing.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
@@ -273,6 +272,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
+import * as TelemetryConsent from "./telemetry/TelemetryConsent.ts";
 import { commandFeatureUsage, featureUsage } from "./telemetry/FeatureUsage.ts";
 import type { TelemetryOwner } from "./telemetry/Identify.ts";
 import * as ThreadCostService from "./usage/ThreadCostService.ts";
@@ -439,7 +439,21 @@ export const withLateConfigDiscovery = <E, R>(
           case "providerStatuses":
             return [{ ...current, providers: event.payload.providers }, [event]];
           case "settingsUpdated":
-            return [{ ...current, settings: event.payload.settings }, [event]];
+            return [
+              {
+                ...current,
+                settings: event.payload.settings,
+                ...(event.payload.relayTracingAllowed === undefined
+                  ? {}
+                  : {
+                      observability: {
+                        ...current.observability,
+                        relayTracingAllowed: event.payload.relayTracingAllowed,
+                      },
+                    }),
+              },
+              [event],
+            ];
           // Themes and usage-limit sources survive snapshots because snapshots never include them.
           default:
             return [current, [event]];
@@ -1464,6 +1478,7 @@ type WsRpcServices =
   | AgentSessionImporter.AgentSessionImporter
   | AgentSessionScanner.AgentSessionScanner
   | AnalyticsService.AnalyticsService
+  | TelemetryConsent.TelemetryConsent
   | AntigravityInstallation.AntigravityInstallation
   | BackgroundPolicy.BackgroundPolicy
   | CheckpointDiffQuery.CheckpointDiffQuery
@@ -1738,7 +1753,7 @@ const makeWsRpcHandlers = (
       const databaseStorage = yield* DatabaseStorage.DatabaseStorage;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const clientSettings = yield* ServerSettings.ServerSettingsClientView;
-      const hostEnvironment = yield* HostProcess.Environment;
+      const telemetryConsent = yield* TelemetryConsent.TelemetryConsent;
       const secretResolver = yield* SecretResolver.SecretResolver;
       const peerLinks = yield* PeerLinks.PeerLinks;
       const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
@@ -2097,10 +2112,7 @@ const makeWsRpcHandlers = (
                 }
               : {}),
             otlpLogsEnabled: config.otlpLogsUrl !== undefined,
-            relayTracingAllowed: RelayTracing.allowedFor(
-              hostEnvironment,
-              serverSettings.managedPolicy,
-            ),
+            ...telemetryConsent.observabilityFor(settings.telemetryEnabled),
           },
           settings,
           ...(serverSettings.managedPolicy === undefined
@@ -3863,7 +3875,12 @@ const makeWsRpcHandlers = (
                 Stream.map((settings) => ({
                   version: 1 as const,
                   type: "settingsUpdated" as const,
-                  payload: { settings },
+                  payload: {
+                    settings,
+                    relayTracingAllowed: telemetryConsent.observabilityFor(
+                      settings.telemetryEnabled,
+                    ).relayTracingAllowed,
+                  },
                 })),
               );
 

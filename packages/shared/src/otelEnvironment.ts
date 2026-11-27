@@ -335,25 +335,45 @@ const CI_VARIABLES = [
   "APPVEYOR",
 ] as const;
 
-/** CI runs are not installs, so telemetry is off there unless `T3CODE_TELEMETRY_ENABLED` says otherwise. */
-export const isCiEnvironment = (env: Readonly<Record<string, string | undefined>>) =>
-  CI_VARIABLES.some((name) => {
+/** First set CI variable name (ignoring empty, `false`, and `0`), or `undefined` outside CI. */
+export const ciEnvironmentVariable = (
+  env: Readonly<Record<string, string | undefined>>,
+): string | undefined =>
+  CI_VARIABLES.find((name) => {
     const value = env[name]?.trim().toLowerCase();
     return value !== undefined && value !== "" && value !== "false" && value !== "0";
   });
+
+/** CI runs are not installs, so telemetry is off there unless `T3CODE_TELEMETRY_ENABLED` says otherwise. */
+export const isCiEnvironment = (env: Readonly<Record<string, string | undefined>>) =>
+  ciEnvironmentVariable(env) !== undefined;
 
 /** The cross-tool `DO_NOT_TRACK=1` convention turns off product analytics and relay tracing. */
 export const isDoNotTrackSet = (env: Readonly<Record<string, string | undefined>>) =>
   T3CODE_TRUE.includes(env.DO_NOT_TRACK?.trim().toLowerCase() ?? "");
 
-export const isRelayTracingEnabled = (env: Readonly<Record<string, string | undefined>>) =>
+/** Returns the explicit `T3CODE_TELEMETRY_ENABLED` override, or `undefined` when unset/invalid. */
+export const readTelemetryEnvOverride = (
+  env: Readonly<Record<string, string | undefined>>,
+): boolean | undefined =>
+  flag("T3CODE_TELEMETRY_ENABLED", T3CODE_TRUE, T3CODE_FALSE, String).pipe(
+    Effect.map((parsed) => parsed.value),
+    Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
+    Effect.orDie,
+    Effect.runSync,
+  );
+
+export const isRelayTracingEnabled = (
+  env: Readonly<Record<string, string | undefined>>,
+  optedIn: boolean,
+) =>
   Config.all({
     ...sdkFlags,
     telemetry: flag("T3CODE_TELEMETRY_ENABLED", T3CODE_TRUE, T3CODE_FALSE, String),
   }).pipe(
     Effect.map(
       ({ telemetry, t3, spec }) =>
-        (telemetry.value ?? !isCiEnvironment(env)) &&
+        (telemetry.value ?? (optedIn && !isCiEnvironment(env))) &&
         !isDoNotTrackSet(env) &&
         !(t3.value ?? spec.value ?? false),
     ),

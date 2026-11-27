@@ -6636,12 +6636,19 @@
   ],
   "216ab7514aea1d61": "Começar sem agente",
   "501ce2d99da8bfd1": "Configure um agente para começar.",
-  "cd780e929cef08ab": [
-    "O Par3 coleta dados de uso anônimos para melhorar o app. Para recusar, consulte a",
+  "da3e1e2af1c22b11": [
+    "O Par3 não envia dados de uso a menos que você ative nas",
+    " ",
+    {
+      "t": "Link",
+      "i": 1,
+      "c": "Configurações"
+    },
+    ". Consulte a",
     " ",
     {
       "t": "a",
-      "i": 1,
+      "i": 2,
       "c": "política de privacidade"
     },
     "."
@@ -10959,7 +10966,7 @@
   "c424bee294b9f778": "Este ambiente é gerenciado por {organization}. Algumas configurações e recursos seguem a política dela.",
   "82d9538af590f58c": "Veja seus agentes, importe projetos e configure seu celular.",
   "6a48fd0a37e725a1": "Jurídico",
-  "4672b04da5e494f1": "Como tratamos seus dados, incluindo os dados de uso anônimos que o Par3 coleta.",
+  "b9510e73f85da509": "Como lidamos com seus dados, incluindo dados de uso opcionais se você os ativar nas Configurações.",
   "e741b1ab9396053a": "Como tratamos seus dados. {telemetryOff}",
   "3fec97d866946baf": "Avisos de dependências, recursos e ferramentas opcionais usados pelo Par3.",
   "e39a57514be028e9": "Revisar",
@@ -11191,6 +11198,7 @@
   "4c70e3e7b3e6c493": "Segredos",
   "79b768229c9ef672": "Manutenção",
   "54b188d65247e42f": "Labs",
+  "e0315c1971520881": "Telemetria",
   "af4b7734da1d5ce7": "Voz",
   "4ec62c39ca3192bf": "Versões e issues",
   "f2bf529f85e05494": "Compartilhamento",
@@ -11336,7 +11344,9 @@
   "6310b97b04ef239f": "Página de boas-vindas",
   "df9fa3a9cb004b9b": "integração configuração primeira execução primeiros passos agentes importar projetos",
   "3188bc3b3c4508bc": "Política de privacidade",
-  "901a823214edc8c4": "telemetria analytics dados de uso rastreamento legal desativar",
+  "0eb2482f1e689569": "telemetria análise dados de uso rastreamento jurídico",
+  "7065ed3cb54fd318": "Dados de uso",
+  "717e06534d439f61": "telemetria dados de uso análise privacidade diagnósticos",
   "523b72ed9d712100": "Exportação OpenTelemetry",
   "82136480255a5106": "OTel OTLP telemetria exportar endpoints logs traces métricas Grafana",
   "659d081051faf7ff": "logs traces processos histórico de recursos falhas spans cpu memória",
@@ -12560,6 +12570,29 @@
       "i": 1,
       "k": "_gt_value_1",
       "v": "v"
+    }
+  ],
+  "4640376a031d41b9": "Controle quais dados de uso anônimos e diagnósticos de conexão o Par3 envia. Tudo aqui fica desativado até que você ative.",
+  "442b84129e654705": "Conecte um ambiente para configurar sua opção de dados de uso.",
+  "8ce3039333e2ceb4": "Enviar dados de uso",
+  "4c67804f0dcd6eb6": "Enviar dados de uso: eventos anônimos de uso do produto e diagnósticos de conexão deste servidor e dos aplicativos abertos a partir dele. Nunca inclui prompts, respostas ou conteúdo de arquivos.",
+  "2738abce5768eefb": "Envia eventos anônimos de uso do produto e diagnósticos de conexão deste servidor e dos aplicativos abertos a partir dele. Nunca inclui prompts, respostas ou conteúdo de arquivos.",
+  "c36085c370b6eb93": "Reconecte para alterar esta configuração.",
+  "de730ae0490ca71b": "Atualize este servidor para alterar as configurações de dados de uso aqui.",
+  "0827283dc0af8b94": "Enviar dados de uso em {environment}",
+  "b6a9f7bea6485881": "Enviar diagnósticos de conexão deste dispositivo",
+  "fcbd51c25765a420": "Envia rastreamentos de tempo de conexão deste navegador para ajudar a diagnosticar problemas do Parity Connect.",
+  "cdd67eda57489a27": [
+    "Definido pelo ambiente ·",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
     }
   ],
   "39f64d971ba424b5": "Nenhuma fonte de uso configurada.",

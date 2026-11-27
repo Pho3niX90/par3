@@ -86,7 +86,7 @@ export function resolveRelayClientTracingConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
   fallback = buildTimeRelayClientTracing,
 ) {
-  if (!isRelayTracingEnabled(env)) {
+  if (!isRelayTracingEnabled(env, true)) {
     return null;
   }
 

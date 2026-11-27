@@ -1,4 +1,5 @@
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+import type { ServerConfigProjection } from "@t3tools/client-runtime/state/server";
 import { EnvironmentId, type KeybindingRule, type ServerConfig } from "@t3tools/contracts";
 import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
@@ -132,26 +133,25 @@ describe("createShortcutKeybindingsAtom", () => {
   });
 });
 
-it("clears relay tracing permission when the primary session ends", () => {
+it("clears relay tracing permission when the primary session ends and updates live on settings change", () => {
   const allowed = config([], true);
   const sessionConfig = Atom.make<ServerConfig | null>(allowed);
+  // The previous session's config stream can retain its last live value across disconnect.
+  const projectionAtom = Atom.make<AsyncResult.AsyncResult<ServerConfigProjection>>(
+    AsyncResult.success<ServerConfigProjection>({
+      config: allowed,
+      latestEvent: { version: 1, type: "snapshot", config: allowed },
+      source: "live",
+    }),
+  );
   using _session = vi
     .spyOn(environmentSession, "initialConfigValueAtom")
     .mockReturnValue(sessionConfig);
-  // The previous session's config stream can retain its last live value across disconnect.
-  const lastProjection = serverEnvironment.configProjection({ environmentId: PRIMARY, input: {} });
+  using _projection = vi
+    .spyOn(serverEnvironment, "configProjection")
+    .mockReturnValue(projectionAtom as never);
   const registry = AtomRegistry.make({
-    initialValues: [
-      [primaryEnvironmentIdAtom, PRIMARY],
-      [
-        lastProjection,
-        AsyncResult.success({
-          config: allowed,
-          latestEvent: { type: "snapshot", config: allowed },
-          source: "live",
-        }),
-      ],
-    ],
+    initialValues: [[primaryEnvironmentIdAtom, PRIMARY]],
   });
   registries.push(registry);
   const answers: Array<boolean | null> = [];
@@ -161,6 +161,20 @@ it("clears relay tracing permission when the primary session ends", () => {
 
   registry.set(sessionConfig, null);
   registry.set(sessionConfig, config([], false));
+  // Live settings updates on the active session propagate immediately without reconnecting.
+  const optedIn = config([], true);
+  registry.set(
+    projectionAtom,
+    AsyncResult.success({
+      config: optedIn,
+      latestEvent: {
+        version: 1,
+        type: "settingsUpdated",
+        payload: { settings: optedIn.settings, relayTracingAllowed: true },
+      },
+      source: "live",
+    }),
+  );
 
-  expect(answers).toEqual([true, null, false]);
+  expect(answers).toEqual([true, null, false, true]);
 });

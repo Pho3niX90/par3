@@ -61,7 +61,7 @@ No. Par3 runs coding-agent providers and does not run models itself.
 
 No. Code and prompts go directly from your machine to your chosen provider. With Parity Connect, traffic travels over a Cloudflare tunnel (`cloudflared` on your machine); the relay coordinates the link without proxying your HTTP/WebSocket sessions.
 
-Par3 sends basic product usage events (provider, model, token totals—no prompts or file contents). Disable with `T3CODE_TELEMETRY_ENABLED=false` or `DO_NOT_TRACK=1`. See [Product usage data](./telemetry.md).
+Product usage data is off by default. If you turn on **Send usage data** in **Settings → Telemetry**, Par3 sends basic product usage events (provider, model, token totals; no prompts or file contents). `T3CODE_TELEMETRY_ENABLED=false` or `DO_NOT_TRACK=1` keeps it off whatever the switch says. See [Product usage data](./telemetry.md).
 
 ## Worktrees are eating my disk. How do I clean them up?
 

@@ -96,14 +96,17 @@ it.effect("refuses a preferences update when the caller's turn ends while it wai
   }),
 );
 
-it("keeps agent feedback out of the preferences agents read and write", () => {
-  expect(
-    EnvironmentHandlers.preferences({
-      ...DEFAULT_SERVER_SETTINGS,
-      agentFeedback: { mode: "auto" },
-    }),
-  ).not.toHaveProperty("agentFeedback");
-  expect(
-    Object.keys(EnvironmentToolkit.tools.t3_environment_preferences_update.parametersSchema.fields),
-  ).not.toContain("agentFeedback");
+it("keeps agent feedback and telemetry out of the preferences agents read and write", () => {
+  const read = EnvironmentHandlers.preferences({
+    ...DEFAULT_SERVER_SETTINGS,
+    agentFeedback: { mode: "auto" },
+    telemetryEnabled: true,
+  });
+  expect(read).not.toHaveProperty("agentFeedback");
+  expect(read).not.toHaveProperty("telemetryEnabled");
+  const writable = Object.keys(
+    EnvironmentToolkit.tools.t3_environment_preferences_update.parametersSchema.fields,
+  );
+  expect(writable).not.toContain("agentFeedback");
+  expect(writable).not.toContain("telemetryEnabled");
 });
