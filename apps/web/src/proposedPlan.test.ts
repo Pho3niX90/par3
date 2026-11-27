@@ -5,6 +5,7 @@ import {
 } from "./proposedPlan";
 import { insertPlanImageReferences } from "./proposedPlan";
 import {
+  buildCollapsedProposedPlanPreviewMarkdown,
   buildPlanFeedbackPrompt,
   collectReferencedPlanImages,
   pruneMissingImageReferences,
@@ -132,4 +133,28 @@ it("keeps each section and its reference definitions together", () => {
   expect(sections.map((section) => section.title)).toEqual(["Plan", "Work"]);
   for (const section of sections)
     expect(section.markdown).toContain('[ref]: https://example.com "Design"');
+});
+
+describe("buildCollapsedProposedPlanPreviewMarkdown", () => {
+  it("closes a code block the preview cuts through, so the ellipsis stays outside it", () => {
+    const plan = [
+      "- Step",
+      "  ```ts",
+      "  const a = 1;",
+      "  const b = 2;",
+      "  ```",
+      "",
+      "Done.",
+    ].join("\n");
+    expect(buildCollapsedProposedPlanPreviewMarkdown(plan, { maxLines: 3 })).toBe(
+      ["- Step", "  ```ts", "  const a = 1;", "  ```", "", "..."].join("\n"),
+    );
+  });
+
+  it("adds no fence when every code block ends inside the preview, inline code included", () => {
+    const plan = ["~~~~", "```", "~~~~", "", "```npm i```", "Next", "More"].join("\n");
+    expect(buildCollapsedProposedPlanPreviewMarkdown(plan, { maxLines: 5 })).toBe(
+      ["~~~~", "```", "~~~~", "", "```npm i```", "Next", "", "..."].join("\n"),
+    );
+  });
 });
