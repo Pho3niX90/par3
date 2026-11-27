@@ -944,6 +944,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(TelemetryConsent.TelemetryConsent)({
     isAnalyticsEnabled: Effect.succeed(false),
     isRelayTracingEnabledSync: () => false,
+    withdrawals: () => 0,
     observabilityFor: (optedIn) => ({
       relayTracingAllowed: optedIn,
       telemetrySource: "settings",

@@ -335,12 +335,18 @@ const CI_VARIABLES = [
   "APPVEYOR",
 ] as const;
 
-/** CI runs are not installs, so telemetry is off there unless `T3CODE_TELEMETRY_ENABLED` says otherwise. */
-export const isCiEnvironment = (env: Readonly<Record<string, string | undefined>>) =>
-  CI_VARIABLES.some((name) => {
+/** First set CI variable name (ignoring empty, `false`, and `0`), or `undefined` outside CI. */
+export const ciEnvironmentVariable = (
+  env: Readonly<Record<string, string | undefined>>,
+): string | undefined =>
+  CI_VARIABLES.find((name) => {
     const value = env[name]?.trim().toLowerCase();
     return value !== undefined && value !== "" && value !== "false" && value !== "0";
   });
+
+/** CI runs are not installs, so telemetry is off there unless `T3CODE_TELEMETRY_ENABLED` says otherwise. */
+export const isCiEnvironment = (env: Readonly<Record<string, string | undefined>>) =>
+  ciEnvironmentVariable(env) !== undefined;
 
 /** The cross-tool `DO_NOT_TRACK=1` convention turns off product analytics and relay tracing. */
 export const isDoNotTrackSet = (env: Readonly<Record<string, string | undefined>>) =>

@@ -3,12 +3,20 @@ import { assert, it, vi } from "@effect/vitest";
 import type { ManagedPolicyDocument } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as RelayTracing from "@t3tools/shared/relayTracing";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { FetchHttpClient } from "effect/http";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  type ServerSettings as ServerSettingsValue,
+} from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
@@ -215,3 +223,131 @@ it("reports the server's relay tracing policy to clients", () => {
     ),
   );
 });
+
+it.effect(
+  "keeps relay tracing off after opt-out and prevents a stale settings read from re-enabling it",
+  () =>
+    Effect.gen(function* () {
+      yield* Effect.gen(function* () {
+        const consent = yield* TelemetryConsent.TelemetryConsent;
+        const settings = yield* ServerSettings.ServerSettingsService;
+        assert.isFalse(consent.isRelayTracingEnabledSync());
+
+        yield* settings.updateSettings({ telemetryEnabled: true }).pipe(Effect.orDie);
+        yield* Effect.yieldNow;
+        assert.isTrue(consent.isRelayTracingEnabledSync());
+
+        yield* settings.updateSettings({ telemetryEnabled: false }).pipe(Effect.orDie);
+        yield* Effect.yieldNow;
+        assert.isFalse(consent.isRelayTracingEnabledSync());
+        assert.isFalse(yield* consent.isAnalyticsEnabled);
+        assert.isFalse(consent.isRelayTracingEnabledSync());
+      }).pipe(Effect.provide(consentLayer(undefined, false, {})));
+
+      // A getSettings call that started before an opt-out must not overwrite optedIn when it finishes.
+      const changes = yield* PubSub.unbounded<ServerSettingsValue>();
+      const releaseStaleRead = yield* Deferred.make<void>();
+      let readCount = 0;
+      const fakeSettings = Layer.succeed(ServerSettings.ServerSettingsService, {
+        managedPolicy: undefined,
+        start: Effect.void,
+        ready: Effect.void,
+        getSettings: Effect.gen(function* () {
+          readCount += 1;
+          if (readCount === 2) {
+            yield* Deferred.await(releaseStaleRead);
+          }
+          return { ...DEFAULT_SERVER_SETTINGS, telemetryEnabled: true };
+        }),
+        updateSettings: () => Effect.die(new Error("unused")),
+        updateProviderInstance: () => Effect.die(new Error("unused")),
+        withSettingsSnapshot: () => Effect.die(new Error("unused")),
+        streamChanges: Stream.fromPubSub(changes),
+        subscribeChanges: PubSub.subscribe(changes).pipe(Effect.map(Stream.fromSubscription)),
+      });
+      const layer = TelemetryConsent.layer.pipe(
+        Layer.provide(fakeSettings),
+        Layer.provide(ManagedPolicy.layerTest()),
+        Layer.provide(Layer.succeed(HostProcess.Environment, {})),
+      );
+      yield* Effect.gen(function* () {
+        const consent = yield* TelemetryConsent.TelemetryConsent;
+        assert.isTrue(consent.isRelayTracingEnabledSync());
+
+        const staleRead = yield* consent.isAnalyticsEnabled.pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* PubSub.publish(changes, { ...DEFAULT_SERVER_SETTINGS, telemetryEnabled: false });
+        yield* Effect.yieldNow;
+        assert.isFalse(consent.isRelayTracingEnabledSync());
+
+        yield* Deferred.succeed(releaseStaleRead, undefined);
+        assert.isTrue(yield* Fiber.join(staleRead));
+        assert.isFalse(consent.isRelayTracingEnabledSync());
+      }).pipe(Effect.provide(layer));
+    }),
+);
+
+it.effect(
+  "observabilityFor reports CI variables as environment-forced while T3CODE_TELEMETRY_ENABLED overrides CI",
+  () =>
+    Effect.gen(function* () {
+      const readObservability = (env: NodeJS.ProcessEnv, optedIn: boolean) =>
+        Effect.gen(function* () {
+          const consent = yield* TelemetryConsent.TelemetryConsent;
+          return consent.observabilityFor(optedIn);
+        }).pipe(Effect.provide(consentLayer(undefined, optedIn, env)));
+
+      assert.deepStrictEqual(yield* readObservability({ GITHUB_ACTIONS: "true" }, true), {
+        relayTracingAllowed: false,
+        telemetrySource: "environment",
+        telemetryVariable: "GITHUB_ACTIONS",
+        telemetryEnabled: false,
+      });
+      assert.deepStrictEqual(yield* readObservability({ CI: "false", GITLAB_CI: "true" }, true), {
+        relayTracingAllowed: false,
+        telemetrySource: "environment",
+        telemetryVariable: "GITLAB_CI",
+        telemetryEnabled: false,
+      });
+      assert.deepStrictEqual(
+        yield* readObservability(
+          { GITHUB_ACTIONS: "true", T3CODE_TELEMETRY_ENABLED: "true" },
+          false,
+        ),
+        {
+          relayTracingAllowed: true,
+          telemetrySource: "environment",
+          telemetryVariable: "T3CODE_TELEMETRY_ENABLED",
+          telemetryEnabled: true,
+        },
+      );
+      assert.deepStrictEqual(
+        yield* readObservability(
+          { GITHUB_ACTIONS: "true", T3CODE_TELEMETRY_ENABLED: "false" },
+          true,
+        ),
+        {
+          relayTracingAllowed: false,
+          telemetrySource: "environment",
+          telemetryVariable: "T3CODE_TELEMETRY_ENABLED",
+          telemetryEnabled: false,
+        },
+      );
+      assert.deepStrictEqual(
+        yield* readObservability(
+          { GITHUB_ACTIONS: "true", DO_NOT_TRACK: "1", T3CODE_TELEMETRY_ENABLED: "true" },
+          true,
+        ),
+        {
+          relayTracingAllowed: false,
+          telemetrySource: "environment",
+          telemetryVariable: "DO_NOT_TRACK",
+          telemetryEnabled: false,
+        },
+      );
+      assert.deepStrictEqual(yield* readObservability({}, false), {
+        relayTracingAllowed: false,
+        telemetrySource: "settings",
+      });
+    }),
+);

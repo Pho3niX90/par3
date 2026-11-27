@@ -389,13 +389,25 @@ describe("OtelEnvironment", () => {
 describe("isCiEnvironment", () => {
   it("treats a set CI variable as CI, except empty, false, and 0", () => {
     assert.isFalse(OtelEnvironment.isCiEnvironment({}));
+    assert.isUndefined(OtelEnvironment.ciEnvironmentVariable({}));
     assert.isTrue(OtelEnvironment.isCiEnvironment({ CI: "1" }));
+    assert.strictEqual(OtelEnvironment.ciEnvironmentVariable({ CI: "1" }), "CI");
     assert.isTrue(OtelEnvironment.isCiEnvironment({ TF_BUILD: "True" }));
+    assert.strictEqual(OtelEnvironment.ciEnvironmentVariable({ TF_BUILD: "True" }), "TF_BUILD");
     assert.isTrue(OtelEnvironment.isCiEnvironment({ BITBUCKET_BUILD_NUMBER: "42" }));
+    assert.strictEqual(
+      OtelEnvironment.ciEnvironmentVariable({ BITBUCKET_BUILD_NUMBER: "42" }),
+      "BITBUCKET_BUILD_NUMBER",
+    );
     for (const value of ["", " ", "false", "FALSE", "0"]) {
       assert.isFalse(OtelEnvironment.isCiEnvironment({ CI: value }), `CI=${value}`);
+      assert.isUndefined(OtelEnvironment.ciEnvironmentVariable({ CI: value }), `CI=${value}`);
     }
     assert.isTrue(OtelEnvironment.isCiEnvironment({ CI: "false", GITLAB_CI: "true" }));
+    assert.strictEqual(
+      OtelEnvironment.ciEnvironmentVariable({ CI: "false", GITLAB_CI: "true" }),
+      "GITLAB_CI",
+    );
   });
 });
 

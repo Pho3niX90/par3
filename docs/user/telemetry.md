@@ -17,7 +17,7 @@ When turned on, the server sends usage events to Par3's own PostHog project unde
 
 ## Relay connection diagnostics
 
-When turned on, Parity Connect sends connection timings, request paths, environment/thread IDs, and error types (no addresses, logs, or stack frames) to Axiom. The switches, variables, and policy above control it, and it also stops with `T3CODE_OTEL_SDK_DISABLED` / `OTEL_SDK_DISABLED`.
+When turned on, Parity Connect sends connection timings, request paths, environment/thread IDs, and error types (no addresses, logs, or stack frames) to Axiom. The switches, variables, and policy above control it, and it also stops with `T3CODE_OTEL_SDK_DISABLED` / `OTEL_SDK_DISABLED`. `T3CODE_OTEL_SDK_DISABLED` takes precedence over `OTEL_SDK_DISABLED`, so `T3CODE_OTEL_SDK_DISABLED=false` keeps relay diagnostics on even when `OTEL_SDK_DISABLED=true`.
 
 ## Agent feedback
 

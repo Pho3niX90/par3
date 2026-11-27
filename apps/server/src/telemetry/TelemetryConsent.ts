@@ -72,6 +72,15 @@ function telemetryObservabilityFields(
       telemetryEnabled: envOverride,
     };
   }
+  const ciVariable = OtelEnvironment.ciEnvironmentVariable(env);
+  if (ciVariable !== undefined) {
+    return {
+      relayTracingAllowed,
+      telemetrySource: "environment",
+      telemetryVariable: ciVariable,
+      telemetryEnabled: false,
+    };
+  }
   return {
     relayTracingAllowed,
     telemetrySource: "settings",
@@ -83,6 +92,7 @@ export class TelemetryConsent extends Context.Service<
   {
     readonly isAnalyticsEnabled: Effect.Effect<boolean>;
     readonly isRelayTracingEnabledSync: () => boolean;
+    readonly withdrawals: () => number;
     readonly observabilityFor: (optedIn: boolean) => TelemetryObservabilityFields;
   }
 >()("t3/telemetry/TelemetryConsent") {}
@@ -97,19 +107,13 @@ const make = Effect.gen(function* () {
     yield* Config.Boolean(TELEMETRY_ENABLED_ENV_VAR).pipe(Config.option),
   );
 
+  // Subscribe before the initial read so a change between the two is queued and applied after.
+  const changes = yield* serverSettings.subscribeChanges;
   let optedIn = yield* serverSettings.getSettings.pipe(
     Effect.map((settings) => settings.telemetryEnabled),
     Effect.orElseSucceed(() => false),
   );
-  const changes = yield* serverSettings.subscribeChanges;
-  yield* changes.pipe(
-    Stream.runForEach((settings) =>
-      Effect.sync(() => {
-        optedIn = settings.telemetryEnabled;
-      }),
-    ),
-    Effect.forkScoped,
-  );
+  let withdrawalCount = 0;
 
   // Desktop shell discovery mutates `hostEnvironment` in place; tests may only set `ConfigProvider`.
   const effectiveEnv = (): Readonly<Record<string, string | undefined>> =>
@@ -119,16 +123,29 @@ const make = Effect.gen(function* () {
       ? hostEnvironment
       : { ...hostEnvironment, [TELEMETRY_ENABLED_ENV_VAR]: String(startupEnvOverride) };
 
+  yield* changes.pipe(
+    Stream.runForEach((settings) =>
+      Effect.sync(() => {
+        optedIn = settings.telemetryEnabled;
+        if (!analyticsAllowedFor(effectiveEnv(), policySummary, settings.telemetryEnabled)) {
+          withdrawalCount += 1;
+        }
+      }),
+    ),
+    Effect.forkScoped,
+  );
+
   const isAnalyticsEnabled = serverSettings.getSettings.pipe(
-    Effect.map((settings) => {
-      optedIn = settings.telemetryEnabled;
-      return analyticsAllowedFor(effectiveEnv(), policySummary, settings.telemetryEnabled);
-    }),
+    Effect.map((settings) =>
+      analyticsAllowedFor(effectiveEnv(), policySummary, settings.telemetryEnabled),
+    ),
     Effect.orElseSucceed(() => false),
   );
 
   const isRelayTracingEnabledSync = () =>
     relayTracingAllowedFor(effectiveEnv(), policySummary, optedIn);
+
+  const withdrawals = () => withdrawalCount;
 
   const observabilityFor = (settingEnabled: boolean) =>
     telemetryObservabilityFields(effectiveEnv(), policySummary, settingEnabled);
@@ -136,6 +153,7 @@ const make = Effect.gen(function* () {
   return TelemetryConsent.of({
     isAnalyticsEnabled,
     isRelayTracingEnabledSync,
+    withdrawals,
     observabilityFor,
   });
 });

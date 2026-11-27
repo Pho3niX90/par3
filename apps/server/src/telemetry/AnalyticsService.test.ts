@@ -412,6 +412,105 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AnalyticsService
       }),
   );
 
+  it.effect(
+    "drops buffered events and retained failed batches across an opt-out and quick opt-back-in",
+    () =>
+      Effect.gen(function* () {
+        const env: NodeJS.ProcessEnv = {};
+        const bufferedBatches = yield* sendFor(
+          0,
+          respondWithStatus(204),
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsService.AnalyticsService;
+            const settings = yield* ServerSettings.ServerSettingsService;
+            assert.isTrue(yield* analytics.record("test.before-opt-out"));
+            yield* settings.updateSettings({ telemetryEnabled: false }).pipe(Effect.orDie);
+            yield* settings.updateSettings({ telemetryEnabled: true }).pipe(Effect.orDie);
+            yield* Effect.yieldNow;
+            yield* analytics.flush;
+            assert.isTrue(yield* analytics.record("test.after-reopt-in"));
+            yield* analytics.flush;
+          }),
+          undefined,
+          {},
+          true,
+        ).pipe(Effect.provideService(HostProcess.Environment, env));
+        assert.deepEqual(
+          bufferedBatches.flat().map((event) => event.event),
+          ["test.after-reopt-in"],
+        );
+
+        let status = 503;
+        const sentOn204: Array<string> = [];
+        yield* sendFor(
+          0,
+          (request) =>
+            Effect.gen(function* () {
+              if (status === 204 && request.body._tag === "Uint8Array") {
+                const body = yield* decodeSentBatch(
+                  new TextDecoder().decode(request.body.body),
+                ).pipe(Effect.orDie);
+                sentOn204.push(...body.batch.map((event) => event.event));
+              }
+              return yield* respondWithStatus(status)(request);
+            }),
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsService.AnalyticsService;
+            const settings = yield* ServerSettings.ServerSettingsService;
+            assert.isTrue(yield* analytics.record("test.failed-before-opt-out"));
+            // Push retryAt well past the 10-second background tick so flushWhenDue must wake on withdrawal.
+            for (let attempt = 0; attempt < 5; attempt += 1) {
+              yield* analytics.flush;
+            }
+            status = 204;
+            yield* settings.updateSettings({ telemetryEnabled: false }).pipe(Effect.orDie);
+            yield* settings.updateSettings({ telemetryEnabled: true }).pipe(Effect.orDie);
+            yield* Effect.yieldNow;
+            yield* TestClock.adjust("10 seconds");
+            assert.isTrue(yield* analytics.record("test.after-failed-reopt-in"));
+            yield* analytics.flush;
+          }),
+          undefined,
+          {},
+          true,
+        ).pipe(Effect.provideService(HostProcess.Environment, env));
+        assert.deepEqual(sentOn204, ["test.after-failed-reopt-in"]);
+      }),
+  );
+
+  it.effect(
+    "records an owner after opt-in even if it was first observed while telemetry was off",
+    () =>
+      Effect.gen(function* () {
+        const owner = { source: "connect" as const, ownerId: "b".repeat(64) };
+        const batches = yield* sendFor(
+          0,
+          respondWithStatus(204),
+          Effect.gen(function* () {
+            const analytics = yield* AnalyticsService.AnalyticsService;
+            const settings = yield* ServerSettings.ServerSettingsService;
+            yield* analytics.recordOwners([owner], "server");
+            yield* analytics.flush;
+
+            yield* settings.updateSettings({ telemetryEnabled: true }).pipe(Effect.orDie);
+            yield* Effect.yieldNow;
+            yield* analytics.recordOwners([owner], "server");
+            yield* analytics.recordOwners([owner], "server");
+            yield* analytics.flush;
+          }),
+          undefined,
+          {},
+          false,
+        ).pipe(Effect.provideService(HostProcess.Environment, {}));
+
+        const events = batches.flat();
+        assert.deepEqual(
+          events.map((event) => event.event),
+          ["install.owner_observed"],
+        );
+      }),
+  );
+
   it.effect("sends nothing on a CI runner unless the environment opts in", () =>
     Effect.gen(function* () {
       const onCi = (telemetryEnv: Parameters<typeof analyticsLayerWith>[2]) =>

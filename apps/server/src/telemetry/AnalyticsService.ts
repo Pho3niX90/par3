@@ -170,6 +170,7 @@ export const make = Effect.gen(function* () {
   >({ server: new Set(), client: new Set() });
   // The background flush and the shutdown flush must not send the same batch at once.
   const flushLock = yield* Semaphore.make(1);
+  let seenWithdrawals = consent.withdrawals();
   const clientType = serverConfig.mode === "desktop" ? "desktop-app" : "cli-web-client";
   const hostPlatform = yield* HostProcess.Platform;
   const hostArchitecture = yield* HostProcess.Architecture;
@@ -269,6 +270,12 @@ export const make = Effect.gen(function* () {
   // Back off even after dropping rejected batches so bad API keys cannot drain the queue in a tight loop.
   const flush: AnalyticsService["Service"]["flush"] = Effect.gen(function* () {
     while (true) {
+      const withdrawals = consent.withdrawals();
+      if (withdrawals !== seenWithdrawals) {
+        seenWithdrawals = withdrawals;
+        yield* Ref.set(bufferRef, []);
+        yield* Ref.set(deliveryRef, EMPTY_DELIVERY_STATE);
+      }
       if (!(yield* consent.isAnalyticsEnabled)) {
         yield* Ref.set(bufferRef, []);
         yield* Ref.set(deliveryRef, EMPTY_DELIVERY_STATE);
@@ -329,7 +336,7 @@ export const make = Effect.gen(function* () {
 
   const flushWhenDue = Effect.gen(function* () {
     const { retryAt } = yield* Ref.get(deliveryRef);
-    if ((yield* Clock.currentTimeMillis) >= retryAt) {
+    if (consent.withdrawals() !== seenWithdrawals || (yield* Clock.currentTimeMillis) >= retryAt) {
       yield* flush;
     }
   });
@@ -363,9 +370,9 @@ export const make = Effect.gen(function* () {
   )((owners, observedBy) =>
     Effect.forEach(
       owners,
-      ({ source, ownerId }) =>
-        Ref.modify(recordedOwnersRef, (recorded) => {
-          const key = `${source}:${ownerId}`;
+      ({ source, ownerId }) => {
+        const key = `${source}:${ownerId}`;
+        return Ref.modify(recordedOwnersRef, (recorded) => {
           const seen = recorded[observedBy];
           return seen.has(key) || seen.size >= MAX_RECORDED_OWNERS
             ? [false, recorded]
@@ -373,10 +380,25 @@ export const make = Effect.gen(function* () {
         }).pipe(
           Effect.flatMap((isNew) =>
             isNew
-              ? record("install.owner_observed", { ownerSource: source, ownerId, observedBy })
+              ? record("install.owner_observed", {
+                  ownerSource: source,
+                  ownerId,
+                  observedBy,
+                }).pipe(
+                  Effect.flatMap((recorded) =>
+                    recorded
+                      ? Effect.void
+                      : Ref.update(recordedOwnersRef, (current) => {
+                          const next = new Set(current[observedBy]);
+                          next.delete(key);
+                          return { ...current, [observedBy]: next };
+                        }),
+                  ),
+                )
               : Effect.void,
           ),
-        ),
+        );
+      },
       { discard: true },
     ),
   );
