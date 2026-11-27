@@ -411,6 +411,9 @@ export const isProviderTextGenerationCapable = (snapshot: ServerProvider): boole
 export const OtlpEndpointSource = Schema.Literals(["environment", "bootstrap", "settings"]);
 export type OtlpEndpointSource = typeof OtlpEndpointSource.Type;
 
+export const TelemetryPreferenceSource = Schema.Literals(["environment", "settings"]);
+export type TelemetryPreferenceSource = typeof TelemetryPreferenceSource.Type;
+
 export const ServerObservability = Schema.Struct({
   logsDirectoryPath: TrimmedNonEmptyString,
   localTracingEnabled: Schema.Boolean,
@@ -426,8 +429,11 @@ export const ServerObservability = Schema.Struct({
   otlpLogsSource: Schema.optional(OtlpEndpointSource),
   otlpLogsVariable: Schema.optional(TrimmedNonEmptyString),
   otlpLogsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** Relay tracing policy for browsers opened from this server. */
+  /** Relay tracing policy for browsers and desktop renderers connected to this server. */
   relayTracingAllowed: Schema.optionalKey(Schema.Boolean),
+  telemetrySource: Schema.optional(TelemetryPreferenceSource),
+  telemetryVariable: Schema.optional(TrimmedNonEmptyString),
+  telemetryEnabled: Schema.optional(Schema.Boolean),
 });
 export type ServerObservability = typeof ServerObservability.Type;
 
@@ -884,6 +890,7 @@ export type ServerConfigProviderStatusDeltasPayload =
 
 export const ServerConfigSettingsUpdatedPayload = Schema.Struct({
   settings: ServerSettings,
+  relayTracingAllowed: Schema.optionalKey(Schema.Boolean),
 });
 export type ServerConfigSettingsUpdatedPayload = typeof ServerConfigSettingsUpdatedPayload.Type;
 

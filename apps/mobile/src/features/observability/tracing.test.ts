@@ -7,7 +7,7 @@ import { vi } from "vite-plus/test";
 import { layerRemoteHttpClient } from "@t3tools/client-runtime/rpc";
 import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 
-import { setConnectionTracesEnabled } from "./diagnosticsSetting";
+import { connectionTracesEnabled, setConnectionTracesEnabled } from "./diagnosticsSetting";
 import * as Tracing from "./tracing";
 
 vi.mock("expo-constants", () => ({
@@ -31,6 +31,38 @@ const layerTracingTo = (fetchFn: typeof fetch) =>
       serviceVersion: "1.2.3",
     },
   ).pipe(Layer.provide(layerRemoteHttpClient(fetchFn)));
+
+it("defaults connection traces off when the saved preference is unset", async () => {
+  const loadDiagnosticsSetting = async (preferences: Record<string, unknown>) => {
+    vi.resetModules();
+    let resolveLoaded!: () => void;
+    const loaded = new Promise<void>((resolve) => {
+      resolveLoaded = resolve;
+    });
+    vi.doMock("../../persistence/imperative", () => ({
+      loadPreferences: async () => {
+        resolveLoaded();
+        return preferences;
+      },
+    }));
+    const mod = await import("./diagnosticsSetting");
+    const beforeLoad = mod.connectionTracesEnabled();
+    await loaded;
+    // Drain the dynamic-import `.then(({ loadPreferences }) => loadPreferences()).then(...)` chain.
+    for (let tick = 0; tick < 4; tick += 1) {
+      await Promise.resolve();
+    }
+    return { beforeLoad, afterLoad: mod.connectionTracesEnabled() };
+  };
+
+  expect(await loadDiagnosticsSetting({})).toEqual({ beforeLoad: false, afterLoad: false });
+  expect(await loadDiagnosticsSetting({ connectionTracesEnabled: true })).toEqual({
+    beforeLoad: false,
+    afterLoad: true,
+  });
+  vi.doUnmock("../../persistence/imperative");
+  expect(typeof connectionTracesEnabled()).toBe("boolean");
+});
 
 it.effect.each([false, true])("gates relay sends and preserves typed failures (%s)", (enabled) => {
   setConnectionTracesEnabled(enabled);

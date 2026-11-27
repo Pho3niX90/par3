@@ -6637,15 +6637,22 @@
   ],
   "216ab7514aea1d61": "Starta utan agent",
   "501ce2d99da8bfd1": "Konfigurera en agent för att starta.",
-  "cd780e929cef08ab": [
-    "Par3 samlar in anonym användningsdata för att förbättra appen. Se",
+  "da3e1e2af1c22b11": [
+    "Par3 skickar inte användningsdata om du inte aktiverar det i",
+    " ",
+    {
+      "t": "Link",
+      "i": 1,
+      "c": "Inställningar"
+    },
+    ". Läs",
     " ",
     {
       "t": "a",
-      "i": 1,
+      "i": 2,
       "c": "integritetspolicyn"
     },
-    " för att välja bort det."
+    "."
   ],
   "b33f35083757b42c": [
     "Se",
@@ -10967,7 +10974,7 @@
   "c424bee294b9f778": "Miljön hanteras av {organization}. Vissa inställningar och funktioner följer dess policy.",
   "82d9538af590f58c": "Se dina agenter, importera projekt och konfigurera din telefon.",
   "6a48fd0a37e725a1": "Juridiskt",
-  "4672b04da5e494f1": "Hur vi hanterar dina data, inklusive de anonyma användningsdata som Par3 samlar in.",
+  "b9510e73f85da509": "Hur vi hanterar dina data, inklusive valfria användningsdata om du aktiverar dem i Inställningar.",
   "e741b1ab9396053a": "Hur vi hanterar dina data. {telemetryOff}",
   "3fec97d866946baf": "Meddelanden för beroenden, resurser och valfria verktyg som Par3 använder.",
   "e39a57514be028e9": "Granska",
@@ -11199,6 +11206,7 @@
   "4c70e3e7b3e6c493": "Hemligheter",
   "79b768229c9ef672": "Underhåll",
   "54b188d65247e42f": "Labs",
+  "e0315c1971520881": "Telemetri",
   "af4b7734da1d5ce7": "Röst",
   "4ec62c39ca3192bf": "Versioner och ärenden",
   "f2bf529f85e05494": "Delning och åtkomst",
@@ -11344,7 +11352,9 @@
   "6310b97b04ef239f": "Välkomstsida",
   "df9fa3a9cb004b9b": "introduktion konfiguration första start kom igång agenter importera projekt",
   "3188bc3b3c4508bc": "Integritetspolicy",
-  "901a823214edc8c4": "telemetri analys användningsdata spårning juridiskt avböj",
+  "0eb2482f1e689569": "telemetri analys användningsdata spårning juridik",
+  "7065ed3cb54fd318": "Användningsdata",
+  "717e06534d439f61": "telemetri användningsdata analys integritet diagnostik",
   "523b72ed9d712100": "OpenTelemetry-export",
   "82136480255a5106": "OTel OTLP telemetri export slutpunkter loggar spår mätvärden Grafana",
   "659d081051faf7ff": "loggar spår processer resurshistorik fel spans cpu minne",
@@ -12568,6 +12578,29 @@
       "i": 1,
       "k": "_gt_value_1",
       "v": "v"
+    }
+  ],
+  "4640376a031d41b9": "Styr vilka anonyma användningsdata och vilken anslutningsdiagnostik som Par3 skickar. Allt här är avstängt tills du aktiverar det.",
+  "442b84129e654705": "Anslut en miljö för att konfigurera dess inställning för användningsdata.",
+  "8ce3039333e2ceb4": "Skicka användningsdata",
+  "4c67804f0dcd6eb6": "Skicka användningsdata: anonyma produktanvändningshändelser och anslutningsdiagnostik från den här servern och apparna som öppnas från den. Innehåller aldrig prompter, svar eller filinnehåll.",
+  "2738abce5768eefb": "Skickar anonyma produktanvändningshändelser och anslutningsdiagnostik från den här servern och apparna som öppnas från den. Innehåller aldrig prompter, svar eller filinnehåll.",
+  "c36085c370b6eb93": "Återanslut för att ändra den här inställningen.",
+  "de730ae0490ca71b": "Uppdatera den här servern för att ändra inställningar för användningsdata här.",
+  "0827283dc0af8b94": "Skicka användningsdata på {environment}",
+  "b6a9f7bea6485881": "Skicka anslutningsdiagnostik från den här enheten",
+  "fcbd51c25765a420": "Skickar tidsmätningar för anslutningar från den här webbläsaren för att diagnostisera problem med Parity Connect.",
+  "cdd67eda57489a27": [
+    "Anges av miljön ·",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
     }
   ],
   "39f64d971ba424b5": "Inga användningskällor har konfigurerats.",

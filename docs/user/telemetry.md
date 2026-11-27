@@ -1,21 +1,23 @@
 # Product usage data and diagnostics
 
-Par3 sends lightweight product usage events and relay connection traces to keep the app reliable and fast. Prompts, responses, file contents, and credentials are never included (unless you explicitly approve an [agent feedback](#agent-feedback) card with conversation text attached).
+Product usage events and relay connection traces are off by default. Par3 sends them only after you turn them on, to help keep the app reliable and fast. Prompts, responses, file contents, and credentials are never included (unless you explicitly approve an [agent feedback](#agent-feedback) card with conversation text attached).
 
 ## Product usage events
 
-The server sends usage events to Par3's own PostHog project under a hashed random install ID (plus a hashed Parity Connect account ID when signed in, and random client device IDs). Events contain provider, catalog model name (non-catalog models report as custom), reasoning effort, permission mode, turn/request outcome, duration, release channel, and token counts.
+When turned on, the server sends usage events to Par3's own PostHog project under a hashed random install ID (plus a hashed Parity Connect account ID when signed in, and random client device IDs). Events contain provider, catalog model name (non-catalog models report as custom), reasoning effort, permission mode, turn/request outcome, duration, release channel, and token counts.
 
-## Disable telemetry
+## Turn telemetry on or off
 
-- **Server / CLI**: Set `T3CODE_TELEMETRY_ENABLED=false` or `DO_NOT_TRACK=1` before starting (`DO_NOT_TRACK=1` takes precedence). CI environments (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`) disable telemetry by default unless `T3CODE_TELEMETRY_ENABLED=true`.
-- **Desktop app**: Export `T3CODE_TELEMETRY_ENABLED=false` or `DO_NOT_TRACK=1` in your shell profile (macOS/Linux) or user environment variables (Windows) and restart.
-- **Managed policy**: Administrators can set `"telemetry": false` in [managed policy](./managed-policy.md#other-capabilities) for servers and desktop apps.
-- **Mobile app**: Toggle **Send crash reports** and **Send connection traces** separately in **Settings → About Par3 → Diagnostics**.
+- **Server, desktop app, and browsers opened from a server**: Turn on **Send usage data** in **Settings → Telemetry**. Each connected environment has its own switch. Turning it off stops sending immediately, without a restart.
+- **Hosted web app**: Turn on **Send connection diagnostics from this device** in **Settings → Telemetry**.
+- **Mobile app**: Turn on **Send crash reports** and **Send connection traces** separately in **Settings → About Par3 → Diagnostics**. Both stay off until you turn them on.
+- **Environment variables (server / CLI)**: `T3CODE_TELEMETRY_ENABLED=true` turns telemetry on without the switch. `T3CODE_TELEMETRY_ENABLED=false` or `DO_NOT_TRACK=1` keeps it off whatever the switch says (`DO_NOT_TRACK=1` takes precedence). Settings shows when a variable is deciding. CI environments (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`) stay off unless `T3CODE_TELEMETRY_ENABLED=true`.
+- **Environment variables (desktop app)**: Export them in your shell profile (macOS/Linux) or user environment variables (Windows) and restart.
+- **Managed policy**: Administrators can set `"telemetry": false` in [managed policy](./managed-policy.md#other-capabilities) to keep it off for servers and desktop apps. A policy cannot turn it on.
 
 ## Relay connection diagnostics
 
-Parity Connect sends connection timings, request paths, environment/thread IDs, and error types (no addresses, logs, or stack frames) to Axiom. Disabled by the server telemetry opt-outs above or by `T3CODE_OTEL_SDK_DISABLED` / `OTEL_SDK_DISABLED`.
+When turned on, Parity Connect sends connection timings, request paths, environment/thread IDs, and error types (no addresses, logs, or stack frames) to Axiom. The switches, variables, and policy above control it, and it also stops with `T3CODE_OTEL_SDK_DISABLED` / `OTEL_SDK_DISABLED`.
 
 ## Agent feedback
 

@@ -123,6 +123,25 @@ describe("searchSettings", () => {
     }
   });
 
+  it("places Telemetry between Labs and About in sidebar navigation and finds Usage data there", () => {
+    const navPaths = settingsNavGroups(false).flatMap((group) => group.paths);
+    const labsIndex = navPaths.indexOf("/settings/labs");
+    const telemetryIndex = navPaths.indexOf("/settings/telemetry");
+    const aboutIndex = navPaths.indexOf("/settings/about");
+    expect(telemetryIndex).toBe(labsIndex + 1);
+    expect(aboutIndex).toBe(telemetryIndex + 1);
+
+    for (const query of ["telemetry", "usage data", "analytics", "privacy", "diagnostics"]) {
+      expect(searchSettings(query)).toContainEqual(
+        expect.objectContaining({
+          id: "usage-data",
+          to: "/settings/telemetry",
+          targetId: "usage-data",
+        }),
+      );
+    }
+  });
+
   it("finds the Scheduled tasks page", () => {
     expect(searchSettings("scheduled tasks")[0]).toMatchObject({
       id: "scheduled-tasks",

@@ -53,9 +53,11 @@ if (!crashReportingAvailable) {
       (preferences) =>
         changedSinceLoad()
           ? undefined
-          : setCrashReportsEnabled(preferences.crashReportsEnabled !== false),
-      // Observe keeps the last choice it was given, which stands in for the unreadable one.
-      (error: unknown) => console.warn("[observe] could not read the crash report setting", error),
+          : setCrashReportsEnabled(preferences.crashReportsEnabled === true),
+      (error: unknown) => {
+        console.warn("[observe] could not read the crash report setting", error);
+        return changedSinceLoad() ? undefined : setCrashReportsEnabled(false);
+      },
     )
     .catch((error: unknown) => {
       console.warn("[observe] could not apply the crash report setting", error);

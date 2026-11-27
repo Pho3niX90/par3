@@ -381,6 +381,19 @@ it.layer(NodeServices.layer)("ManagedPolicy.load", (it) => {
     }),
   );
 
+  it.effect("refuses managing telemetryEnabled through settings", () =>
+    Effect.gen(function* () {
+      const error = yield* loadFrom(
+        JSON.stringify({
+          schemaVersion: 1,
+          organization: "Example Corp",
+          settings: { telemetryEnabled: { value: true, locked: true } },
+        }),
+      ).pipe(Effect.flip);
+      assert.include(error.reason, '"telemetryEnabled"');
+    }),
+  );
+
   it.effect("tells clients which drivers run and which instance fields are locked", () =>
     Effect.gen(function* () {
       // A provider the policy cannot name would also escape its launch-setting rules.

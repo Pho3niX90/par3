@@ -44,6 +44,10 @@ const ServerObservabilitySettingsJson = fromLenientJson(
 const decodeServerObservabilitySettingsJson = Schema.decodeUnknownOption(
   ServerObservabilitySettingsJson,
 );
+const ServerTelemetrySettingJson = fromLenientJson(
+  Schema.Struct({ telemetryEnabled: ServerSettings.fields.telemetryEnabled }),
+);
+const decodeServerTelemetrySettingJson = Schema.decodeUnknownOption(ServerTelemetrySettingJson);
 
 export function isModelSelectionProviderEnabled(
   settings: ServerSettings,
@@ -210,6 +214,11 @@ export function parsePersistedServerObservabilitySettings(
     return extractPersistedServerObservabilitySettings(decoded.value);
   }
   return { otlpTracesUrl: undefined, otlpMetricsUrl: undefined, otlpLogsUrl: undefined };
+}
+
+export function parsePersistedServerTelemetryEnabled(raw: string): boolean {
+  const decoded = decodeServerTelemetrySettingJson(raw);
+  return Option.isSome(decoded) && decoded.value.telemetryEnabled === true;
 }
 
 function shouldReplaceTextGenerationModelSelection(

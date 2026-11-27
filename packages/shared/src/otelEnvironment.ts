@@ -346,14 +346,28 @@ export const isCiEnvironment = (env: Readonly<Record<string, string | undefined>
 export const isDoNotTrackSet = (env: Readonly<Record<string, string | undefined>>) =>
   T3CODE_TRUE.includes(env.DO_NOT_TRACK?.trim().toLowerCase() ?? "");
 
-export const isRelayTracingEnabled = (env: Readonly<Record<string, string | undefined>>) =>
+/** Returns the explicit `T3CODE_TELEMETRY_ENABLED` override, or `undefined` when unset/invalid. */
+export const readTelemetryEnvOverride = (
+  env: Readonly<Record<string, string | undefined>>,
+): boolean | undefined =>
+  flag("T3CODE_TELEMETRY_ENABLED", T3CODE_TRUE, T3CODE_FALSE, String).pipe(
+    Effect.map((parsed) => parsed.value),
+    Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
+    Effect.orDie,
+    Effect.runSync,
+  );
+
+export const isRelayTracingEnabled = (
+  env: Readonly<Record<string, string | undefined>>,
+  optedIn: boolean,
+) =>
   Config.all({
     ...sdkFlags,
     telemetry: flag("T3CODE_TELEMETRY_ENABLED", T3CODE_TRUE, T3CODE_FALSE, String),
   }).pipe(
     Effect.map(
       ({ telemetry, t3, spec }) =>
-        (telemetry.value ?? !isCiEnvironment(env)) &&
+        (telemetry.value ?? (optedIn && !isCiEnvironment(env))) &&
         !isDoNotTrackSet(env) &&
         !(t3.value ?? spec.value ?? false),
     ),

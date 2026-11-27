@@ -6635,12 +6635,19 @@
   ],
   "216ab7514aea1d61": "Ohne Agenten starten",
   "501ce2d99da8bfd1": "Richte einen Agenten ein, um zu starten.",
-  "cd780e929cef08ab": [
-    "Par3 erfasst anonyme Nutzungsdaten, um die App zu verbessern. Wie du widersprichst, steht in der",
+  "da3e1e2af1c22b11": [
+    "Par3 sendet keine Nutzungsdaten, es sei denn, du aktivierst dies in den",
+    " ",
+    {
+      "t": "Link",
+      "i": 1,
+      "c": "Einstellungen"
+    },
+    ". Siehe die",
     " ",
     {
       "t": "a",
-      "i": 1,
+      "i": 2,
       "c": "Datenschutzerklärung"
     },
     "."
@@ -10960,7 +10967,7 @@
   "c424bee294b9f778": "Diese Umgebung wird von {organization} verwaltet. Einige Einstellungen und Funktionen folgen deren Richtlinie.",
   "82d9538af590f58c": "Sieh deine Agenten, importiere Projekte und richte dein Smartphone ein.",
   "6a48fd0a37e725a1": "Rechtliches",
-  "4672b04da5e494f1": "Wie wir mit deinen Daten umgehen, einschließlich der anonymen Nutzungsdaten, die Par3 erfasst.",
+  "b9510e73f85da509": "Wie wir mit deinen Daten umgehen, einschließlich optionaler Nutzungsdaten, wenn du sie in den Einstellungen aktivierst.",
   "e741b1ab9396053a": "Wie wir mit deinen Daten umgehen. {telemetryOff}",
   "3fec97d866946baf": "Hinweise zu Abhängigkeiten, Assets und optionalen Tools, die Par3 verwendet.",
   "e39a57514be028e9": "Review",
@@ -11192,6 +11199,7 @@
   "4c70e3e7b3e6c493": "Geheimnisse",
   "79b768229c9ef672": "Wartung",
   "54b188d65247e42f": "Labs",
+  "e0315c1971520881": "Telemetrie",
   "af4b7734da1d5ce7": "Spracheingabe",
   "4ec62c39ca3192bf": "Versionskontrolle & Issues",
   "f2bf529f85e05494": "Freigabe & Zugriff",
@@ -11337,7 +11345,9 @@
   "6310b97b04ef239f": "Willkommensseite",
   "df9fa3a9cb004b9b": "onboarding einrichtung erster start erste schritte agenten import projekte",
   "3188bc3b3c4508bc": "Datenschutzerklärung",
-  "901a823214edc8c4": "telemetrie analyse nutzungsdaten tracking rechtliches deaktivieren",
+  "0eb2482f1e689569": "Telemetrie Analyse Nutzungsdaten Tracking Rechtliches",
+  "7065ed3cb54fd318": "Nutzungsdaten",
+  "717e06534d439f61": "Telemetrie Nutzungsdaten Analyse Datenschutz Diagnose",
   "523b72ed9d712100": "OpenTelemetry-Export",
   "82136480255a5106": "OTel OTLP telemetrie export endpunkte logs traces metriken Grafana",
   "659d081051faf7ff": "logs traces prozesse ressourcenverlauf fehler spans cpu speicher",
@@ -12563,6 +12573,29 @@
       "v": "v"
     },
     " wechseln"
+  ],
+  "4640376a031d41b9": "Lege fest, welche anonymen Nutzungsdaten und Verbindungsdiagnosen Par3 sendet. Alles hier ist ausgeschaltet, bis du es aktivierst.",
+  "442b84129e654705": "Verbinde eine Umgebung, um deren Einstellung für Nutzungsdaten zu konfigurieren.",
+  "8ce3039333e2ceb4": "Nutzungsdaten senden",
+  "4c67804f0dcd6eb6": "Nutzungsdaten senden: anonyme Produktnutzungsereignisse und Verbindungsdiagnosen von diesem Server und den darüber geöffneten Apps. Enthält niemals Prompts, Antworten oder Dateiinhalte.",
+  "2738abce5768eefb": "Sendet anonyme Produktnutzungsereignisse und Verbindungsdiagnosen von diesem Server und den darüber geöffneten Apps. Enthält niemals Prompts, Antworten oder Dateiinhalte.",
+  "c36085c370b6eb93": "Erneut verbinden, um diese Einstellung zu ändern.",
+  "de730ae0490ca71b": "Aktualisiere diesen Server, um die Einstellungen für Nutzungsdaten hier zu ändern.",
+  "0827283dc0af8b94": "Nutzungsdaten auf {environment} senden",
+  "b6a9f7bea6485881": "Verbindungsdiagnose von diesem Gerät senden",
+  "fcbd51c25765a420": "Sendet Verbindungszeit-Traces aus diesem Browser, um Probleme mit Parity Connect zu diagnostizieren.",
+  "cdd67eda57489a27": [
+    "Durch Umgebung festgelegt ·",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    }
   ],
   "39f64d971ba424b5": "Keine Nutzungsquellen konfiguriert.",
   "dbd877abdc2c7c81": "HTTP-Kontingentquelle",

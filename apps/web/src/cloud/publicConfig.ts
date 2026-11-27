@@ -65,25 +65,30 @@ export function resolveCloudPublicConfig(): CloudPublicConfig {
 
 let desktopRelayTelemetry: boolean | null = null;
 let serverRelayTelemetry: boolean | null = null;
+let hostedRelayDiagnosticsEnabled = false;
 
 export function setServerRelayTelemetry(allowed: boolean | null): void {
   serverRelayTelemetry = allowed;
+}
+
+export function setHostedRelayDiagnosticsEnabled(enabled: boolean): void {
+  hostedRelayDiagnosticsEnabled = enabled;
 }
 
 export function relayTelemetryEnabled(): boolean | null {
   if (typeof window === "undefined") return true;
   if (window.desktopBridge) {
     desktopRelayTelemetry ??= window.desktopBridge.getRelayTelemetryEnabled();
-    return desktopRelayTelemetry;
+    if (desktopRelayTelemetry === false || serverRelayTelemetry === false) return false;
+    return desktopRelayTelemetry === true && serverRelayTelemetry === true ? true : null;
   }
-  return serverRelayTelemetry ?? (isHostedStaticApp() ? true : null);
+  if (isHostedStaticApp()) {
+    return hostedRelayDiagnosticsEnabled;
+  }
+  return serverRelayTelemetry;
 }
 
-export function resolveRelayTracingConfig() {
-  // The relay exporter is created during module initialization, so this must be synchronous.
-  if (relayTelemetryEnabled() === false) {
-    return null;
-  }
+function configuredRelayTracing() {
   const { relayTracing } = resolveCloudPublicConfig();
   return relayTracing.tracesUrl && relayTracing.tracesDataset && relayTracing.tracesToken
     ? {
@@ -92,6 +97,22 @@ export function resolveRelayTracingConfig() {
         tracesToken: relayTracing.tracesToken,
       }
     : null;
+}
+
+export function hasRelayTracingConfig(): boolean {
+  return configuredRelayTracing() !== null;
+}
+
+export function resolveRelayTracingConfig() {
+  // Only a permanent desktop main-process veto can skip creating the exporter at startup;
+  // server and hosted settings can be turned on live without reloading.
+  if (typeof window !== "undefined" && window.desktopBridge) {
+    desktopRelayTelemetry ??= window.desktopBridge.getRelayTelemetryEnabled();
+    if (desktopRelayTelemetry === false) {
+      return null;
+    }
+  }
+  return configuredRelayTracing();
 }
 
 export function hasCloudPublicConfig(): boolean {

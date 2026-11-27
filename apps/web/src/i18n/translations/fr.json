@@ -6637,12 +6637,19 @@
   ],
   "216ab7514aea1d61": "Commencer sans agent",
   "501ce2d99da8bfd1": "Configurez un agent pour commencer.",
-  "cd780e929cef08ab": [
-    "Par3 collecte des données d’utilisation anonymes pour améliorer l’app. Pour vous désinscrire, consultez la",
+  "da3e1e2af1c22b11": [
+    "Par3 n'envoie aucune donnée d'utilisation sauf si vous l'activez dans les",
+    " ",
+    {
+      "t": "Link",
+      "i": 1,
+      "c": "Paramètres"
+    },
+    ". Consultez la",
     " ",
     {
       "t": "a",
-      "i": 1,
+      "i": 2,
       "c": "politique de confidentialité"
     },
     "."
@@ -10959,7 +10966,7 @@
   "c424bee294b9f778": "Cet environnement est géré par {organization}. Certains paramètres et fonctionnalités suivent sa politique.",
   "82d9538af590f58c": "Voyez vos agents, importez des projets et configurez votre téléphone.",
   "6a48fd0a37e725a1": "Mentions légales",
-  "4672b04da5e494f1": "Comment nous traitons vos données, y compris les données d’utilisation anonymes collectées par Par3.",
+  "b9510e73f85da509": "Comment nous traitons vos données, y compris les données d'utilisation facultatives si vous les activez dans les Paramètres.",
   "e741b1ab9396053a": "Comment nous traitons vos données. {telemetryOff}",
   "3fec97d866946baf": "Mentions relatives aux dépendances, ressources et outils facultatifs utilisés par Par3.",
   "e39a57514be028e9": "Consulter",
@@ -11191,6 +11198,7 @@
   "4c70e3e7b3e6c493": "Secrets",
   "79b768229c9ef672": "Maintenance",
   "54b188d65247e42f": "Labs",
+  "e0315c1971520881": "Télémétrie",
   "af4b7734da1d5ce7": "Voix",
   "4ec62c39ca3192bf": "Versions et tickets",
   "f2bf529f85e05494": "Partage et accès",
@@ -11336,7 +11344,9 @@
   "6310b97b04ef239f": "Page d’accueil",
   "df9fa3a9cb004b9b": "prise en main configuration premier lancement démarrer agents importer projets",
   "3188bc3b3c4508bc": "Politique de confidentialité",
-  "901a823214edc8c4": "télémétrie analytique données d’utilisation suivi mentions légales refuser",
+  "0eb2482f1e689569": "télémétrie analytique données d'utilisation suivi légal",
+  "7065ed3cb54fd318": "Données d'utilisation",
+  "717e06534d439f61": "télémétrie données d'utilisation analytique confidentialité diagnostics",
   "523b72ed9d712100": "Export OpenTelemetry",
   "82136480255a5106": "OTel OTLP télémétrie export points de terminaison journaux traces métriques Grafana",
   "659d081051faf7ff": "journaux traces processus historique des ressources échecs spans cpu mémoire",
@@ -12560,6 +12570,29 @@
       "i": 1,
       "k": "_gt_value_1",
       "v": "v"
+    }
+  ],
+  "4640376a031d41b9": "Contrôlez les données d'utilisation anonymes et les diagnostics de connexion envoyés par Par3. Tout ici est désactivé tant que vous ne l'activez pas.",
+  "442b84129e654705": "Connectez un environnement pour configurer son paramètre de données d'utilisation.",
+  "8ce3039333e2ceb4": "Envoyer les données d'utilisation",
+  "4c67804f0dcd6eb6": "Envoyer les données d'utilisation : événements anonymes d'utilisation du produit et diagnostics de connexion depuis ce serveur et les applications ouvertes depuis celui-ci. N'inclut jamais les prompts, les réponses ou le contenu des fichiers.",
+  "2738abce5768eefb": "Envoie des événements anonymes d'utilisation du produit et des diagnostics de connexion depuis ce serveur et les applications ouvertes depuis celui-ci. N'inclut jamais les prompts, les réponses ou le contenu des fichiers.",
+  "c36085c370b6eb93": "Reconnectez-vous pour modifier ce paramètre.",
+  "de730ae0490ca71b": "Mettez à jour ce serveur pour modifier les paramètres de données d'utilisation ici.",
+  "0827283dc0af8b94": "Envoyer les données d'utilisation sur {environment}",
+  "b6a9f7bea6485881": "Envoyer les diagnostics de connexion depuis cet appareil",
+  "fcbd51c25765a420": "Envoie les traces de délais de connexion depuis ce navigateur pour aider à diagnostiquer les problèmes de Parity Connect.",
+  "cdd67eda57489a27": [
+    "Défini par l'environnement ·",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
     }
   ],
   "39f64d971ba424b5": "Aucune source de suivi de l’utilisation configurée.",

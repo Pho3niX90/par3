@@ -87,6 +87,7 @@ import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRe
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
+import * as TelemetryConsent from "./telemetry/TelemetryConsent.ts";
 import * as AntigravityInstallation from "./provider/AntigravityInstallation.ts";
 import * as ProviderInstallation from "./provider/providerInstallation.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -940,6 +941,14 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),
   Layer.mock(SyncStore.SyncStore)({}),
   Layer.mock(VaultService.VaultService)({}),
+  Layer.mock(TelemetryConsent.TelemetryConsent)({
+    isAnalyticsEnabled: Effect.succeed(false),
+    isRelayTracingEnabledSync: () => false,
+    observabilityFor: (optedIn) => ({
+      relayTracingAllowed: optedIn,
+      telemetrySource: "settings",
+    }),
+  }),
   SpecService.layerDisabled,
   FeatureFlags.layerTest(),
 );

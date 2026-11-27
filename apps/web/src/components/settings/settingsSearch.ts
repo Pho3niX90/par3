@@ -41,6 +41,7 @@ export type SettingsPath =
   | "/settings/secrets"
   | "/settings/maintenance"
   | "/settings/labs"
+  | "/settings/telemetry"
   | "/settings/about"
   | "/settings/archived";
 
@@ -121,6 +122,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/secrets": msg("Secrets"),
   "/settings/maintenance": msg("Maintenance"),
   "/settings/labs": msg("Labs"),
+  "/settings/telemetry": msg("Telemetry"),
   "/settings/about": msg("About"),
   "/settings/voice": msg("Voice"),
   "/settings/archived": msg("Archive"),
@@ -178,7 +180,13 @@ const ALL_SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
   {
     heading: msg("More"),
     headingHidden: true,
-    paths: ["/settings/maintenance", "/settings/labs", "/settings/about", "/settings/archived"],
+    paths: [
+      "/settings/maintenance",
+      "/settings/labs",
+      "/settings/telemetry",
+      "/settings/about",
+      "/settings/archived",
+    ],
   },
 ];
 
@@ -1017,7 +1025,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "privacy-policy",
     title: msg("Privacy policy"),
     to: "/settings/about",
-    searchTerms: [msg("telemetry analytics usage data tracking legal opt out")],
+    searchTerms: [msg("telemetry analytics usage data tracking legal")],
+  },
+  {
+    id: "usage-data",
+    title: msg("Usage data"),
+    to: "/settings/telemetry",
+    targetId: "usage-data",
+    searchTerms: [msg("telemetry usage data analytics privacy diagnostics")],
   },
   {
     id: "telemetry-export",
@@ -1615,6 +1630,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/scheduled-tasks": null,
   "/settings/maintenance": null,
   "/settings/labs": null,
+  "/settings/telemetry": null,
   "/settings/about": null,
   "/settings/archived": "project-defaults",
 };

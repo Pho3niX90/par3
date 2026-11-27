@@ -1,6 +1,6 @@
 # Product analytics
 
-The server owns analytics delivery, opt-out, and identity for every connected client. Clients never
+The server owns analytics delivery, consent, and identity for every connected client. Clients never
 load an analytics browser SDK, and visiting hosted web without an authenticated connection does not
 count as product use.
 
@@ -46,8 +46,11 @@ count as product use.
   `T3CODE_TELEMETRY_HOST` override the defaults; the older `T3CODE_POSTHOG_*` names still work. Delivery attaches a UUID per event,
   backs off on failure, and drops batches after bounded retries so a stuck batch cannot loop
   forever.
-- Dev-runner servers and servers on CI runners disable telemetry (and relay tracing) by default so
-  they do not inflate install counts. CI detection is `isCiEnvironment` in
-  [`otelEnvironment.ts`](../../packages/shared/src/otelEnvironment.ts). An explicit
-  `T3CODE_TELEMETRY_ENABLED=true` overrides both defaults; a managed policy that denies telemetry
-  overrides everything.
+- Telemetry and relay tracing stay off until the user opts in (`ServerSettings.telemetryEnabled`).
+  [`TelemetryConsent.ts`](../../apps/server/src/telemetry/TelemetryConsent.ts) owns the server's
+  decision for analytics, relay tracing, and the `relayTracingAllowed` that clients follow, so the
+  three cannot drift. A managed policy that denies telemetry and `DO_NOT_TRACK` override
+  everything; an explicit `T3CODE_TELEMETRY_ENABLED` overrides the setting; CI runners
+  (`isCiEnvironment` in [`otelEnvironment.ts`](../../packages/shared/src/otelEnvironment.ts)) stay
+  off unless it is `true`. Dev-runner servers set it to `false`, so a seeded settings file cannot
+  send from a dev run.

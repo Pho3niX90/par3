@@ -70,6 +70,7 @@ import * as PullRequestReviewGuides from "./persistence/PullRequestReviewGuides.
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
+import * as TelemetryConsent from "./telemetry/TelemetryConsent.ts";
 import * as DelegatedTaskAnalytics from "./telemetry/DelegatedTaskAnalytics.ts";
 import * as ProviderUsageAnalytics from "./telemetry/ProviderUsageAnalytics.ts";
 import * as ModelManifest from "./provider/ModelManifest.ts";
@@ -307,6 +308,11 @@ const layerServerSettings = ServerSettings.layer.pipe(
   Layer.provide(ServerSecretStore.layer),
   Layer.provideMerge(ManagedPolicy.layer),
   Layer.provideMerge(SqlitePersistence.layerConfig),
+);
+
+const layerTelemetryConsent = TelemetryConsent.layer.pipe(
+  Layer.provide(layerServerSettings),
+  Layer.provide(ManagedPolicy.layer),
 );
 
 const layerNativeTelemetry = NativeTelemetryClient.layer.pipe(
@@ -910,8 +916,8 @@ const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
   Layer.provideMerge(layerResourceDiagnostics),
   Layer.provideMerge(TraceDiagnostics.layer),
   Layer.provideMerge(TriageService.layer.pipe(Layer.provide(GitVcsDriver.layer))),
-  // Layers memoize by reference, so this is the same policy the settings layer reads.
-  Layer.provideMerge(AnalyticsService.layer.pipe(Layer.provide(ManagedPolicy.layer))),
+  Layer.provideMerge(layerTelemetryConsent),
+  Layer.provideMerge(AnalyticsService.layer.pipe(Layer.provide(layerTelemetryConsent))),
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
   Layer.provideMerge(DirectEndpoints.layer.pipe(Layer.provide(layerServerEnvironment))),
@@ -1471,7 +1477,10 @@ const layerMakeServer = Layer.unwrap(
       ),
       Layer.provide(layerActivation),
       Layer.provideMerge(
-        RelayTracing.layerServerRelayBroker.pipe(Layer.provide(ManagedPolicy.layer)),
+        RelayTracing.layerServerRelayBroker.pipe(
+          Layer.provide(ManagedPolicy.layer),
+          Layer.provide(layerTelemetryConsent),
+        ),
       ),
       Layer.provideMerge(layerHttpServer),
       Layer.provide(DatabaseMigrationProgress.layer),
