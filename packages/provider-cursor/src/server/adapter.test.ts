@@ -3211,10 +3211,7 @@ describe("CursorAdapterV2", () => {
           modelContextWindow,
         });
       assert.equal(budget(undefined), 0);
-      assert.equal(
-        budget(runtime.getModelContextWindow?.(selection("1m"))),
-        DEFAULT_HANDOFF_TOKEN_CAP,
-      );
+      assert.equal(budget(runtime.getModelContextWindow?.(selection("1m"))), 64_000);
     }).pipe(
       Effect.scoped,
       Effect.provide(
