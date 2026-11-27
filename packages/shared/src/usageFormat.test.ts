@@ -11,6 +11,7 @@ import {
   describeThreadCost,
   formatDateTimeShort,
   formatHourShort,
+  formatPercent,
   formatTokens,
   makeWindow,
   usageSourceMessages,
@@ -467,6 +468,14 @@ describe("describeThreadCost", () => {
     expect(
       describeThreadCost(cost({ totalCostUsd: 0, coverage: coverage({ complete: false }) })).notes,
     ).toEqual(["This thread has not used a provider yet."]);
+  });
+});
+
+describe("percent formatting", () => {
+  it("keeps a share short of the whole below 100%", () => {
+    expect(formatPercent(0.9996)).toBe(">99.9%");
+    expect(formatPercent(0.999)).toBe("99.9%");
+    expect(formatPercent(1)).toBe("100.0%");
   });
 });
 
