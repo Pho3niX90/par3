@@ -25,6 +25,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 
 import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
 import * as DesktopSavedEnvironments from "../settings/DesktopSavedEnvironments.ts";
@@ -446,9 +447,10 @@ export const make = Effect.gen(function* () {
   });
 
   // Electron regenerates its key when the OS keyring entry is lost, orphaning the catalog for
-  // good. Read it as empty so the user can reconnect, but keep a copy first: the catalog stays
-  // in place until the next save replaces it, and the content-derived name keeps repeated and
-  // concurrent reads to one backup.
+  // good. Read it as empty so the user can reconnect, but keep a copy first, under a
+  // content-derived name so repeated reads reuse it. The permit is for Windows, which rejects
+  // two simultaneous renames onto one path.
+  const backupPermit = yield* Semaphore.make(1);
   const preserveUndecryptableCatalog = Effect.fn(
     "desktop.connectionCatalogStore.preserveUndecryptableCatalog",
   )(function* (
@@ -476,7 +478,7 @@ export const make = Effect.gen(function* () {
         { catalogPath, backupPath, reason: decryptError._tag },
       );
     }
-  });
+  }, backupPermit.withPermits(1));
 
   const decryptDocument = Effect.fn("desktop.connectionCatalogStore.decryptDocument")(
     function* (snapshot: {
